@@ -33,6 +33,9 @@ function M.setup()
             else
                 vim.notify("Usage: :Review commit <sha>", vim.log.levels.WARN)
             end
+        elseif subcommand == "pick" then
+            local count = args[2] and tonumber(args[2]) or 20
+            ui.pick_commit(count)
         else
             vim.notify("Unknown subcommand: " .. subcommand, vim.log.levels.ERROR)
         end
@@ -41,7 +44,7 @@ function M.setup()
         complete = function(_, cmdline, _)
             local args = vim.split(cmdline, "%s+")
             if #args == 2 then
-                return { "close", "export", "send", "commit" }
+                return { "close", "export", "send", "commit", "pick" }
             end
             return {}
         end,

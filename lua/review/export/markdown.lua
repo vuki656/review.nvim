@@ -1,7 +1,13 @@
 local state = require("review.state")
-local types = require("review.ui.comment.types")
 
 local M = {}
+
+---Comment type labels
+local type_labels = {
+    note = "Note",
+    fix = "Fix",
+    question = "Question",
+}
 
 ---Generate markdown export of all comments
 ---@return string
@@ -32,7 +38,7 @@ function M.generate()
         table.insert(lines, "")
 
         for _, comment in ipairs(comments) do
-            local type_label = types.get_label(comment.type)
+            local type_label = type_labels[comment.type] or "Unknown"
             local line_info = ""
 
             if comment.original_line then
@@ -101,21 +107,26 @@ end
 
 ---Send comments to a tmux pane
 ---@param target? string Target window/pane (defaults to config)
+---@param silent? boolean Suppress notifications (for auto-send)
 ---@return boolean success
-function M.to_tmux(target)
+function M.to_tmux(target, silent)
     if not is_tmux() then
-        vim.notify("Not running inside tmux", vim.log.levels.ERROR)
+        if not silent then
+            vim.notify("Not running inside tmux", vim.log.levels.ERROR)
+        end
         return false
     end
 
-    local config = require("review.config").get()
-    target = target or config.tmux.target
+    local cfg = require("review.config").get()
+    target = target or cfg.tmux.target
 
     local content = M.generate()
     local comment_count = #state.get_all_comments()
 
     if comment_count == 0 then
-        vim.notify("No comments to send", vim.log.levels.WARN)
+        if not silent then
+            vim.notify("No comments to send", vim.log.levels.WARN)
+        end
         return false
     end
 
@@ -123,7 +134,9 @@ function M.to_tmux(target)
     local tmpfile = os.tmpname()
     local file = io.open(tmpfile, "w")
     if not file then
-        vim.notify("Failed to create temp file", vim.log.levels.ERROR)
+        if not silent then
+            vim.notify("Failed to create temp file", vim.log.levels.ERROR)
+        end
         return false
     end
     file:write(content)
@@ -136,7 +149,9 @@ function M.to_tmux(target)
     vim.system({ "sh", "-c", load_cmd }, {}, function(load_result)
         if load_result.code ~= 0 then
             vim.schedule(function()
-                vim.notify("Failed to load tmux buffer: " .. (load_result.stderr or ""), vim.log.levels.ERROR)
+                if not silent then
+                    vim.notify("Failed to load tmux buffer: " .. (load_result.stderr or ""), vim.log.levels.ERROR)
+                end
                 os.remove(tmpfile)
             end)
             return
@@ -147,22 +162,26 @@ function M.to_tmux(target)
                 os.remove(tmpfile)
 
                 if paste_result.code ~= 0 then
-                    vim.notify(
-                        string.format("Failed to paste to tmux pane '%s': %s", target, paste_result.stderr or ""),
-                        vim.log.levels.ERROR
-                    )
+                    if not silent then
+                        vim.notify(
+                            string.format("Failed to paste to tmux pane '%s': %s", target, paste_result.stderr or ""),
+                            vim.log.levels.ERROR
+                        )
+                    end
                     return
                 end
 
                 -- Optionally send Enter key
-                if config.tmux.auto_enter then
+                if cfg.tmux.auto_enter then
                     vim.system({ "tmux", "send-keys", "-t", target, "Enter" })
                 end
 
-                vim.notify(
-                    string.format("Sent %d comment(s) to tmux pane '%s'", comment_count, target),
-                    vim.log.levels.INFO
-                )
+                if not silent then
+                    vim.notify(
+                        string.format("Sent %d comment(s) to tmux pane '%s'", comment_count, target),
+                        vim.log.levels.INFO
+                    )
+                end
             end)
         end)
     end)

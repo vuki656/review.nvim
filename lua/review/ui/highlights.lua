@@ -3,23 +3,52 @@ local M = {}
 ---Define all highlight groups for the plugin
 function M.setup()
     local highlights = {
-        -- Diff colors (OneDark-compatible)
-        ReviewDiffAdd = { fg = "#89ca78", bg = "#3C4048" },
-        ReviewDiffDelete = { fg = "#ef596f", bg = "#3C4048" },
-        ReviewDiffChange = { fg = "#61afef", bg = "#3C4048" },
+        -- Diff line backgrounds
+        ReviewDiffAdd = { bg = "#002800" },
+        ReviewDiffDelete = { bg = "#3f0001" },
+
+        -- Inline diff (actual changed parts)
+        ReviewDiffAddInline = { bg = "#004000" },
+        ReviewDiffDeleteInline = { bg = "#600010" },
+
+        -- Diff sign column (fat colored border)
+        ReviewDiffSignAdd = { fg = "#89ca78", bold = true },
+        ReviewDiffSignDelete = { fg = "#ef596f", bold = true },
+        ReviewDiffSignContext = { fg = "#3e4452" },
+
+        -- Legacy (keep for compatibility)
+        ReviewDiffChange = { fg = "#a8c8e8", bg = "#2a2a3a" },
         ReviewDiffText = { fg = "#e5c07b", bg = "#3e4452", bold = true },
-        ReviewDiffHeader = { fg = "#c678dd", bold = true },
+        ReviewDiffHeader = { fg = "#c678dd", bg = "#2c2033", bold = true },
+        ReviewDiffHunkHeader = { fg = "#61afef", bg = "#1e2a3a", italic = true },
 
         -- Comment type colors
-        ReviewCommentNote = { fg = "#61afef" },
+        ReviewCommentNote = { fg = "#61afef", bold = true },
         ReviewCommentFix = { fg = "#ef596f", bold = true },
-        ReviewCommentQuestion = { fg = "#e5c07b" },
+        ReviewCommentQuestion = { fg = "#e5c07b", bold = true },
+        ReviewCommentBorder = { fg = "#5c6370" },
+        ReviewCommentText = { fg = "#abb2bf" },
 
         -- File tree
         ReviewFileReviewed = { fg = "#89ca78" },
         ReviewFileModified = { fg = "#d19a66" },
         ReviewFilePending = { fg = "#abb2bf" },
-        ReviewTreeDirectory = { fg = "#c678dd", bold = true },
+        ReviewFilePath = { fg = "#abb2bf" },
+        ReviewFilePathFaded = { fg = "#5c6370" },
+        ReviewFileFaded = { fg = "#4b5263" },
+        ReviewTreeDirectory = { fg = "#e5e5e5" },
+        ReviewTreeIndent = { fg = "#3e4452" },
+        ReviewLogo = { fg = "#61afef", bold = true },
+
+        -- Comment input
+        ReviewInputBorder = { fg = "#e5e5e5" },
+        ReviewInputTitle = { fg = "#e5e5e5", bold = true },
+        ReviewInputFooter = { fg = "#5c6370" },
+
+        -- Git status icons in file tree
+        ReviewGitAdded = { fg = "#89ca78" },
+        ReviewGitModified = { fg = "#d19a66" },
+        ReviewGitDeleted = { fg = "#ef596f" },
 
         -- UI elements
         ReviewBorder = { fg = "#3e4452" },

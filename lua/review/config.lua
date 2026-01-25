@@ -14,6 +14,7 @@
 ---@class ReviewUIConfig
 ---@field file_tree_width number Width of file tree panel (percentage)
 ---@field diff_view_mode "unified"|"split" Default diff view mode
+---@field group_reviewed boolean Group reviewed files at bottom (faded)
 
 ---@class ReviewTmuxConfig
 ---@field target string Target window/pane name (e.g., "CLAUDE" or "CLAUDE.0")
@@ -33,6 +34,7 @@ M.defaults = {
     ui = {
         file_tree_width = 25,
         diff_view_mode = "unified",
+        group_reviewed = true,
     },
     tmux = {
         target = "CLAUDE",    -- Target window name

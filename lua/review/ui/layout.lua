@@ -91,31 +91,34 @@ function M.unmount()
         -- Store buffer references before closing
         local tree_buf = M.current.file_tree.bufnr
         local diff_buf = M.current.diff_view.bufnr
+        local prev_tab = M.prev_tab
+
+        M.current = nil
+        M.prev_tab = nil
 
         -- Close the review tab
         pcall(function()
             vim.cmd("tabclose")
         end)
 
-        -- Delete the buffers to clean up names
-        pcall(function()
-            if vim.api.nvim_buf_is_valid(tree_buf) then
-                vim.api.nvim_buf_delete(tree_buf, { force = true })
-            end
-        end)
-        pcall(function()
-            if vim.api.nvim_buf_is_valid(diff_buf) then
-                vim.api.nvim_buf_delete(diff_buf, { force = true })
-            end
-        end)
-
         -- Return to previous tab if it exists
-        if M.prev_tab and vim.api.nvim_tabpage_is_valid(M.prev_tab) then
-            vim.api.nvim_set_current_tabpage(M.prev_tab)
+        if prev_tab and vim.api.nvim_tabpage_is_valid(prev_tab) then
+            vim.api.nvim_set_current_tabpage(prev_tab)
         end
 
-        M.current = nil
-        M.prev_tab = nil
+        -- Delete buffers asynchronously to avoid delay
+        vim.schedule(function()
+            pcall(function()
+                if vim.api.nvim_buf_is_valid(tree_buf) then
+                    vim.api.nvim_buf_delete(tree_buf, { force = true })
+                end
+            end)
+            pcall(function()
+                if vim.api.nvim_buf_is_valid(diff_buf) then
+                    vim.api.nvim_buf_delete(diff_buf, { force = true })
+                end
+            end)
+        end)
     end
 end
 

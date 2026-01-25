@@ -1,12 +1,14 @@
 local layout = require("review.ui.layout")
 local file_tree = require("review.ui.file_tree")
+local diff_view = require("review.ui.diff_view")
 local highlights = require("review.ui.highlights")
 local state = require("review.state")
+local git = require("review.core.git")
 
 local M = {}
 
----@type table|nil
-M.diff_view_component = nil
+-- Store original tabline setting
+local saved_showtabline = nil
 
 ---Initialize the UI
 function M.setup()
@@ -19,6 +21,10 @@ function M.open()
         return
     end
 
+    -- Hide tabline
+    saved_showtabline = vim.o.showtabline
+    vim.o.showtabline = 0
+
     -- Create and mount layout
     local l = layout.create()
     layout.mount()
@@ -30,8 +36,8 @@ function M.open()
         on_file_select = function(path)
             M.show_diff(path)
         end,
-        on_close = function()
-            M.close()
+        on_close = function(send_comments)
+            M.close(send_comments)
         end,
         on_refresh = function()
             -- Refresh diff view if a file is selected
@@ -41,13 +47,18 @@ function M.open()
         end,
     })
 
-    -- Show welcome message in diff view
-    M.show_welcome()
-
     -- Focus file tree
-    local file_tree_split = layout.get_file_tree()
-    if file_tree_split and file_tree_split.winid then
-        vim.api.nvim_set_current_win(file_tree_split.winid)
+    if l.file_tree and l.file_tree.winid then
+        vim.api.nvim_set_current_win(l.file_tree.winid)
+    end
+
+    -- Auto-select first file if exists
+    local ft = file_tree.get()
+    if ft and ft.files and #ft.files > 0 then
+        M.show_diff(ft.files[1])
+    else
+        -- Show welcome message if no files
+        M.show_welcome()
     end
 end
 
@@ -69,8 +80,7 @@ function M.show_welcome()
         "  Select a file from the left panel to view changes.",
         "",
         "  Keybindings:",
-        "    <CR>  - Select file / toggle directory",
-        "    <Tab> - Toggle tree/flat view",
+        "    <CR>  - Select file",
         "    r     - Mark as reviewed (stage)",
         "    u     - Unmark (unstage)",
         "    R     - Refresh file list",
@@ -97,41 +107,55 @@ end
 function M.show_diff(path)
     state.state.current_file = path
 
-    -- Lazy load diff view module
-    local diff_view = require("review.ui.diff_view")
-
     local diff_split = layout.get_diff_view()
     if not diff_split then
         return
     end
 
     -- Create or update diff view
-    M.diff_view_component = diff_view.create(diff_split, path, {
-        on_close = function()
-            M.close()
+    diff_view.create(diff_split, path, {
+        on_close = function(send_comments)
+            M.close(send_comments)
         end,
     })
 end
 
 ---Close the review UI
-function M.close()
+---@param send_comments? boolean Whether to auto-send comments (default true for q, false for Esc)
+function M.close(send_comments)
     if not state.state.is_open then
         return
     end
 
+    -- Auto-export comments if enabled and any exist
+    if send_comments ~= false then
+        local all_comments = state.get_all_comments()
+        if #all_comments > 0 then
+            local export = require("review.export.markdown")
+            -- Copy to clipboard (silent)
+            local content = export.generate()
+            vim.fn.setreg("+", content)
+            vim.fn.setreg("*", content)
+            -- Try to send to tmux (silent mode)
+            export.to_tmux(nil, true)
+        end
+    end
+
     -- Destroy components
     file_tree.destroy()
-
-    if M.diff_view_component then
-        local diff_view = require("review.ui.diff_view")
-        diff_view.destroy()
-        M.diff_view_component = nil
-    end
+    diff_view.destroy()
 
     -- Unmount layout
     layout.unmount()
 
+    -- Restore tabline
+    if saved_showtabline ~= nil then
+        vim.o.showtabline = saved_showtabline
+        saved_showtabline = nil
+    end
+
     state.state.is_open = false
+    state.state.base = nil  -- Reset to HEAD for next open
 end
 
 ---Toggle the review UI
@@ -147,6 +171,53 @@ end
 ---@return boolean
 function M.is_open()
     return state.state.is_open
+end
+
+---Check if we're in history mode (comparing against a commit other than HEAD)
+---@return boolean
+function M.is_history_mode()
+    return state.state.base ~= nil and state.state.base ~= "HEAD"
+end
+
+---Show commit picker and open review with selected base
+---@param count? number Number of commits to show (default 20)
+function M.pick_commit(count)
+    count = count or 20
+    local commits = git.get_recent_commits(count)
+
+    if #commits == 0 then
+        vim.notify("No commits found", vim.log.levels.WARN)
+        return
+    end
+
+    -- Add HEAD option at the top
+    local items = {
+        { display = "HEAD (working changes)", hash = "HEAD" }
+    }
+
+    for _, commit in ipairs(commits) do
+        table.insert(items, {
+            display = string.format("%s %s (%s)", commit.short_hash, commit.subject, commit.date),
+            hash = commit.hash,
+        })
+    end
+
+    vim.ui.select(items, {
+        prompt = "Select base commit to diff against:",
+        format_item = function(item)
+            return item.display
+        end,
+    }, function(choice)
+        if choice then
+            -- Close existing review if open
+            if state.state.is_open then
+                M.close(false)
+            end
+            -- Set base and open
+            state.state.base = choice.hash
+            M.open()
+        end
+    end)
 end
 
 return M
