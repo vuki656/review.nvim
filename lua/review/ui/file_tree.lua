@@ -661,6 +661,9 @@ local function setup_keymaps(bufnr, callbacks)
             return
         end
 
+        local staged_file = node.path
+        local was_staged = node.reviewed
+
         if node.reviewed then
             -- Unstage
             if git.unstage_file(node.path) then
@@ -677,6 +680,31 @@ local function setup_keymaps(bufnr, callbacks)
                 M.refresh()
                 if callbacks.on_refresh then
                     callbacks.on_refresh()
+                end
+            end
+        end
+
+        -- After staging (not unstaging), cursor stays on same line but file moved to bottom
+        -- Find and select the next available file at cursor position or nearby
+        if not was_staged and M.current and M.current.nodes then
+            local current_node = M.get_node_at_line(line)
+            -- If cursor is now on a different file, select it
+            if current_node and current_node.is_file and current_node.path ~= staged_file then
+                if callbacks.on_file_select then
+                    callbacks.on_file_select(current_node.path)
+                end
+            -- If cursor is on a separator/header, find next file
+            elseif not current_node or not current_node.is_file then
+                local line_count = vim.api.nvim_buf_line_count(M.current.bufnr)
+                for i = line, line_count do
+                    local n = M.get_node_at_line(i)
+                    if n and n.is_file and n.path ~= staged_file then
+                        vim.api.nvim_win_set_cursor(M.current.winid, { i, 0 })
+                        if callbacks.on_file_select then
+                            callbacks.on_file_select(n.path)
+                        end
+                        break
+                    end
                 end
             end
         end
