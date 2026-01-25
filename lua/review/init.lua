@@ -1,8 +1,8 @@
-local config = require("review.config")
-local state = require("review.state")
 local commands = require("review.commands")
-local ui = require("review.ui")
+local config = require("review.config")
 local export = require("review.export.markdown")
+local state = require("review.state")
+local ui = require("review.ui")
 
 local M = {}
 

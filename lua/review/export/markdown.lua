@@ -67,10 +67,7 @@ function M.to_clipboard()
     vim.fn.setreg("*", content)
 
     local comment_count = #state.get_all_comments()
-    vim.notify(
-        string.format("Exported %d comment(s) to clipboard", comment_count),
-        vim.log.levels.INFO
-    )
+    vim.notify(string.format("Exported %d comment(s) to clipboard", comment_count), vim.log.levels.INFO)
 
     return true
 end
@@ -91,10 +88,7 @@ function M.to_file(filepath)
     file:close()
 
     local comment_count = #state.get_all_comments()
-    vim.notify(
-        string.format("Exported %d comment(s) to %s", comment_count, filepath),
-        vim.log.levels.INFO
-    )
+    vim.notify(string.format("Exported %d comment(s) to %s", comment_count, filepath), vim.log.levels.INFO)
 
     return true
 end

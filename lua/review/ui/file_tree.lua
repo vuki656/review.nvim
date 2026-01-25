@@ -1,6 +1,6 @@
+local config = require("review.config")
 local git = require("review.core.git")
 local state = require("review.state")
-local config = require("review.config")
 
 local M = {}
 
@@ -134,7 +134,7 @@ end
 local function create_centered_separator(label, width, char)
     -- Account for display width of icons (they may be wider than 1 byte)
     local label_display_width = vim.fn.strdisplaywidth(label)
-    local padding = 2  -- space on each side of label
+    local padding = 2 -- space on each side of label
     local available = width - label_display_width - (padding * 2)
     if available < 4 then
         return label
@@ -156,7 +156,7 @@ local function create_header_node(icon, title, count, hl, char)
         path = nil,
         separator_label = icon .. " " .. title .. " (" .. count .. ")",
         separator_char = char,
-        text = "",  -- Will be filled in render
+        text = "", -- Will be filled in render
         is_file = false,
         is_separator = true,
         is_header = true,
@@ -188,10 +188,10 @@ local function create_nodes(files, base)
     local status_map = git.get_all_file_statuses(files, base)
 
     -- Categorize files by git status and staged status
-    local unstaged_modified = {}  -- modified, not staged
-    local unstaged_added = {}     -- added/new, not staged
-    local unstaged_deleted = {}   -- deleted, not staged
-    local staged_files = {}       -- all staged files
+    local unstaged_modified = {} -- modified, not staged
+    local unstaged_added = {} -- added/new, not staged
+    local unstaged_deleted = {} -- deleted, not staged
+    local staged_files = {} -- all staged files
 
     for _, file in ipairs(files) do
         local git_status = status_map[file] or "modified"
@@ -292,16 +292,16 @@ local function create_tree_nodes(files, base)
     local nodes = {}
 
     -- Indent markers
-    local INDENT_MARKER_PIPE = "│ "   -- continuing line
+    local INDENT_MARKER_PIPE = "│ " -- continuing line
     local INDENT_MARKER_BRANCH = "├ " -- branch (has siblings after)
-    local INDENT_MARKER_LAST = "└ "   -- last item (no siblings after)
-    local INDENT_MARKER_SPACE = "  "  -- empty space
+    local INDENT_MARKER_LAST = "└ " -- last item (no siblings after)
+    local INDENT_MARKER_SPACE = "  " -- empty space
 
     local function add_tree_entry(name, entry, depth, indent_stack, is_last)
         -- Build indent string with markers
         local indent_parts = {}
-        local indent_ranges = {}  -- Track positions for highlighting
-        local left_pad_len = 1  -- 1 char left padding
+        local indent_ranges = {} -- Track positions for highlighting
+        local left_pad_len = 1 -- 1 char left padding
         local pos = left_pad_len
 
         for i, marker in ipairs(indent_stack) do
@@ -391,8 +391,12 @@ local function create_tree_nodes(files, base)
                     table.insert(dirs, { name = k, entry = v })
                 end
             end
-            table.sort(dirs, function(a, b) return a.name < b.name end)
-            table.sort(files_list, function(a, b) return a.name < b.name end)
+            table.sort(dirs, function(a, b)
+                return a.name < b.name
+            end)
+            table.sort(files_list, function(a, b)
+                return a.name < b.name
+            end)
 
             -- Build new indent stack for children
             local child_indent_stack = { unpack(indent_stack) }
@@ -402,8 +406,12 @@ local function create_tree_nodes(files, base)
             end
 
             local all_children = {}
-            for _, d in ipairs(dirs) do table.insert(all_children, { name = d.name, entry = d.entry }) end
-            for _, f in ipairs(files_list) do table.insert(all_children, { name = f.name, entry = f.entry }) end
+            for _, d in ipairs(dirs) do
+                table.insert(all_children, { name = d.name, entry = d.entry })
+            end
+            for _, f in ipairs(files_list) do
+                table.insert(all_children, { name = f.name, entry = f.entry })
+            end
 
             for i, child in ipairs(all_children) do
                 local child_is_last = (i == #all_children)
@@ -421,12 +429,20 @@ local function create_tree_nodes(files, base)
             table.insert(root_dirs, { name = k, entry = v })
         end
     end
-    table.sort(root_dirs, function(a, b) return a.name < b.name end)
-    table.sort(root_files, function(a, b) return a.name < b.name end)
+    table.sort(root_dirs, function(a, b)
+        return a.name < b.name
+    end)
+    table.sort(root_files, function(a, b)
+        return a.name < b.name
+    end)
 
     local all_root = {}
-    for _, d in ipairs(root_dirs) do table.insert(all_root, { name = d.name, entry = d.entry }) end
-    for _, f in ipairs(root_files) do table.insert(all_root, { name = f.name, entry = f.entry }) end
+    for _, d in ipairs(root_dirs) do
+        table.insert(all_root, { name = d.name, entry = d.entry })
+    end
+    for _, f in ipairs(root_files) do
+        table.insert(all_root, { name = f.name, entry = f.entry })
+    end
 
     for i, item in ipairs(all_root) do
         local is_last = (i == #all_root)
@@ -445,13 +461,13 @@ local function render_to_buffer(bufnr, nodes, winid)
     vim.bo[bufnr].modifiable = true
 
     -- Get window width for centered separators
-    local width = 40  -- default
+    local width = 40 -- default
     if winid and vim.api.nvim_win_is_valid(winid) then
         width = vim.api.nvim_win_get_width(winid)
     end
 
     local lines = {}
-    local separator_info = {}  -- Store info for highlighting separators
+    local separator_info = {} -- Store info for highlighting separators
 
     for idx, node in ipairs(nodes) do
         if node.is_separator and node.separator_label then
@@ -485,11 +501,25 @@ local function render_to_buffer(bufnr, nodes, winid)
             if info then
                 if node.is_logo then
                     -- Logo: color entire label with header_hl
-                    vim.api.nvim_buf_add_highlight(bufnr, -1, node.header_hl or "ReviewLogo", i - 1, info.label_start, info.label_end)
+                    vim.api.nvim_buf_add_highlight(
+                        bufnr,
+                        -1,
+                        node.header_hl or "ReviewLogo",
+                        i - 1,
+                        info.label_start,
+                        info.label_end
+                    )
                 else
                     -- Color the icon
                     if node.header_hl then
-                        vim.api.nvim_buf_add_highlight(bufnr, -1, node.header_hl, i - 1, info.label_start, info.icon_end)
+                        vim.api.nvim_buf_add_highlight(
+                            bufnr,
+                            -1,
+                            node.header_hl,
+                            i - 1,
+                            info.label_start,
+                            info.icon_end
+                        )
                     end
                     -- Title and count in visible color (after icon)
                     vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewFilePath", i - 1, info.icon_end, info.label_end)
@@ -505,10 +535,24 @@ local function render_to_buffer(bufnr, nodes, winid)
             end
             -- Folder icon and name
             if node.dir_icon_start then
-                vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewTreeDirectory", i - 1, node.dir_icon_start, node.dir_icon_end)
+                vim.api.nvim_buf_add_highlight(
+                    bufnr,
+                    -1,
+                    "ReviewTreeDirectory",
+                    i - 1,
+                    node.dir_icon_start,
+                    node.dir_icon_end
+                )
             end
             if node.dirname_start then
-                vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewTreeDirectory", i - 1, node.dirname_start, node.dirname_end)
+                vim.api.nvim_buf_add_highlight(
+                    bufnr,
+                    -1,
+                    "ReviewTreeDirectory",
+                    i - 1,
+                    node.dirname_start,
+                    node.dirname_end
+                )
             end
         else
             -- File node
@@ -524,7 +568,14 @@ local function render_to_buffer(bufnr, nodes, winid)
 
             -- File type icon (devicons color if available)
             if node.file_icon_hl then
-                vim.api.nvim_buf_add_highlight(bufnr, -1, node.file_icon_hl, i - 1, node.file_icon_start, node.file_icon_end)
+                vim.api.nvim_buf_add_highlight(
+                    bufnr,
+                    -1,
+                    node.file_icon_hl,
+                    i - 1,
+                    node.file_icon_start,
+                    node.file_icon_end
+                )
             end
 
             -- Checkbox - green if reviewed, orange if not
@@ -636,18 +687,22 @@ local function setup_keymaps(bufnr, callbacks)
 
         -- Debounce: wait 50ms before loading diff
         active_timers.select_timer = vim.loop.new_timer()
-        active_timers.select_timer:start(50, 0, vim.schedule_wrap(function()
-            if active_timers.select_timer then
-                active_timers.select_timer:stop()
-                active_timers.select_timer:close()
-                active_timers.select_timer = nil
-            end
-            local line = vim.api.nvim_win_get_cursor(0)[1]
-            local node = M.get_node_at_line(line)
-            if node and node.is_file and callbacks.on_file_select then
-                callbacks.on_file_select(node.path)
-            end
-        end))
+        active_timers.select_timer:start(
+            50,
+            0,
+            vim.schedule_wrap(function()
+                if active_timers.select_timer then
+                    active_timers.select_timer:stop()
+                    active_timers.select_timer:close()
+                    active_timers.select_timer = nil
+                end
+                local line = vim.api.nvim_win_get_cursor(0)[1]
+                local node = M.get_node_at_line(line)
+                if node and node.is_file and callbacks.on_file_select then
+                    callbacks.on_file_select(node.path)
+                end
+            end)
+        )
     end
 
     -- Helper to check if node should be skipped during navigation
@@ -726,27 +781,31 @@ local function setup_keymaps(bufnr, callbacks)
         end
 
         local lines = 15
-        local delay = 2  -- ms between each line (fast)
+        local delay = 2 -- ms between each line (fast)
         local cmd = direction == "down" and "normal! \x05" or "normal! \x19"
 
         local i = 0
         active_timers.scroll_timer = vim.loop.new_timer()
-        active_timers.scroll_timer:start(0, delay, vim.schedule_wrap(function()
-            if i >= lines then
-                if active_timers.scroll_timer then
-                    active_timers.scroll_timer:stop()
-                    active_timers.scroll_timer:close()
-                    active_timers.scroll_timer = nil
+        active_timers.scroll_timer:start(
+            0,
+            delay,
+            vim.schedule_wrap(function()
+                if i >= lines then
+                    if active_timers.scroll_timer then
+                        active_timers.scroll_timer:stop()
+                        active_timers.scroll_timer:close()
+                        active_timers.scroll_timer = nil
+                    end
+                    return
                 end
-                return
-            end
-            if vim.api.nvim_win_is_valid(dv.winid) then
-                vim.api.nvim_win_call(dv.winid, function()
-                    vim.cmd(cmd)
-                end)
-            end
-            i = i + 1
-        end))
+                if vim.api.nvim_win_is_valid(dv.winid) then
+                    vim.api.nvim_win_call(dv.winid, function()
+                        vim.cmd(cmd)
+                    end)
+                end
+                i = i + 1
+            end)
+        )
     end
 
     vim.keymap.set("n", "J", function()

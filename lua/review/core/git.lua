@@ -49,10 +49,7 @@ function M.get_changed_files(base)
     local seen = {}
 
     -- Get unstaged changes
-    local unstaged = vim.system(
-        { "git", "diff", "--name-only", base },
-        { text = true, cwd = git_root }
-    ):wait()
+    local unstaged = vim.system({ "git", "diff", "--name-only", base }, { text = true, cwd = git_root }):wait()
 
     if unstaged.code == 0 then
         for line in unstaged.stdout:gmatch("[^\r\n]+") do
@@ -64,10 +61,7 @@ function M.get_changed_files(base)
     end
 
     -- Get staged changes
-    local staged = vim.system(
-        { "git", "diff", "--cached", "--name-only" },
-        { text = true, cwd = git_root }
-    ):wait()
+    local staged = vim.system({ "git", "diff", "--cached", "--name-only" }, { text = true, cwd = git_root }):wait()
 
     if staged.code == 0 then
         for line in staged.stdout:gmatch("[^\r\n]+") do
@@ -82,7 +76,8 @@ function M.get_changed_files(base)
     local untracked = vim.system(
         { "git", "ls-files", "--others", "--exclude-standard" },
         { text = true, cwd = git_root }
-    ):wait()
+    )
+        :wait()
 
     if untracked.code == 0 then
         for line in untracked.stdout:gmatch("[^\r\n]+") do
@@ -151,7 +146,8 @@ function M.get_diff(file, base)
     local unstaged_result = vim.system(
         { "git", "diff", "--name-only", base, "--", file },
         { text = true, cwd = git_root }
-    ):wait()
+    )
+        :wait()
 
     if unstaged_result.code == 0 and vim.trim(unstaged_result.stdout) == "" then
         -- No unstaged changes, check if staged
@@ -191,10 +187,7 @@ function M.get_full_diff(base)
         return { success = false, output = "", error = "Not in a git repository" }
     end
 
-    local result = vim.system(
-        { "git", "diff", base },
-        { text = true, cwd = git_root }
-    ):wait()
+    local result = vim.system({ "git", "diff", base }, { text = true, cwd = git_root }):wait()
 
     if result.code ~= 0 then
         return { success = false, output = "", error = result.stderr }
@@ -212,10 +205,7 @@ function M.stage_file(file)
         return false
     end
 
-    local result = vim.system(
-        { "git", "add", "--", file },
-        { text = true, cwd = git_root }
-    ):wait()
+    local result = vim.system({ "git", "add", "--", file }, { text = true, cwd = git_root }):wait()
 
     return result.code == 0
 end
@@ -229,10 +219,7 @@ function M.unstage_file(file)
         return false
     end
 
-    local result = vim.system(
-        { "git", "reset", "HEAD", "--", file },
-        { text = true, cwd = git_root }
-    ):wait()
+    local result = vim.system({ "git", "reset", "HEAD", "--", file }, { text = true, cwd = git_root }):wait()
 
     return result.code == 0
 end
@@ -246,10 +233,8 @@ function M.is_staged(file)
         return false
     end
 
-    local result = vim.system(
-        { "git", "diff", "--cached", "--name-only", "--", file },
-        { text = true, cwd = git_root }
-    ):wait()
+    local result = vim.system({ "git", "diff", "--cached", "--name-only", "--", file }, { text = true, cwd = git_root })
+        :wait()
 
     if result.code ~= 0 then
         return false
@@ -277,10 +262,8 @@ function M.get_file_status(file, base)
     end
 
     -- Check file status relative to base
-    local result = vim.system(
-        { "git", "diff", "--name-status", base, "--", file },
-        { text = true, cwd = git_root }
-    ):wait()
+    local result = vim.system({ "git", "diff", "--name-status", base, "--", file }, { text = true, cwd = git_root })
+        :wait()
 
     if result.code == 0 and result.stdout ~= "" then
         local status_char = result.stdout:sub(1, 1)
@@ -336,7 +319,8 @@ function M.get_all_file_statuses(files, base)
         local untracked = vim.system(
             { "git", "ls-files", "--others", "--exclude-standard" },
             { text = true, cwd = git_root }
-        ):wait()
+        )
+            :wait()
         if untracked.code == 0 then
             for line in untracked.stdout:gmatch("[^\r\n]+") do
                 if line ~= "" then
@@ -347,10 +331,7 @@ function M.get_all_file_statuses(files, base)
     end
 
     -- Get all file statuses relative to base in one call
-    local result = vim.system(
-        { "git", "diff", "--name-status", base },
-        { text = true, cwd = git_root }
-    ):wait()
+    local result = vim.system({ "git", "diff", "--name-status", base }, { text = true, cwd = git_root }):wait()
 
     if result.code == 0 then
         for line in result.stdout:gmatch("[^\r\n]+") do
@@ -372,7 +353,8 @@ function M.get_all_file_statuses(files, base)
         local staged_result = vim.system(
             { "git", "diff", "--cached", "--name-status" },
             { text = true, cwd = git_root }
-        ):wait()
+        )
+            :wait()
 
         if staged_result.code == 0 then
             for line in staged_result.stdout:gmatch("[^\r\n]+") do
@@ -452,10 +434,7 @@ function M.get_file_at_rev(file, rev)
         return nil, "Not in a git repository"
     end
 
-    local result = vim.system(
-        { "git", "show", rev .. ":" .. file },
-        { text = true, cwd = git_root }
-    ):wait()
+    local result = vim.system({ "git", "show", rev .. ":" .. file }, { text = true, cwd = git_root }):wait()
 
     if result.code ~= 0 then
         return nil, result.stderr

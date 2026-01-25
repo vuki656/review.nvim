@@ -1,9 +1,9 @@
-local layout = require("review.ui.layout")
-local file_tree = require("review.ui.file_tree")
 local diff_view = require("review.ui.diff_view")
-local highlights = require("review.ui.highlights")
-local state = require("review.state")
+local file_tree = require("review.ui.file_tree")
 local git = require("review.core.git")
+local highlights = require("review.ui.highlights")
+local layout = require("review.ui.layout")
+local state = require("review.state")
 
 local M = {}
 
@@ -155,7 +155,7 @@ function M.close(send_comments)
     end
 
     state.state.is_open = false
-    state.state.base = nil  -- Reset to HEAD for next open
+    state.state.base = nil -- Reset to HEAD for next open
 end
 
 ---Toggle the review UI
@@ -192,7 +192,7 @@ function M.pick_commit(count)
 
     -- Add HEAD option at the top
     local items = {
-        { display = "HEAD (working changes)", hash = "HEAD" }
+        { display = "HEAD (working changes)", hash = "HEAD" },
     }
 
     for _, commit in ipairs(commits) do

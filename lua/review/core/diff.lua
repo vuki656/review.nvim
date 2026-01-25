@@ -25,8 +25,7 @@ local M = {}
 ---@return number old_start, number old_count, number new_start, number new_count
 local function parse_hunk_header(header)
     -- Format: @@ -old_start,old_count +new_start,new_count @@
-    local old_start, old_count, new_start, new_count =
-        header:match("@@ %-(%d+),?(%d*) %+(%d+),?(%d*) @@")
+    local old_start, old_count, new_start, new_count = header:match("@@ %-(%d+),?(%d*) %+(%d+),?(%d*) @@")
 
     old_start = tonumber(old_start) or 1
     old_count = tonumber(old_count) or 1

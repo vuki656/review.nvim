@@ -37,8 +37,8 @@ M.defaults = {
         group_reviewed = true,
     },
     tmux = {
-        target = "CLAUDE",    -- Target window name
-        auto_enter = false,   -- Don't auto-submit, let user review first
+        target = "CLAUDE", -- Target window name
+        auto_enter = false, -- Don't auto-submit, let user review first
     },
 }
 

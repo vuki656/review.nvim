@@ -49,8 +49,8 @@ local function tokenize(str)
 
         table.insert(tokens, {
             text = str:sub(start, i - 1),
-            start = start - 1,  -- 0-indexed for nvim
-            finish = i - 1,     -- 0-indexed for nvim
+            start = start - 1, -- 0-indexed for nvim
+            finish = i - 1, -- 0-indexed for nvim
         })
     end
 
@@ -225,8 +225,12 @@ local function render_diff(bufnr, file)
     local has_adds = false
     local has_deletes = false
     for _, line in ipairs(render_lines) do
-        if line.type == "add" then has_adds = true end
-        if line.type == "delete" then has_deletes = true end
+        if line.type == "add" then
+            has_adds = true
+        end
+        if line.type == "delete" then
+            has_deletes = true
+        end
     end
     local is_new_file = has_adds and not has_deletes
     local is_deleted_file = has_deletes and not has_adds
@@ -364,7 +368,8 @@ local function goto_next_hunk()
     local lines = M.current.render_lines
 
     -- Find next line that starts a change block (after context)
-    local in_change = lines[current_line] and (lines[current_line].type == "add" or lines[current_line].type == "delete")
+    local in_change = lines[current_line]
+        and (lines[current_line].type == "add" or lines[current_line].type == "delete")
 
     for i = current_line + 1, #lines do
         local line = lines[i]
@@ -537,7 +542,11 @@ local function add_comment()
     local input_win = vim.api.nvim_open_win(input_buf, true, win_opts)
 
     -- Set border highlight
-    vim.api.nvim_set_option_value("winhighlight", "FloatBorder:ReviewInputBorder,FloatTitle:ReviewInputTitle", { win = input_win })
+    vim.api.nvim_set_option_value(
+        "winhighlight",
+        "FloatBorder:ReviewInputBorder,FloatTitle:ReviewInputTitle",
+        { win = input_win }
+    )
 
     -- Set empty prompt
     vim.fn.prompt_setprompt(input_buf, "")
