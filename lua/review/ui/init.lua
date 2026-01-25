@@ -59,7 +59,8 @@ function M.show_welcome()
     end
 
     local bufnr = diff_split.bufnr
-    vim.api.nvim_buf_set_option(bufnr, "modifiable", true)
+    vim.bo[bufnr].readonly = false
+    vim.bo[bufnr].modifiable = true
 
     local welcome = {
         "",
@@ -84,7 +85,8 @@ function M.show_welcome()
     }
 
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, welcome)
-    vim.api.nvim_buf_set_option(bufnr, "modifiable", false)
+    vim.bo[bufnr].modifiable = false
+    vim.bo[bufnr].readonly = true
 
     -- Apply title highlight
     vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewTitle", 1, 0, -1)

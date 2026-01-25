@@ -100,7 +100,8 @@ function M.render()
     local bufnr = M.current.bufnr
 
     -- Enable modification temporarily
-    vim.api.nvim_buf_set_option(bufnr, "modifiable", true)
+    vim.bo[bufnr].readonly = false
+    vim.bo[bufnr].modifiable = true
 
     -- Render tree
     tree:render()
@@ -115,7 +116,8 @@ function M.render()
     end
 
     -- Disable modification
-    vim.api.nvim_buf_set_option(bufnr, "modifiable", false)
+    vim.bo[bufnr].modifiable = false
+    vim.bo[bufnr].readonly = true
 end
 
 ---Toggle between tree and flat view

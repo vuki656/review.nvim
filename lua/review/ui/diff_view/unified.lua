@@ -25,23 +25,27 @@ function M.render(bufnr, file)
     -- Get diff
     local result = git.get_diff(file, state.state.base)
     if not result.success then
-        vim.api.nvim_buf_set_option(bufnr, "modifiable", true)
+        vim.bo[bufnr].readonly = false
+        vim.bo[bufnr].modifiable = true
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
             "",
             "  Error getting diff:",
             "  " .. (result.error or "Unknown error"),
         })
-        vim.api.nvim_buf_set_option(bufnr, "modifiable", false)
+        vim.bo[bufnr].modifiable = false
+        vim.bo[bufnr].readonly = true
         return nil
     end
 
     if result.output == "" then
-        vim.api.nvim_buf_set_option(bufnr, "modifiable", true)
+        vim.bo[bufnr].readonly = false
+        vim.bo[bufnr].modifiable = true
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
             "",
             "  No changes in this file.",
         })
-        vim.api.nvim_buf_set_option(bufnr, "modifiable", false)
+        vim.bo[bufnr].modifiable = false
+        vim.bo[bufnr].readonly = true
         return nil
     end
 
@@ -56,9 +60,11 @@ function M.render(bufnr, file)
     end
 
     -- Set buffer content
-    vim.api.nvim_buf_set_option(bufnr, "modifiable", true)
+    vim.bo[bufnr].readonly = false
+    vim.bo[bufnr].modifiable = true
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, display_lines)
-    vim.api.nvim_buf_set_option(bufnr, "modifiable", false)
+    vim.bo[bufnr].modifiable = false
+    vim.bo[bufnr].readonly = true
 
     -- Apply highlights
     vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)

@@ -15,7 +15,7 @@ function M.get_root()
     return nil
 end
 
----Get list of changed files (unstaged)
+---Get list of changed files (unstaged, staged, and untracked)
 ---@param base string|nil Base commit to compare against (default: HEAD)
 ---@return string[]
 function M.get_changed_files(base)
@@ -25,21 +25,54 @@ function M.get_changed_files(base)
         return {}
     end
 
-    local result = vim.system(
+    local files = {}
+    local seen = {}
+
+    -- Get unstaged changes
+    local unstaged = vim.system(
         { "git", "diff", "--name-only", base },
         { text = true, cwd = git_root }
     ):wait()
 
-    if result.code ~= 0 then
-        return {}
-    end
-
-    local files = {}
-    for line in result.stdout:gmatch("[^\r\n]+") do
-        if line ~= "" then
-            table.insert(files, line)
+    if unstaged.code == 0 then
+        for line in unstaged.stdout:gmatch("[^\r\n]+") do
+            if line ~= "" and not seen[line] then
+                seen[line] = true
+                table.insert(files, line)
+            end
         end
     end
+
+    -- Get staged changes
+    local staged = vim.system(
+        { "git", "diff", "--cached", "--name-only" },
+        { text = true, cwd = git_root }
+    ):wait()
+
+    if staged.code == 0 then
+        for line in staged.stdout:gmatch("[^\r\n]+") do
+            if line ~= "" and not seen[line] then
+                seen[line] = true
+                table.insert(files, line)
+            end
+        end
+    end
+
+    -- Get untracked files
+    local untracked = vim.system(
+        { "git", "ls-files", "--others", "--exclude-standard" },
+        { text = true, cwd = git_root }
+    ):wait()
+
+    if untracked.code == 0 then
+        for line in untracked.stdout:gmatch("[^\r\n]+") do
+            if line ~= "" and not seen[line] then
+                seen[line] = true
+                table.insert(files, line)
+            end
+        end
+    end
+
     return files
 end
 
