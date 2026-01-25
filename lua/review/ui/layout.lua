@@ -1,11 +1,9 @@
 local Split = require("nui.split")
-local Layout = require("nui.layout")
 local config = require("review.config")
 
 local M = {}
 
 ---@class ReviewLayout
----@field layout NuiLayout
 ---@field file_tree NuiSplit
 ---@field diff_view NuiSplit
 
@@ -18,11 +16,16 @@ function M.create()
     local opts = config.get()
     local file_tree_width = opts.ui.file_tree_width
 
+    -- Calculate width in columns
+    local editor_width = vim.o.columns
+    local tree_width = math.floor(editor_width * file_tree_width / 100)
+
     -- Create file tree split (left panel)
     local file_tree = Split({
         relative = "editor",
         position = "left",
-        size = file_tree_width .. "%",
+        size = tree_width,
+        enter = true,
         buf_options = {
             modifiable = false,
             readonly = true,
@@ -40,11 +43,12 @@ function M.create()
         },
     })
 
-    -- Create diff view split (main panel)
+    -- Create diff view split (main panel, relative to file tree)
     local diff_view = Split({
         relative = "editor",
         position = "right",
-        size = (100 - file_tree_width) .. "%",
+        size = editor_width - tree_width,
+        enter = false,
         buf_options = {
             modifiable = false,
             readonly = true,
@@ -62,24 +66,7 @@ function M.create()
         },
     })
 
-    -- Create the layout
-    local layout = Layout(
-        {
-            relative = "editor",
-            position = "50%",
-            size = {
-                width = "100%",
-                height = "100%",
-            },
-        },
-        Layout.Box({
-            Layout.Box(file_tree, { size = file_tree_width .. "%" }),
-            Layout.Box(diff_view, { size = (100 - file_tree_width) .. "%" }),
-        }, { dir = "row" })
-    )
-
     M.current = {
-        layout = layout,
         file_tree = file_tree,
         diff_view = diff_view,
     }
@@ -90,14 +77,22 @@ end
 ---Mount the layout
 function M.mount()
     if M.current then
-        M.current.layout:mount()
+        -- Mount file tree first (left)
+        M.current.file_tree:mount()
+        -- Then mount diff view (takes remaining space)
+        M.current.diff_view:mount()
     end
 end
 
 ---Unmount the layout
 function M.unmount()
     if M.current then
-        M.current.layout:unmount()
+        pcall(function()
+            M.current.diff_view:unmount()
+        end)
+        pcall(function()
+            M.current.file_tree:unmount()
+        end)
         M.current = nil
     end
 end
