@@ -52,10 +52,16 @@ function M.open()
         vim.api.nvim_set_current_win(l.file_tree.winid)
     end
 
-    -- Auto-select first file if exists
+    -- Auto-select first file if exists (use nodes to respect section ordering)
     local ft = file_tree.get()
-    if ft and ft.files and #ft.files > 0 then
-        M.show_diff(ft.files[1])
+    if ft and ft.nodes then
+        -- Find first file node (respects section ordering: unstaged first, then staged)
+        for _, node in ipairs(ft.nodes) do
+            if node.is_file then
+                M.show_diff(node.path)
+                break
+            end
+        end
     else
         -- Show welcome message if no files
         M.show_welcome()
