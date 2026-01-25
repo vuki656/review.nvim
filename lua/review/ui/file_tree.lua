@@ -186,6 +186,8 @@ local function create_nodes(files, base)
 
     -- Batch fetch all git statuses in one call (major perf win)
     local status_map = git.get_all_file_statuses(files, base)
+    -- Batch fetch unstaged files set
+    local unstaged_set = not is_history_mode and git.get_unstaged_files() or {}
 
     -- Categorize files by git status and staged status
     local unstaged_modified = {} -- modified, not staged
@@ -207,8 +209,12 @@ local function create_nodes(files, base)
             end
         else
             -- Normal mode: check staging
+            -- A file is only "fully staged" if it has staged changes AND no unstaged changes
             local is_staged = state.is_reviewed(file)
-            if is_staged then
+            local has_unstaged = unstaged_set[file] or false
+
+            if is_staged and not has_unstaged then
+                -- Fully staged (no additional unstaged modifications)
                 table.insert(staged_files, file)
             elseif git_status == "deleted" then
                 table.insert(unstaged_deleted, file)
@@ -886,9 +892,12 @@ function M.create(layout_component, callbacks)
     local files = git.get_changed_files(state.state.base)
 
     -- Initialize file states
+    -- A file is only considered "reviewed/staged" if it's staged AND has no additional unstaged changes
+    local unstaged_set = git.get_unstaged_files()
     for _, file in ipairs(files) do
         local is_staged = git.is_staged(file)
-        state.set_reviewed(file, is_staged)
+        local has_unstaged = unstaged_set[file] or false
+        state.set_reviewed(file, is_staged and not has_unstaged)
     end
 
     -- Create nodes based on view mode
@@ -936,11 +945,14 @@ function M.refresh()
     M.current.files = git.get_changed_files(state.state.base)
 
     -- Update reviewed states (only in normal mode)
+    -- A file is only considered "reviewed/staged" if it's staged AND has no additional unstaged changes
     local is_history_mode = state.state.base ~= nil and state.state.base ~= "HEAD"
     if not is_history_mode then
+        local unstaged_set = git.get_unstaged_files()
         for _, file in ipairs(M.current.files) do
             local is_staged = git.is_staged(file)
-            state.set_reviewed(file, is_staged)
+            local has_unstaged = unstaged_set[file] or false
+            state.set_reviewed(file, is_staged and not has_unstaged)
         end
     end
 

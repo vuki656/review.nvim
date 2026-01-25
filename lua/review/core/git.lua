@@ -243,6 +243,50 @@ function M.is_staged(file)
     return vim.trim(result.stdout) ~= ""
 end
 
+---Check if a file has unstaged changes (working tree differs from index)
+---@param file string File path relative to git root
+---@return boolean
+function M.has_unstaged_changes(file)
+    local git_root = M.get_root()
+    if not git_root then
+        return false
+    end
+
+    -- git diff (no --cached) compares working tree to index
+    local result = vim.system({ "git", "diff", "--name-only", "--", file }, { text = true, cwd = git_root }):wait()
+
+    if result.code ~= 0 then
+        return false
+    end
+
+    return vim.trim(result.stdout) ~= ""
+end
+
+---Get set of files with unstaged changes (batch operation)
+---@return table<string, boolean> Set of files with unstaged changes
+function M.get_unstaged_files()
+    local git_root = M.get_root()
+    if not git_root then
+        return {}
+    end
+
+    -- git diff (no --cached) compares working tree to index
+    local result = vim.system({ "git", "diff", "--name-only" }, { text = true, cwd = git_root }):wait()
+
+    if result.code ~= 0 then
+        return {}
+    end
+
+    local unstaged = {}
+    for line in result.stdout:gmatch("[^\r\n]+") do
+        if line ~= "" then
+            unstaged[line] = true
+        end
+    end
+
+    return unstaged
+end
+
 ---@alias GitFileStatus "added"|"modified"|"deleted"
 
 ---Get the git status of a file
