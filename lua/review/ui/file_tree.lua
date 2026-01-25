@@ -627,8 +627,7 @@ local function show_help()
         "  B       Pick base commit",
         "  `       Toggle list/tree view",
         "  L       Show full path",
-        "  q       Close & send comments",
-        "  <Esc>   Close without sending",
+        "  q/<Esc> Close review",
         "  ?       Show this help",
     }
 
@@ -867,18 +866,15 @@ local function setup_keymaps(bufnr, callbacks)
         end
     end, { buffer = bufnr, desc = "Refresh file list" })
 
-    -- Close (q = send comments, Esc = don't send)
-    vim.keymap.set("n", "q", function()
+    -- Close (shows exit popup)
+    local function close_review()
         if callbacks.on_close then
-            callbacks.on_close(true)
+            callbacks.on_close()
         end
-    end, { buffer = bufnr, nowait = true, desc = "Close and send comments" })
+    end
 
-    vim.keymap.set("n", "<Esc>", function()
-        if callbacks.on_close then
-            callbacks.on_close(false)
-        end
-    end, { buffer = bufnr, nowait = true, desc = "Close without sending" })
+    vim.keymap.set("n", "q", close_review, { buffer = bufnr, nowait = true, desc = "Close review" })
+    vim.keymap.set("n", "<Esc>", close_review, { buffer = bufnr, nowait = true, desc = "Close review" })
 
     -- Show full path
     vim.keymap.set("n", "L", show_full_path, { buffer = bufnr, desc = "Show full path" })

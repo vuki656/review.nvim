@@ -80,17 +80,17 @@ function M.show_welcome()
         "  Select a file from the left panel to view changes.",
         "",
         "  Keybindings:",
-        "    <CR>  - Select file",
-        "    r     - Mark as reviewed (stage)",
-        "    u     - Unmark (unstage)",
-        "    R     - Refresh file list",
-        "    q     - Close review UI",
+        "    <CR>   - Select file",
+        "    r      - Mark as reviewed (stage)",
+        "    u      - Unmark (unstage)",
+        "    R      - Refresh file list",
+        "    q/<Esc> - Close review",
         "",
         "  In diff view:",
-        "    c     - Add comment",
-        "    dc    - Delete comment",
-        "    ]c/[c - Next/prev hunk",
-        "    ]f/[f - Next/prev file",
+        "    c      - Add comment",
+        "    dc     - Delete comment",
+        "    ]c/[c  - Next/prev hunk",
+        "    ]f/[f  - Next/prev file",
         "",
     }
 
@@ -120,24 +120,27 @@ function M.show_diff(path)
     })
 end
 
----Close the review UI
----@param send_comments? boolean Whether to auto-send comments (default true for q, false for Esc)
-function M.close(send_comments)
+---Perform the actual close operation
+---@param action? string "exit" | "copy" | "copy_and_send"
+local function do_close(action)
     if not state.state.is_open then
         return
     end
 
-    -- Auto-export comments if enabled and any exist
-    if send_comments ~= false then
+    -- Handle export based on action
+    if action == "copy" or action == "copy_and_send" then
         local all_comments = state.get_all_comments()
         if #all_comments > 0 then
             local export = require("review.export.markdown")
-            -- Copy to clipboard (silent)
+            -- Copy to clipboard
             local content = export.generate()
             vim.fn.setreg("+", content)
             vim.fn.setreg("*", content)
-            -- Try to send to tmux (silent mode)
-            export.to_tmux(nil, true)
+
+            if action == "copy_and_send" then
+                -- Try to send to tmux
+                export.to_tmux(nil, true)
+            end
         end
     end
 
@@ -156,6 +159,50 @@ function M.close(send_comments)
 
     state.state.is_open = false
     state.state.base = nil -- Reset to HEAD for next open
+end
+
+---Show exit popup with options
+local function show_exit_popup()
+    local all_comments = state.get_all_comments()
+    local has_comments = #all_comments > 0
+
+    local items = {
+        { label = "Exit", action = "exit" },
+        { label = "Exit & Copy", action = "copy" },
+        { label = "Exit, Copy & Send to tmux", action = "copy_and_send" },
+    }
+
+    -- Add comment count hint
+    local prompt = "Close review"
+    if has_comments then
+        prompt = prompt .. string.format(" (%d comment%s)", #all_comments, #all_comments == 1 and "" or "s")
+    end
+
+    vim.ui.select(items, {
+        prompt = prompt,
+        format_item = function(item)
+            return item.label
+        end,
+    }, function(choice)
+        if choice then
+            do_close(choice.action)
+        end
+    end)
+end
+
+---Close the review UI
+---@param show_popup? boolean Whether to show exit popup (default true)
+function M.close(show_popup)
+    if not state.state.is_open then
+        return
+    end
+
+    if show_popup == false then
+        -- Direct close without popup (used by pick_commit)
+        do_close("exit")
+    else
+        show_exit_popup()
+    end
 end
 
 ---Toggle the review UI

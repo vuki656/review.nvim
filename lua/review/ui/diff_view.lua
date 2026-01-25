@@ -630,16 +630,14 @@ local function show_help()
     local lines = {
         "Diff View Keymaps",
         "",
-        "  c      Add comment (Tab to cycle type)",
-        "  dc     Delete comment",
-        "  ]c     Next hunk",
-        "  [c     Previous hunk",
-        "  ]f     Next file",
-        "  [f     Previous file",
-        "  q      Close & send comments",
-        "  <Esc>  Close without sending",
-        "  q      Close review UI",
-        "  ?      Show this help",
+        "  c       Add comment (Tab to cycle type)",
+        "  dc      Delete comment",
+        "  ]c      Next hunk",
+        "  [c      Previous hunk",
+        "  ]f      Next file",
+        "  [f      Previous file",
+        "  q/<Esc> Close review",
+        "  ?       Show this help",
     }
 
     vim.lsp.util.open_floating_preview(lines, "markdown", {
@@ -671,18 +669,15 @@ local function setup_keymaps(bufnr, callbacks)
     -- Previous file
     vim.keymap.set("n", "[f", goto_prev_file, { buffer = bufnr, desc = "Previous file" })
 
-    -- Close (q = send comments, Esc = don't send)
-    vim.keymap.set("n", "q", function()
+    -- Close (shows exit popup)
+    local function close_review()
         if callbacks.on_close then
-            callbacks.on_close(true)
+            callbacks.on_close()
         end
-    end, { buffer = bufnr, nowait = true, desc = "Close and send comments" })
+    end
 
-    vim.keymap.set("n", "<Esc>", function()
-        if callbacks.on_close then
-            callbacks.on_close(false)
-        end
-    end, { buffer = bufnr, nowait = true, desc = "Close without sending" })
+    vim.keymap.set("n", "q", close_review, { buffer = bufnr, nowait = true, desc = "Close review" })
+    vim.keymap.set("n", "<Esc>", close_review, { buffer = bufnr, nowait = true, desc = "Close review" })
 
     -- Help
     vim.keymap.set("n", "?", show_help, { buffer = bufnr, desc = "Show help" })
