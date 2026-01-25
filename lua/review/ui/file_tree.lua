@@ -30,6 +30,12 @@ M.current = nil
 ---@type "list"|"tree"
 M.view_mode = "list"
 
+-- Active timers (for cleanup on destroy)
+local active_timers = {
+    select_timer = nil,
+    scroll_timer = nil,
+}
+
 ---@class FileNode
 ---@field path string|nil
 ---@field text string
@@ -67,15 +73,16 @@ end
 ---@param in_reviewed_section boolean Whether file is in the reviewed section (filename faded)
 ---@param in_deleted_section boolean Whether file is in the deleted section
 ---@param base string|nil Base commit for git status comparison
+---@param git_status GitFileStatus|nil Pre-fetched git status (avoids subprocess call if provided)
 ---@return FileNode
-local function create_file_node(file, in_reviewed_section, in_deleted_section, base)
+local function create_file_node(file, in_reviewed_section, in_deleted_section, base, git_status)
     local is_history_mode = base ~= nil and base ~= "HEAD"
     -- In history mode, don't show reviewed state
     local reviewed = not is_history_mode and state.is_reviewed(file)
     local file_icon, file_icon_hl = get_file_icon(file)
 
-    -- Get git status (determines dot color: green=added, orange=modified, red=deleted)
-    local git_status = git.get_file_status(file, base)
+    -- Use provided status or fetch it (fallback for backwards compatibility)
+    git_status = git_status or git.get_file_status(file, base)
     local git_status_hl = get_git_status_hl(git_status)
 
     -- Checkbox for reviewed status (hidden in history mode)
@@ -177,6 +184,9 @@ end
 local function create_nodes(files, base)
     local is_history_mode = base ~= nil and base ~= "HEAD"
 
+    -- Batch fetch all git statuses in one call (major perf win)
+    local status_map = git.get_all_file_statuses(files, base)
+
     -- Categorize files by git status and staged status
     local unstaged_modified = {}  -- modified, not staged
     local unstaged_added = {}     -- added/new, not staged
@@ -184,7 +194,7 @@ local function create_nodes(files, base)
     local staged_files = {}       -- all staged files
 
     for _, file in ipairs(files) do
-        local git_status = git.get_file_status(file, base)
+        local git_status = status_map[file] or "modified"
 
         if is_history_mode then
             -- In history mode, no staging - just group by status
@@ -216,7 +226,7 @@ local function create_nodes(files, base)
     if #unstaged_modified > 0 then
         table.insert(nodes, create_header_node("󰏫", "Changes", #unstaged_modified, "ReviewGitModified", "─"))
         for _, file in ipairs(unstaged_modified) do
-            table.insert(nodes, create_file_node(file, false, false, base))
+            table.insert(nodes, create_file_node(file, false, false, base, status_map[file]))
         end
     end
 
@@ -224,7 +234,7 @@ local function create_nodes(files, base)
     if #unstaged_added > 0 then
         table.insert(nodes, create_header_node("󰐕", "New", #unstaged_added, "ReviewGitAdded", "─"))
         for _, file in ipairs(unstaged_added) do
-            table.insert(nodes, create_file_node(file, false, false, base))
+            table.insert(nodes, create_file_node(file, false, false, base, status_map[file]))
         end
     end
 
@@ -232,7 +242,7 @@ local function create_nodes(files, base)
     if #unstaged_deleted > 0 then
         table.insert(nodes, create_header_node("󰩹", "Deleted", #unstaged_deleted, "ReviewGitDeleted", "─"))
         for _, file in ipairs(unstaged_deleted) do
-            table.insert(nodes, create_file_node(file, false, true, base))
+            table.insert(nodes, create_file_node(file, false, true, base, status_map[file]))
         end
     end
 
@@ -240,7 +250,7 @@ local function create_nodes(files, base)
     if #staged_files > 0 then
         table.insert(nodes, create_header_node("󰄬", "Staged", #staged_files, "ReviewFileReviewed", "═"))
         for _, file in ipairs(staged_files) do
-            table.insert(nodes, create_file_node(file, true, false, base))
+            table.insert(nodes, create_file_node(file, true, false, base, status_map[file]))
         end
     end
 
@@ -253,6 +263,9 @@ end
 ---@return FileNode[]
 local function create_tree_nodes(files, base)
     local is_history_mode = base ~= nil and base ~= "HEAD"
+
+    -- Batch fetch all git statuses in one call (major perf win)
+    local status_map = git.get_all_file_statuses(files, base)
 
     -- Build directory tree structure
     local tree = {}
@@ -310,7 +323,7 @@ local function create_tree_nodes(files, base)
         if entry.__file then
             -- It's a file
             local file = entry.__file
-            local git_status = git.get_file_status(file, base)
+            local git_status = status_map[file] or "modified"
             local git_status_hl = get_git_status_hl(git_status)
             local reviewed = not is_history_mode and state.is_reviewed(file)
             local file_icon, file_icon_hl = get_file_icon(file)
@@ -612,23 +625,22 @@ local function setup_keymaps(bufnr, callbacks)
         end
     end
 
-    -- Debounced file selection
-    local select_timer = nil
+    -- Debounced file selection (uses module-level timer for cleanup)
     local function select_current_file()
         -- Cancel pending selection
-        if select_timer then
-            select_timer:stop()
-            select_timer:close()
-            select_timer = nil
+        if active_timers.select_timer then
+            active_timers.select_timer:stop()
+            active_timers.select_timer:close()
+            active_timers.select_timer = nil
         end
 
         -- Debounce: wait 50ms before loading diff
-        select_timer = vim.loop.new_timer()
-        select_timer:start(50, 0, vim.schedule_wrap(function()
-            if select_timer then
-                select_timer:stop()
-                select_timer:close()
-                select_timer = nil
+        active_timers.select_timer = vim.loop.new_timer()
+        active_timers.select_timer:start(50, 0, vim.schedule_wrap(function()
+            if active_timers.select_timer then
+                active_timers.select_timer:stop()
+                active_timers.select_timer:close()
+                active_timers.select_timer = nil
             end
             local line = vim.api.nvim_win_get_cursor(0)[1]
             local node = M.get_node_at_line(line)
@@ -698,15 +710,13 @@ local function setup_keymaps(bufnr, callbacks)
         end
     end, { buffer = bufnr, nowait = true, desc = "Focus diff view" })
 
-    -- Smooth scroll diff view with J/K
-    local scroll_timer = nil
-
+    -- Smooth scroll diff view with J/K (uses module-level timer for cleanup)
     local function smooth_scroll(direction)
         -- Cancel any existing scroll
-        if scroll_timer then
-            scroll_timer:stop()
-            scroll_timer:close()
-            scroll_timer = nil
+        if active_timers.scroll_timer then
+            active_timers.scroll_timer:stop()
+            active_timers.scroll_timer:close()
+            active_timers.scroll_timer = nil
         end
 
         local layout = require("review.ui.layout")
@@ -720,13 +730,13 @@ local function setup_keymaps(bufnr, callbacks)
         local cmd = direction == "down" and "normal! \x05" or "normal! \x19"
 
         local i = 0
-        scroll_timer = vim.loop.new_timer()
-        scroll_timer:start(0, delay, vim.schedule_wrap(function()
+        active_timers.scroll_timer = vim.loop.new_timer()
+        active_timers.scroll_timer:start(0, delay, vim.schedule_wrap(function()
             if i >= lines then
-                if scroll_timer then
-                    scroll_timer:stop()
-                    scroll_timer:close()
-                    scroll_timer = nil
+                if active_timers.scroll_timer then
+                    active_timers.scroll_timer:stop()
+                    active_timers.scroll_timer:close()
+                    active_timers.scroll_timer = nil
                 end
                 return
             end
@@ -892,6 +902,14 @@ end
 
 ---Destroy the component
 function M.destroy()
+    -- Clean up any active timers
+    for name, timer in pairs(active_timers) do
+        if timer then
+            timer:stop()
+            timer:close()
+            active_timers[name] = nil
+        end
+    end
     M.current = nil
 end
 

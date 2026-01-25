@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(luac:*)",
-      "Bash(nvim:*)"
+      "Bash(nvim:*)",
+      "Bash(luacheck:*)",
+      "Bash(stylua:*)"
     ]
   }
 }

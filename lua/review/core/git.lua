@@ -5,14 +5,34 @@ local M = {}
 ---@field output string
 ---@field error string|nil
 
----Get the git root directory
+-- Cached git root (invalidated on cwd change)
+local cached_root = nil
+local cached_cwd = nil
+
+---Get the git root directory (cached)
 ---@return string|nil
 function M.get_root()
+    local cwd = vim.fn.getcwd()
+    if cached_root and cached_cwd == cwd then
+        return cached_root
+    end
+
     local result = vim.system({ "git", "rev-parse", "--show-toplevel" }, { text = true }):wait()
     if result.code == 0 then
-        return vim.trim(result.stdout)
+        cached_root = vim.trim(result.stdout)
+        cached_cwd = cwd
+        return cached_root
     end
+
+    cached_root = nil
+    cached_cwd = cwd
     return nil
+end
+
+---Clear the git root cache (useful for testing or after changing directories)
+function M.clear_cache()
+    cached_root = nil
+    cached_cwd = nil
 end
 
 ---Get list of changed files (unstaged, staged, and untracked)
@@ -289,6 +309,100 @@ function M.get_file_status(file, base)
     end
 
     return "modified"
+end
+
+---Get git status for multiple files in one batch call
+---This is much more efficient than calling get_file_status() for each file
+---@param files string[] List of file paths relative to git root
+---@param base string|nil Base commit to compare against (default: HEAD)
+---@return table<string, GitFileStatus> Map of file path to status
+function M.get_all_file_statuses(files, base)
+    base = base or "HEAD"
+    local git_root = M.get_root()
+    if not git_root then
+        -- Return all as modified if not in git repo
+        local result = {}
+        for _, file in ipairs(files) do
+            result[file] = "modified"
+        end
+        return result
+    end
+
+    local statuses = {}
+    local untracked_set = {}
+
+    -- Get all untracked files (only for HEAD comparison)
+    if base == "HEAD" then
+        local untracked = vim.system(
+            { "git", "ls-files", "--others", "--exclude-standard" },
+            { text = true, cwd = git_root }
+        ):wait()
+        if untracked.code == 0 then
+            for line in untracked.stdout:gmatch("[^\r\n]+") do
+                if line ~= "" then
+                    untracked_set[line] = true
+                end
+            end
+        end
+    end
+
+    -- Get all file statuses relative to base in one call
+    local result = vim.system(
+        { "git", "diff", "--name-status", base },
+        { text = true, cwd = git_root }
+    ):wait()
+
+    if result.code == 0 then
+        for line in result.stdout:gmatch("[^\r\n]+") do
+            local status_char, file_path = line:match("^(%S+)%s+(.+)$")
+            if status_char and file_path then
+                if status_char == "D" then
+                    statuses[file_path] = "deleted"
+                elseif status_char == "A" then
+                    statuses[file_path] = "added"
+                else
+                    statuses[file_path] = "modified"
+                end
+            end
+        end
+    end
+
+    -- Also check staged changes (only for HEAD comparison)
+    if base == "HEAD" then
+        local staged_result = vim.system(
+            { "git", "diff", "--cached", "--name-status" },
+            { text = true, cwd = git_root }
+        ):wait()
+
+        if staged_result.code == 0 then
+            for line in staged_result.stdout:gmatch("[^\r\n]+") do
+                local status_char, file_path = line:match("^(%S+)%s+(.+)$")
+                if status_char and file_path and not statuses[file_path] then
+                    if status_char == "D" then
+                        statuses[file_path] = "deleted"
+                    elseif status_char == "A" then
+                        statuses[file_path] = "added"
+                    else
+                        statuses[file_path] = "modified"
+                    end
+                end
+            end
+        end
+    end
+
+    -- Build final result for requested files
+    local result_map = {}
+    for _, file in ipairs(files) do
+        if base == "HEAD" and untracked_set[file] then
+            result_map[file] = "added"
+        elseif statuses[file] then
+            result_map[file] = statuses[file]
+        else
+            result_map[file] = "modified"
+        end
+    end
+
+    return result_map
 end
 
 ---Get recent commits

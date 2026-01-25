@@ -447,21 +447,25 @@ local function goto_prev_hunk()
     end
 end
 
----Navigate to next file
-local function goto_next_file()
+---Get the current file's index in the changed files list
+---@return number|nil current_idx, string[] files
+local function get_current_file_index()
     local files = git.get_changed_files(state.state.base)
     if #files == 0 then
-        return
+        return nil, files
     end
 
-    local current_idx = nil
     for i, f in ipairs(files) do
         if f == state.state.current_file then
-            current_idx = i
-            break
+            return i, files
         end
     end
+    return nil, files
+end
 
+---Navigate to next file
+local function goto_next_file()
+    local current_idx, files = get_current_file_index()
     if not current_idx then
         return
     end
@@ -477,19 +481,7 @@ end
 
 ---Navigate to previous file
 local function goto_prev_file()
-    local files = git.get_changed_files(state.state.base)
-    if #files == 0 then
-        return
-    end
-
-    local current_idx = nil
-    for i, f in ipairs(files) do
-        if f == state.state.current_file then
-            current_idx = i
-            break
-        end
-    end
-
+    local current_idx, files = get_current_file_index()
     if not current_idx then
         return
     end
