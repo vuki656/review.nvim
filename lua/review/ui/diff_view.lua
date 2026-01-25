@@ -301,9 +301,12 @@ local function render_comments(bufnr, file)
         if type_info then
             local header = string.format(" %s %s ", type_info.icon, type_info.label)
             local text_content = " " .. comment.text .. " "
-            local box_width = math.max(#header, #text_content)
-            local header_padding = string.rep(" ", box_width - #header)
-            local text_padding = string.rep(" ", box_width - #text_content)
+            -- Use display width (not byte length) for proper alignment with multi-byte icons
+            local header_width = vim.api.nvim_strwidth(header)
+            local text_width = vim.api.nvim_strwidth(text_content)
+            local box_width = math.max(header_width, text_width)
+            local header_padding = string.rep(" ", box_width - header_width)
+            local text_padding = string.rep(" ", box_width - text_width)
 
             pcall(function()
                 -- Show comment as boxed virtual lines below
