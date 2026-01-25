@@ -206,7 +206,13 @@ function M.close(show_popup)
         -- Direct close without popup (used by pick_commit)
         do_close("exit")
     else
-        show_exit_popup()
+        -- Only show popup if there are comments to potentially export
+        local all_comments = state.get_all_comments()
+        if #all_comments == 0 then
+            do_close("exit")
+        else
+            show_exit_popup()
+        end
     end
 end
 
