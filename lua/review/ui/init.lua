@@ -163,8 +163,7 @@ local function do_close(action)
         saved_showtabline = nil
     end
 
-    state.state.is_open = false
-    state.state.base = nil -- Reset to HEAD for next open
+    state.reset()
 end
 
 ---Show exit popup with options
