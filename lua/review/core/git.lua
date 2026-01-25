@@ -143,10 +143,7 @@ function M.get_diff(file, base)
 
     -- Check if file is staged (use cached diff)
     local is_staged_only = false
-    local unstaged_result = vim.system(
-        { "git", "diff", "--name-only", base, "--", file },
-        { text = true, cwd = git_root }
-    )
+    local unstaged_result = vim.system({ "git", "diff", "--name-only", "--", file }, { text = true, cwd = git_root })
         :wait()
 
     if unstaged_result.code == 0 and vim.trim(unstaged_result.stdout) == "" then
