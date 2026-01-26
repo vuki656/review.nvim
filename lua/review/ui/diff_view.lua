@@ -610,11 +610,13 @@ local function add_comment()
     vim.bo[input_buf].completefunc = ""
     vim.bo[input_buf].omnifunc = ""
 
-    -- Disable nvim-cmp for this buffer
+    -- Disable completion plugins for this buffer
     local ok_cmp, cmp = pcall(require, "cmp")
     if ok_cmp then
         cmp.setup.buffer({ enabled = false })
     end
+
+    vim.b[input_buf].copilot_enabled = false
 
     -- Calculate window position (below current line, 40% from left of diff window)
     local win_width = 60
@@ -652,6 +654,7 @@ local function add_comment()
         if vim.api.nvim_buf_is_valid(input_buf) then
             vim.api.nvim_buf_delete(input_buf, { force = true })
         end
+
     end
 
     -- Function to update the window title with current type
