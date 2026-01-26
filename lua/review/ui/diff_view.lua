@@ -708,12 +708,12 @@ local function add_comment()
     vim.keymap.set("i", "<CR>", submit, { buffer = input_buf, nowait = true })
     vim.keymap.set("n", "<CR>", submit, { buffer = input_buf, nowait = true })
 
+    -- Escape and Ctrl-C to submit from insert mode
+    vim.keymap.set("i", "<Esc>", submit, { buffer = input_buf, nowait = true })
+    vim.keymap.set("i", "<C-c>", submit, { buffer = input_buf, nowait = true })
+
     -- Shift-Enter to insert a new line
     vim.keymap.set("i", "<S-CR>", "<CR>", { buffer = input_buf, nowait = true })
-
-    -- Normal mode: q or Escape to cancel
-    vim.keymap.set("n", "q", close_input, { buffer = input_buf, nowait = true })
-    vim.keymap.set("n", "<Esc>", close_input, { buffer = input_buf, nowait = true })
 
     -- Tab to cycle type
     vim.keymap.set("i", "<Tab>", function()
