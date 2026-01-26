@@ -45,6 +45,14 @@ function M.setup()
         ReviewInputTitle = { fg = "#e5e5e5", bold = true },
         ReviewInputFooter = { fg = "#5c6370" },
 
+        -- Comment input per-type colors (border + title)
+        ReviewInputBorderFix = { fg = "#ef596f" },
+        ReviewInputTitleFix = { fg = "#ef596f", bold = true },
+        ReviewInputBorderNote = { fg = "#61afef" },
+        ReviewInputTitleNote = { fg = "#61afef", bold = true },
+        ReviewInputBorderQuestion = { fg = "#e5c07b" },
+        ReviewInputTitleQuestion = { fg = "#e5c07b", bold = true },
+
         -- Git status icons in file tree
         ReviewGitAdded = { fg = "#89ca78" },
         ReviewGitModified = { fg = "#d19a66" },

@@ -197,9 +197,9 @@ end
 
 ---Comment type info
 local comment_types = {
-    note = { label = "Note", highlight = "ReviewCommentNote", icon = "󰍩" },
-    fix = { label = "Fix", highlight = "ReviewCommentFix", icon = "󰁨" },
-    question = { label = "Question", highlight = "ReviewCommentQuestion", icon = "󰋗" },
+    note = { label = "Note", highlight = "ReviewCommentNote", icon = "󰍩", border_hl = "ReviewInputBorderNote", title_hl = "ReviewInputTitleNote" },
+    fix = { label = "Fix", highlight = "ReviewCommentFix", icon = "󰁨", border_hl = "ReviewInputBorderFix", title_hl = "ReviewInputTitleFix" },
+    question = { label = "Question", highlight = "ReviewCommentQuestion", icon = "󰋗", border_hl = "ReviewInputBorderQuestion", title_hl = "ReviewInputTitleQuestion" },
 }
 
 ---Render diff to buffer
@@ -583,7 +583,7 @@ local function goto_prev_file()
 end
 
 ---Comment type order for cycling
-local comment_type_order = { "note", "fix", "question" }
+local comment_type_order = { "fix", "note", "question" }
 
 ---Add comment with inline input (Tab to cycle type)
 local function add_comment()
@@ -640,7 +640,7 @@ local function add_comment()
     -- Set window options
     vim.api.nvim_set_option_value(
         "winhighlight",
-        "FloatBorder:ReviewInputBorder,FloatTitle:ReviewInputTitle",
+        "FloatBorder:" .. type_info.border_hl .. ",FloatTitle:" .. type_info.title_hl,
         { win = input_win }
     )
     vim.wo[input_win].wrap = true
@@ -657,12 +657,17 @@ local function add_comment()
 
     end
 
-    -- Function to update the window title with current type
+    -- Function to update the window title and colors with current type
     local function update_title()
         local info = comment_types[current_type]
         vim.api.nvim_win_set_config(input_win, {
             title = " " .. info.icon .. " " .. info.label .. " ",
         })
+        vim.api.nvim_set_option_value(
+            "winhighlight",
+            "FloatBorder:" .. info.border_hl .. ",FloatTitle:" .. info.title_hl,
+            { win = input_win }
+        )
     end
 
     -- Function to submit the comment
