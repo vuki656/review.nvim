@@ -97,6 +97,7 @@ function M.show_welcome()
         "    dc     - Delete comment",
         "    ]c/[c  - Next/prev hunk",
         "    ]f/[f  - Next/prev file",
+        "    <C-n>  - Toggle file tree",
         "",
     }
 
@@ -106,6 +107,11 @@ function M.show_welcome()
 
     -- Apply title highlight
     vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewTitle", 1, 0, -1)
+end
+
+---Toggle the file tree sidebar
+function M.toggle_file_tree()
+    layout.toggle_file_tree()
 end
 
 ---Show diff for a file

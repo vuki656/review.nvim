@@ -4,7 +4,8 @@
       "Bash(luac:*)",
       "Bash(nvim:*)",
       "Bash(luacheck:*)",
-      "Bash(stylua:*)"
+      "Bash(stylua:*)",
+      "Bash(~/.cargo/bin/stylua:*)"
     ]
   }
 }

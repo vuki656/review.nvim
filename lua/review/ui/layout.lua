@@ -16,6 +16,17 @@ M.current = nil
 ---@type number|nil
 M.prev_tab = nil
 
+---Apply file tree window options
+---@param winid number
+local function apply_tree_win_options(winid)
+    vim.api.nvim_win_set_option(winid, "number", false)
+    vim.api.nvim_win_set_option(winid, "relativenumber", false)
+    vim.api.nvim_win_set_option(winid, "cursorline", true)
+    vim.api.nvim_win_set_option(winid, "signcolumn", "no")
+    vim.api.nvim_win_set_option(winid, "wrap", false)
+    vim.api.nvim_win_set_option(winid, "winhighlight", "Normal:Normal,CursorLine:ReviewSelected")
+end
+
 ---Create the main layout with file tree and diff view in a new tab
 ---@return ReviewLayout
 function M.create()
@@ -65,12 +76,7 @@ function M.create()
     local tree_win = vim.api.nvim_get_current_win()
 
     -- Set file tree window options
-    vim.api.nvim_win_set_option(tree_win, "number", false)
-    vim.api.nvim_win_set_option(tree_win, "relativenumber", false)
-    vim.api.nvim_win_set_option(tree_win, "cursorline", true)
-    vim.api.nvim_win_set_option(tree_win, "signcolumn", "no")
-    vim.api.nvim_win_set_option(tree_win, "wrap", false)
-    vim.api.nvim_win_set_option(tree_win, "winhighlight", "Normal:Normal,CursorLine:ReviewSelected")
+    apply_tree_win_options(tree_win)
 
     M.current = {
         file_tree = { bufnr = tree_buf, winid = tree_win },
@@ -78,6 +84,75 @@ function M.create()
     }
 
     return M.current
+end
+
+---Check if file tree is currently visible
+---@return boolean
+function M.is_file_tree_visible()
+    if not M.current then
+        return false
+    end
+    return vim.api.nvim_win_is_valid(M.current.file_tree.winid)
+end
+
+---Hide the file tree panel
+function M.hide_file_tree()
+    if not M.current then
+        return
+    end
+
+    local tree = M.current.file_tree
+    if not vim.api.nvim_win_is_valid(tree.winid) then
+        return
+    end
+
+    -- Focus diff view before closing tree window
+    local diff_win = M.current.diff_view.winid
+    if vim.api.nvim_win_is_valid(diff_win) then
+        vim.api.nvim_set_current_win(diff_win)
+    end
+
+    vim.api.nvim_win_close(tree.winid, true)
+end
+
+---Show the file tree panel (re-open the window with the existing buffer)
+function M.show_file_tree()
+    if not M.current then
+        return
+    end
+
+    local tree = M.current.file_tree
+
+    -- Already visible
+    if vim.api.nvim_win_is_valid(tree.winid) then
+        return
+    end
+
+    local opts = config.get()
+    local width = math.floor(vim.o.columns * opts.ui.file_tree_width / 100)
+
+    -- Open split on the left
+    vim.cmd("topleft " .. width .. "vsplit")
+    vim.api.nvim_win_set_buf(0, tree.bufnr)
+    local new_win = vim.api.nvim_get_current_win()
+
+    -- Update stored winid
+    M.current.file_tree.winid = new_win
+
+    -- Reapply window options
+    apply_tree_win_options(new_win)
+
+    -- Disable spell check
+    vim.wo[new_win].spell = false
+end
+
+---Toggle the file tree panel visibility
+function M.toggle_file_tree()
+    if M.is_file_tree_visible() then
+        M.hide_file_tree()
+    else
+        M.show_file_tree()
+    end
 end
 
 ---Mount the layout (no-op in tab-based approach, create() does everything)

@@ -698,6 +698,7 @@ local function show_help()
         "  [c      Previous hunk",
         "  ]f      Next file",
         "  [f      Previous file",
+        "  <C-n>   Toggle file tree",
         "  q/<Esc> Close review",
         "  ?       Show this help",
     }
@@ -743,6 +744,12 @@ local function setup_keymaps(bufnr, callbacks)
 
     -- Help
     vim.keymap.set("n", "?", show_help, { buffer = bufnr, desc = "Show help" })
+
+    -- Toggle file tree
+    vim.keymap.set("n", "<C-n>", function()
+        local ui = require("review.ui")
+        ui.toggle_file_tree()
+    end, { buffer = bufnr, desc = "Toggle file tree" })
 end
 
 ---Create the diff view component

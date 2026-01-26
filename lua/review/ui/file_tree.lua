@@ -626,6 +626,7 @@ local function show_help()
         "  R       Refresh file list",
         "  B       Pick base commit",
         "  `       Toggle list/tree view",
+        "  <C-n>   Toggle file tree",
         "  L       Show full path",
         "  q/<Esc> Close review",
         "  ?       Show this help",
@@ -893,6 +894,12 @@ local function setup_keymaps(bufnr, callbacks)
         M.view_mode = M.view_mode == "list" and "tree" or "list"
         M.refresh()
     end, { buffer = bufnr, desc = "Toggle list/tree view" })
+
+    -- Toggle file tree
+    vim.keymap.set("n", "<C-n>", function()
+        local ui = require("review.ui")
+        ui.toggle_file_tree()
+    end, { buffer = bufnr, desc = "Toggle file tree" })
 end
 
 ---Get node at a specific line (1-indexed)
