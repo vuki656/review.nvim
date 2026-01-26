@@ -29,7 +29,6 @@ function M.setup(opts)
             M.toggle()
         end, { desc = "Toggle review UI" })
     end
-
 end
 
 ---Toggle the review UI

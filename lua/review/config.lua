@@ -7,7 +7,6 @@
 ---@class ReviewKeymaps
 ---@field toggle string
 
-
 ---@class ReviewDiffConfig
 ---@field base string Default base for diff comparison
 
