@@ -616,12 +616,15 @@ local function add_comment()
         cmp.setup.buffer({ enabled = false })
     end
 
-    -- Calculate window position (below current line)
+    -- Calculate window position (below current line, 40% from left of diff window)
     local win_width = 60
+    local editor_width = vim.api.nvim_win_get_width(M.current.winid)
+    local col_offset = math.floor(editor_width * 0.4)
     local win_opts = {
-        relative = "cursor",
-        row = 1,
-        col = 0,
+        relative = "win",
+        win = M.current.winid,
+        row = cursor[1],
+        col = col_offset,
         width = win_width,
         height = 5,
         style = "minimal",
