@@ -178,9 +178,9 @@ local function show_exit_popup()
     local has_comments = #all_comments > 0
 
     local items = {
-        { label = "Exit", action = "exit" },
-        { label = "Exit & Copy", action = "copy" },
         { label = "Exit, Copy & Send to tmux", action = "copy_and_send" },
+        { label = "Exit & Copy", action = "copy" },
+        { label = "Exit", action = "exit" },
     }
 
     -- Add comment count hint
