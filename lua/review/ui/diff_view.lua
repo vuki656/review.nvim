@@ -148,31 +148,48 @@ local function find_line_pairs(render_lines)
     return pairs
 end
 
----Wrap text to fit within max_width (by display width)
----@param text string
+---Wrap a single line of text to fit within max_width (by display width)
+---@param line string
 ---@param max_width number
 ---@return string[]
-local function wrap_text(text, max_width)
-    if max_width <= 0 or vim.api.nvim_strwidth(text) <= max_width then
-        return { text }
+local function wrap_line(line, max_width)
+    if max_width <= 0 or vim.api.nvim_strwidth(line) <= max_width then
+        return { line }
     end
 
-    local lines = {}
+    local result = {}
     local current_line = ""
 
-    for word in text:gmatch("%S+") do
+    for word in line:gmatch("%S+") do
         if current_line == "" then
             current_line = word
         elseif vim.api.nvim_strwidth(current_line .. " " .. word) <= max_width then
             current_line = current_line .. " " .. word
         else
-            table.insert(lines, current_line)
+            table.insert(result, current_line)
             current_line = word
         end
     end
 
     if current_line ~= "" then
-        table.insert(lines, current_line)
+        table.insert(result, current_line)
+    end
+
+    return #result > 0 and result or { line }
+end
+
+---Wrap text to fit within max_width (by display width), handling newlines
+---@param text string
+---@param max_width number
+---@return string[]
+local function wrap_text(text, max_width)
+    local lines = {}
+
+    for segment in vim.gsplit(text, "\n", { plain = true }) do
+        local wrapped = wrap_line(segment, max_width)
+        for _, wl in ipairs(wrapped) do
+            table.insert(lines, wl)
+        end
     end
 
     return #lines > 0 and lines or { text }
@@ -588,7 +605,8 @@ local function add_comment()
 
     -- Create floating input window
     local input_buf = vim.api.nvim_create_buf(false, true)
-    vim.bo[input_buf].buftype = "prompt"
+    vim.bo[input_buf].buftype = "nofile"
+    vim.bo[input_buf].filetype = "markdown"
 
     -- Calculate window position (below current line)
     local win_width = 60
@@ -597,7 +615,7 @@ local function add_comment()
         row = 1,
         col = 0,
         width = win_width,
-        height = 1,
+        height = 5,
         style = "minimal",
         border = { "┏", "━", "┓", "┃", "┛", "━", "┗", "┃" },
         title = " " .. type_info.icon .. " " .. type_info.label .. " ",
@@ -613,8 +631,15 @@ local function add_comment()
         { win = input_win }
     )
 
-    -- Set empty prompt
-    vim.fn.prompt_setprompt(input_buf, "")
+    -- Function to close the input window
+    local function close_input()
+        if vim.api.nvim_win_is_valid(input_win) then
+            vim.api.nvim_win_close(input_win, true)
+        end
+        if vim.api.nvim_buf_is_valid(input_buf) then
+            vim.api.nvim_buf_delete(input_buf, { force = true })
+        end
+    end
 
     -- Function to update the window title with current type
     local function update_title()
@@ -624,22 +649,30 @@ local function add_comment()
         })
     end
 
-    -- Handle submit
-    vim.fn.prompt_setcallback(input_buf, function(text)
-        vim.api.nvim_win_close(input_win, true)
-        vim.api.nvim_buf_delete(input_buf, { force = true })
+    -- Function to submit the comment
+    local function submit()
+        local lines = vim.api.nvim_buf_get_lines(input_buf, 0, -1, false)
 
-        if text and text ~= "" then
+        -- Trim trailing empty lines
+        while #lines > 0 and lines[#lines]:match("^%s*$") do
+            table.remove(lines)
+        end
+
+        close_input()
+
+        local text = table.concat(lines, "\n")
+        if text ~= "" then
             state.add_comment(file, line_num, current_type, text, original_line)
             render_comments(bufnr, file)
         end
-    end)
+    end
 
-    -- Handle interrupt (Escape/Ctrl-C)
-    vim.fn.prompt_setinterrupt(input_buf, function()
-        vim.api.nvim_win_close(input_win, true)
-        vim.api.nvim_buf_delete(input_buf, { force = true })
-    end)
+    -- Normal mode: Enter to submit
+    vim.keymap.set("n", "<CR>", submit, { buffer = input_buf, nowait = true })
+
+    -- Normal mode: q or Escape to cancel
+    vim.keymap.set("n", "q", close_input, { buffer = input_buf, nowait = true })
+    vim.keymap.set("n", "<Esc>", close_input, { buffer = input_buf, nowait = true })
 
     -- Tab to cycle type
     vim.keymap.set("i", "<Tab>", function()
@@ -658,14 +691,8 @@ local function add_comment()
         update_title()
     end, { buffer = input_buf, nowait = true })
 
-    -- Escape to cancel
-    vim.keymap.set("i", "<Esc>", function()
-        vim.api.nvim_win_close(input_win, true)
-        vim.api.nvim_buf_delete(input_buf, { force = true })
-    end, { buffer = input_buf, nowait = true })
-
     -- Start in insert mode
-    vim.cmd("startinsert!")
+    vim.cmd("startinsert")
 end
 
 ---Delete comment at current line
