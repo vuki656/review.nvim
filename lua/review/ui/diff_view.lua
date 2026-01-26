@@ -683,8 +683,12 @@ local function add_comment()
         end
     end
 
-    -- Normal mode: Enter to submit
+    -- Enter to submit (insert + normal mode)
+    vim.keymap.set("i", "<CR>", submit, { buffer = input_buf, nowait = true })
     vim.keymap.set("n", "<CR>", submit, { buffer = input_buf, nowait = true })
+
+    -- Shift-Enter to insert a new line
+    vim.keymap.set("i", "<S-CR>", "<CR>", { buffer = input_buf, nowait = true })
 
     -- Normal mode: q or Escape to cancel
     vim.keymap.set("n", "q", close_input, { buffer = input_buf, nowait = true })
