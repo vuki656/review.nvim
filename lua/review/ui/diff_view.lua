@@ -632,10 +632,12 @@ local function add_comment()
 
     -- Calculate window position (below current line, at the start of the line)
     local win_width = 60
+    local win_top = vim.fn.line("w0")
+    local win_row = cursor[1] - win_top + 1
     local win_opts = {
         relative = "win",
         win = M.current.winid,
-        row = cursor[1],
+        row = win_row,
         col = 0,
         width = win_width,
         height = 5,
