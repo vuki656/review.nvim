@@ -148,6 +148,36 @@ local function find_line_pairs(render_lines)
     return pairs
 end
 
+---Wrap text to fit within max_width (by display width)
+---@param text string
+---@param max_width number
+---@return string[]
+local function wrap_text(text, max_width)
+    if max_width <= 0 or vim.api.nvim_strwidth(text) <= max_width then
+        return { text }
+    end
+
+    local lines = {}
+    local current_line = ""
+
+    for word in text:gmatch("%S+") do
+        if current_line == "" then
+            current_line = word
+        elseif vim.api.nvim_strwidth(current_line .. " " .. word) <= max_width then
+            current_line = current_line .. " " .. word
+        else
+            table.insert(lines, current_line)
+            current_line = word
+        end
+    end
+
+    if current_line ~= "" then
+        table.insert(lines, current_line)
+    end
+
+    return #lines > 0 and lines or { text }
+end
+
 ---Comment type info
 local comment_types = {
     note = { label = "Note", highlight = "ReviewCommentNote", icon = "󰍩" },
@@ -296,44 +326,76 @@ local function render_comments(bufnr, file)
 
     local comments = state.get_comments_for_file(file)
 
+    -- Calculate available width for comment box
+    local max_box_width = nil
+    if M.current and M.current.winid and vim.api.nvim_win_is_valid(M.current.winid) then
+        local win_width = vim.api.nvim_win_get_width(M.current.winid)
+        local win_info = vim.fn.getwininfo(M.current.winid)
+        local text_off = win_info[1] and win_info[1].textoff or 0
+        -- Available width minus border chars ("  ╭"/"  │" = 3, "╮"/"│" = 1)
+        max_box_width = win_width - text_off - 4
+    end
+
     for _, comment in ipairs(comments) do
         local type_info = comment_types[comment.type]
         if type_info then
             local header = string.format(" %s %s ", type_info.icon, type_info.label)
-            local text_content = " " .. comment.text .. " "
             -- Use display width (not byte length) for proper alignment with multi-byte icons
             local header_width = vim.api.nvim_strwidth(header)
-            local text_width = vim.api.nvim_strwidth(text_content)
-            local box_width = math.max(header_width, text_width)
-            local header_padding = string.rep(" ", box_width - header_width)
-            local text_padding = string.rep(" ", box_width - text_width)
+
+            -- Wrap text to fit within the box
+            local max_text_width = max_box_width and (max_box_width - 2) or nil -- -2 for " " padding each side
+            local text_lines = wrap_text(comment.text, max_text_width or 9999)
+
+            -- Calculate box width from widest wrapped line
+            local max_line_width = 0
+            for _, line in ipairs(text_lines) do
+                max_line_width = math.max(max_line_width, vim.api.nvim_strwidth(line))
+            end
+            local box_width = math.max(header_width, max_line_width + 2) -- +2 for " " padding
+            if max_box_width then
+                box_width = math.min(box_width, max_box_width)
+            end
+
+            local header_padding = string.rep(" ", math.max(0, box_width - header_width))
+
+            local virt_lines = {
+                {
+                    { "  ╭", "ReviewCommentBorder" },
+                    { string.rep("─", box_width), "ReviewCommentBorder" },
+                    { "╮", "ReviewCommentBorder" },
+                },
+                {
+                    { "  │", "ReviewCommentBorder" },
+                    { header .. header_padding, type_info.highlight },
+                    { "│", "ReviewCommentBorder" },
+                },
+            }
+
+            -- Add wrapped text lines
+            for _, line in ipairs(text_lines) do
+                local text_content = " " .. line .. " "
+                local text_width = vim.api.nvim_strwidth(text_content)
+                local text_padding = string.rep(" ", math.max(0, box_width - text_width))
+                table.insert(virt_lines, {
+                    { "  │", "ReviewCommentBorder" },
+                    { text_content .. text_padding, "ReviewCommentText" },
+                    { "│", "ReviewCommentBorder" },
+                })
+            end
+
+            -- Bottom border
+            table.insert(virt_lines, {
+                { "  ╰", "ReviewCommentBorder" },
+                { string.rep("─", box_width), "ReviewCommentBorder" },
+                { "╯", "ReviewCommentBorder" },
+            })
 
             pcall(function()
                 -- Show comment as boxed virtual lines below
                 -- Each segment has its own highlight
                 vim.api.nvim_buf_set_extmark(bufnr, ns_comments, comment.line - 1, 0, {
-                    virt_lines = {
-                        {
-                            { "  ╭", "ReviewCommentBorder" },
-                            { string.rep("─", box_width), "ReviewCommentBorder" },
-                            { "╮", "ReviewCommentBorder" },
-                        },
-                        {
-                            { "  │", "ReviewCommentBorder" },
-                            { header .. header_padding, type_info.highlight },
-                            { "│", "ReviewCommentBorder" },
-                        },
-                        {
-                            { "  │", "ReviewCommentBorder" },
-                            { text_content .. text_padding, "ReviewCommentText" },
-                            { "│", "ReviewCommentBorder" },
-                        },
-                        {
-                            { "  ╰", "ReviewCommentBorder" },
-                            { string.rep("─", box_width), "ReviewCommentBorder" },
-                            { "╯", "ReviewCommentBorder" },
-                        },
-                    },
+                    virt_lines = virt_lines,
                     virt_lines_above = false,
                 })
 
