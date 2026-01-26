@@ -607,6 +607,14 @@ local function add_comment()
     local input_buf = vim.api.nvim_create_buf(false, true)
     vim.bo[input_buf].buftype = "nofile"
     vim.bo[input_buf].filetype = "markdown"
+    vim.bo[input_buf].completefunc = ""
+    vim.bo[input_buf].omnifunc = ""
+
+    -- Disable nvim-cmp for this buffer
+    local ok_cmp, cmp = pcall(require, "cmp")
+    if ok_cmp then
+        cmp.setup.buffer({ enabled = false })
+    end
 
     -- Calculate window position (below current line)
     local win_width = 60
