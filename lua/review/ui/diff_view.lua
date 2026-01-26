@@ -632,12 +632,14 @@ local function add_comment()
 
     local input_win = vim.api.nvim_open_win(input_buf, true, win_opts)
 
-    -- Set border highlight
+    -- Set window options
     vim.api.nvim_set_option_value(
         "winhighlight",
         "FloatBorder:ReviewInputBorder,FloatTitle:ReviewInputTitle",
         { win = input_win }
     )
+    vim.wo[input_win].wrap = true
+    vim.wo[input_win].linebreak = true
 
     -- Function to close the input window
     local function close_input()
