@@ -636,15 +636,13 @@ local function add_comment()
 
     vim.b[input_buf].copilot_enabled = false
 
-    -- Calculate window position (below current line, 40% from left of diff window)
+    -- Calculate window position (below current line, at the start of the line)
     local win_width = 60
-    local editor_width = vim.api.nvim_win_get_width(M.current.winid)
-    local col_offset = math.floor(editor_width * 0.4)
     local win_opts = {
         relative = "win",
         win = M.current.winid,
         row = cursor[1],
-        col = col_offset,
+        col = 0,
         width = win_width,
         height = 5,
         style = "minimal",
