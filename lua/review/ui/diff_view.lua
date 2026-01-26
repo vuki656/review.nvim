@@ -674,6 +674,7 @@ local function add_comment()
             table.remove(lines)
         end
 
+        vim.cmd("stopinsert")
         close_input()
 
         local text = table.concat(lines, "\n")
