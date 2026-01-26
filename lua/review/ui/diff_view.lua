@@ -197,9 +197,27 @@ end
 
 ---Comment type info
 local comment_types = {
-    note = { label = "Note", highlight = "ReviewCommentNote", icon = "󰍩", border_hl = "ReviewInputBorderNote", title_hl = "ReviewInputTitleNote" },
-    fix = { label = "Fix", highlight = "ReviewCommentFix", icon = "󰁨", border_hl = "ReviewInputBorderFix", title_hl = "ReviewInputTitleFix" },
-    question = { label = "Question", highlight = "ReviewCommentQuestion", icon = "󰋗", border_hl = "ReviewInputBorderQuestion", title_hl = "ReviewInputTitleQuestion" },
+    note = {
+        label = "Note",
+        highlight = "ReviewCommentNote",
+        icon = "󰍩",
+        border_hl = "ReviewInputBorderNote",
+        title_hl = "ReviewInputTitleNote",
+    },
+    fix = {
+        label = "Fix",
+        highlight = "ReviewCommentFix",
+        icon = "󰁨",
+        border_hl = "ReviewInputBorderFix",
+        title_hl = "ReviewInputTitleFix",
+    },
+    question = {
+        label = "Question",
+        highlight = "ReviewCommentQuestion",
+        icon = "󰋗",
+        border_hl = "ReviewInputBorderQuestion",
+        title_hl = "ReviewInputTitleQuestion",
+    },
 }
 
 ---Render diff to buffer
@@ -654,7 +672,6 @@ local function add_comment()
         if vim.api.nvim_buf_is_valid(input_buf) then
             vim.api.nvim_buf_delete(input_buf, { force = true })
         end
-
     end
 
     -- Function to update the window title and colors with current type
