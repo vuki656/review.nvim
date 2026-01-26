@@ -628,12 +628,6 @@ local function add_comment()
     vim.bo[input_buf].completefunc = ""
     vim.bo[input_buf].omnifunc = ""
 
-    -- Disable completion plugins for this buffer
-    local ok_cmp, cmp = pcall(require, "cmp")
-    if ok_cmp then
-        cmp.setup.buffer({ enabled = false })
-    end
-
     vim.b[input_buf].copilot_enabled = false
 
     -- Calculate window position (below current line, at the start of the line)
@@ -652,6 +646,12 @@ local function add_comment()
     }
 
     local input_win = vim.api.nvim_open_win(input_buf, true, win_opts)
+
+    -- Disable cmp after entering the input buffer (cmp.setup.buffer targets current buffer)
+    local ok_cmp, cmp = pcall(require, "cmp")
+    if ok_cmp then
+        cmp.setup.buffer({ enabled = false })
+    end
 
     -- Set window options
     vim.api.nvim_set_option_value(
