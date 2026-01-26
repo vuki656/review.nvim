@@ -30,11 +30,6 @@ function M.setup(opts)
         end, { desc = "Toggle review UI" })
     end
 
-    if cfg.keymaps.send_to_tmux then
-        vim.keymap.set("n", cfg.keymaps.send_to_tmux, function()
-            M.send()
-        end, { desc = "Send review comments to tmux" })
-    end
 end
 
 ---Toggle the review UI

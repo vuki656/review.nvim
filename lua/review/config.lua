@@ -6,7 +6,7 @@
 
 ---@class ReviewKeymaps
 ---@field toggle string
----@field send_to_tmux string
+
 
 ---@class ReviewDiffConfig
 ---@field base string Default base for diff comparison
@@ -26,7 +26,6 @@ local M = {}
 M.defaults = {
     keymaps = {
         toggle = "<leader>lr",
-        send_to_tmux = "<leader>ls",
     },
     diff = {
         base = "HEAD", -- Compare against HEAD (unstaged changes)
