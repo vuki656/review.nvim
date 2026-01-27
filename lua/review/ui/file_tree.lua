@@ -625,6 +625,7 @@ local function show_help()
         "  <Space> Toggle stage",
         "  R       Refresh file list",
         "  B       Pick base commit",
+        "  C       Commit staged changes",
         "  `       Toggle list/tree view",
         "  <C-n>   Toggle file tree",
         "  L       Show full path",
@@ -637,6 +638,75 @@ local function show_help()
         title = " Help ",
         title_pos = "center",
     })
+end
+
+---Commit staged changes with input prompt and spinner
+---@param callbacks table
+local function commit_flow(callbacks)
+    if state.state.base ~= nil and state.state.base ~= "HEAD" then
+        vim.notify("Cannot commit in history mode", vim.log.levels.WARN)
+        return
+    end
+
+    vim.ui.input({ prompt = "Commit message: " }, function(message)
+        if not message or message == "" then
+            return
+        end
+
+        -- Spinner animation
+        local spinner_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+        local frame = 0
+        local spinner_buf = vim.api.nvim_create_buf(false, true)
+        local width = #message + 16
+        local spinner_win = vim.api.nvim_open_win(spinner_buf, false, {
+            relative = "editor",
+            row = math.floor(vim.o.lines / 2) - 1,
+            col = math.floor((vim.o.columns - width) / 2),
+            width = width,
+            height = 1,
+            style = "minimal",
+            border = "rounded",
+            title = " Committing ",
+            title_pos = "center",
+        })
+
+        local timer = vim.uv.new_timer()
+        timer:start(
+            0,
+            80,
+            vim.schedule_wrap(function()
+                if not vim.api.nvim_buf_is_valid(spinner_buf) then
+                    timer:stop()
+                    timer:close()
+                    return
+                end
+                frame = (frame % #spinner_frames) + 1
+                local text = " " .. spinner_frames[frame] .. " Committing..."
+                vim.api.nvim_buf_set_lines(spinner_buf, 0, -1, false, { text })
+            end)
+        )
+
+        git.commit(message, function(success, err)
+            timer:stop()
+            timer:close()
+            if vim.api.nvim_win_is_valid(spinner_win) then
+                vim.api.nvim_win_close(spinner_win, true)
+            end
+            if vim.api.nvim_buf_is_valid(spinner_buf) then
+                vim.api.nvim_buf_delete(spinner_buf, { force = true })
+            end
+
+            if success then
+                vim.notify("Committed: " .. message, vim.log.levels.INFO)
+                M.refresh()
+                if callbacks.on_refresh then
+                    callbacks.on_refresh()
+                end
+            else
+                vim.notify("Commit failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+            end
+        end)
+    end)
 end
 
 ---Setup keymaps for the file tree
@@ -888,6 +958,11 @@ local function setup_keymaps(bufnr, callbacks)
         local ui = require("review.ui")
         ui.pick_commit()
     end, { buffer = bufnr, desc = "Pick base commit" })
+
+    -- Commit staged changes
+    vim.keymap.set("n", "C", function()
+        commit_flow(callbacks)
+    end, { buffer = bufnr, desc = "Commit staged changes" })
 
     -- Toggle list/tree view
     vim.keymap.set("n", "`", function()

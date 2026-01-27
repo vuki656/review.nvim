@@ -464,6 +464,27 @@ function M.get_recent_commits(count)
     return commits
 end
 
+---Commit staged changes asynchronously
+---@param message string Commit message
+---@param callback fun(success: boolean, error: string|nil)
+function M.commit(message, callback)
+    local git_root = M.get_root()
+    if not git_root then
+        callback(false, "Not a git repository")
+        return
+    end
+
+    vim.system({ "git", "commit", "-m", message }, { text = true, cwd = git_root }, function(result)
+        vim.schedule(function()
+            if result.code == 0 then
+                callback(true, nil)
+            else
+                callback(false, vim.trim(result.stderr))
+            end
+        end)
+    end)
+end
+
 ---Get file content at a specific revision
 ---@param file string File path relative to git root
 ---@param rev string|nil Git revision (default: HEAD)
