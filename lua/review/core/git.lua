@@ -505,4 +505,45 @@ function M.get_file_at_rev(file, rev)
     return result.stdout, nil
 end
 
+---Get count of unpushed commits (commits ahead of upstream)
+---@param callback fun(count: number|nil) nil if no upstream configured
+function M.get_unpushed_count(callback)
+    local git_root = M.get_root()
+    if not git_root then
+        callback(nil)
+        return
+    end
+
+    vim.system({ "git", "rev-list", "--count", "@{u}..HEAD" }, { text = true, cwd = git_root }, function(result)
+        vim.schedule(function()
+            if result.code == 0 then
+                local count = tonumber(vim.trim(result.stdout))
+                callback(count or 0)
+            else
+                callback(nil)
+            end
+        end)
+    end)
+end
+
+---Push to remote asynchronously
+---@param callback fun(success: boolean, error: string|nil)
+function M.push(callback)
+    local git_root = M.get_root()
+    if not git_root then
+        callback(false, "Not a git repository")
+        return
+    end
+
+    vim.system({ "git", "push" }, { text = true, cwd = git_root }, function(result)
+        vim.schedule(function()
+            if result.code == 0 then
+                callback(true, nil)
+            else
+                callback(false, vim.trim(result.stderr))
+            end
+        end)
+    end)
+end
+
 return M

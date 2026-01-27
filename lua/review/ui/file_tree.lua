@@ -34,7 +34,12 @@ M.view_mode = "list"
 local active_timers = {
     select_timer = nil,
     scroll_timer = nil,
+    push_timer = nil,
 }
+
+-- Footer state
+local footer_state = { unpushed_count = nil, spinner_frame = 0 }
+local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 
 ---@class FileNode
 ---@field path string|nil
@@ -599,6 +604,76 @@ local function render_to_buffer(bufnr, nodes, winid)
     vim.bo[bufnr].readonly = true
 end
 
+---Render the footer (unpushed count or push spinner) below file nodes
+---@param bufnr number
+---@param winid number
+local function render_footer(bufnr, winid)
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+        return
+    end
+    if not M.current or not M.current.nodes then
+        return
+    end
+
+    local node_count = #M.current.nodes
+    local footer_lines = {}
+    local footer_hls = {} -- { line_offset, hl_group, col_start, col_end }
+
+    if state.state.is_pushing then
+        footer_state.spinner_frame = (footer_state.spinner_frame % #SPINNER_FRAMES) + 1
+        local text = "  " .. SPINNER_FRAMES[footer_state.spinner_frame] .. " Pushing..."
+        table.insert(footer_lines, "")
+        table.insert(footer_lines, text)
+        table.insert(footer_hls, { 1, "ReviewFooterText", 0, -1 })
+    elseif footer_state.unpushed_count and footer_state.unpushed_count > 0 then
+        local count_str = tostring(footer_state.unpushed_count)
+        local text = "  ↑ " .. count_str .. " unpushed"
+        table.insert(footer_lines, "")
+        table.insert(footer_lines, text)
+        -- "  ↑ " is prefix, then count highlighted in blue, rest in gray
+        local prefix = "  ↑ "
+        local prefix_len = #prefix
+        table.insert(footer_hls, { 1, "ReviewFooterText", 0, prefix_len })
+        table.insert(footer_hls, { 1, "ReviewFooterCount", prefix_len, prefix_len + #count_str })
+        table.insert(footer_hls, { 1, "ReviewFooterText", prefix_len + #count_str, -1 })
+    end
+
+    vim.bo[bufnr].readonly = false
+    vim.bo[bufnr].modifiable = true
+
+    -- Clear any existing footer lines (everything after node_count)
+    local current_line_count = vim.api.nvim_buf_line_count(bufnr)
+    if current_line_count > node_count then
+        vim.api.nvim_buf_set_lines(bufnr, node_count, current_line_count, false, {})
+    end
+
+    -- Append footer lines
+    if #footer_lines > 0 then
+        vim.api.nvim_buf_set_lines(bufnr, node_count, node_count, false, footer_lines)
+        for _, hl in ipairs(footer_hls) do
+            local line_idx = node_count + hl[1]
+            vim.api.nvim_buf_add_highlight(bufnr, -1, hl[2], line_idx, hl[3], hl[4])
+        end
+    end
+
+    vim.bo[bufnr].modifiable = false
+    vim.bo[bufnr].readonly = true
+end
+
+---Fetch unpushed count and re-render footer
+local function update_footer()
+    if not M.current then
+        return
+    end
+
+    git.get_unpushed_count(function(count)
+        footer_state.unpushed_count = count
+        if M.current then
+            render_footer(M.current.bufnr, M.current.winid)
+        end
+    end)
+end
+
 ---Show full path in floating window
 local function show_full_path()
     local line = vim.api.nvim_win_get_cursor(0)[1]
@@ -626,6 +701,7 @@ local function show_help()
         "  R       Refresh file list",
         "  B       Pick base commit",
         "  C       Commit staged changes",
+        "  P       Push to remote",
         "  `       Toggle list/tree view",
         "  <C-n>   Toggle file tree",
         "  L       Show full path",
@@ -706,6 +782,60 @@ local function commit_flow(callbacks)
                 vim.notify("Commit failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
             end
         end)
+    end)
+end
+
+---Push to remote with spinner animation in footer
+---@param callbacks table
+local function push_flow(callbacks)
+    if state.state.is_pushing then
+        vim.notify("Already pushing...", vim.log.levels.WARN)
+        return
+    end
+
+    if state.state.base ~= nil and state.state.base ~= "HEAD" then
+        vim.notify("Cannot push in history mode", vim.log.levels.WARN)
+        return
+    end
+
+    state.state.is_pushing = true
+    footer_state.spinner_frame = 0
+
+    -- Start spinner animation timer
+    if active_timers.push_timer then
+        active_timers.push_timer:stop()
+        active_timers.push_timer:close()
+    end
+    active_timers.push_timer = vim.uv.new_timer()
+    active_timers.push_timer:start(
+        0,
+        80,
+        vim.schedule_wrap(function()
+            if not state.state.is_pushing then
+                return
+            end
+            if M.current then
+                render_footer(M.current.bufnr, M.current.winid)
+            end
+        end)
+    )
+
+    git.push(function(success, err)
+        -- Stop spinner
+        if active_timers.push_timer then
+            active_timers.push_timer:stop()
+            active_timers.push_timer:close()
+            active_timers.push_timer = nil
+        end
+        state.state.is_pushing = false
+
+        if success then
+            vim.notify("Pushed successfully", vim.log.levels.INFO)
+        else
+            vim.notify("Push failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+        end
+
+        update_footer()
     end)
 end
 
@@ -964,6 +1094,11 @@ local function setup_keymaps(bufnr, callbacks)
         commit_flow(callbacks)
     end, { buffer = bufnr, desc = "Commit staged changes" })
 
+    -- Push to remote
+    vim.keymap.set("n", "P", function()
+        push_flow(callbacks)
+    end, { buffer = bufnr, desc = "Push to remote" })
+
     -- Toggle list/tree view
     vim.keymap.set("n", "`", function()
         M.view_mode = M.view_mode == "list" and "tree" or "list"
@@ -1038,6 +1173,9 @@ function M.create(layout_component, callbacks)
         end
     end
 
+    -- Fetch and render unpushed count
+    update_footer()
+
     return M.current
 end
 
@@ -1069,6 +1207,9 @@ function M.refresh()
         M.current.nodes = create_nodes(M.current.files, state.state.base)
     end
     render_to_buffer(M.current.bufnr, M.current.nodes, M.current.winid)
+
+    -- Refresh unpushed count
+    update_footer()
 end
 
 ---Get the current component
@@ -1087,6 +1228,8 @@ function M.destroy()
             active_timers[name] = nil
         end
     end
+    -- Reset footer state
+    footer_state = { unpushed_count = nil, spinner_frame = 0 }
     M.current = nil
 end
 

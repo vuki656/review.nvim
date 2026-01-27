@@ -67,6 +67,10 @@ function M.setup()
         ReviewLineNrAdd = { fg = "#89ca78" },
         ReviewLineNrDelete = { fg = "#ef596f" },
         ReviewLineNrContext = { fg = "#5c6370" },
+
+        -- Footer
+        ReviewFooterText = { fg = "#5c6370" },
+        ReviewFooterCount = { fg = "#61afef" },
     }
 
     for name, opts in pairs(highlights) do

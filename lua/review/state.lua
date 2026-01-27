@@ -30,6 +30,7 @@ M.state = {
     diff_mode = "unified",
     base = "HEAD",
     comment_id_counter = 0,
+    is_pushing = false,
 }
 
 function M.reset()
@@ -40,6 +41,7 @@ function M.reset()
         diff_mode = "unified",
         base = "HEAD",
         comment_id_counter = 0,
+        is_pushing = false,
     }
 end
 
