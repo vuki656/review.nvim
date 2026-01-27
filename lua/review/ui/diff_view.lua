@@ -853,6 +853,12 @@ function M.create(layout_component, file, callbacks)
     vim.wo[layout_component.winid].spell = false
     vim.wo[layout_component.winid].list = false
 
+    -- Enable wrap for text-heavy filetypes
+    local ft = vim.bo[bufnr].filetype
+    local wrap = ft == "markdown" or ft == "text"
+    vim.wo[layout_component.winid].wrap = wrap
+    vim.wo[layout_component.winid].linebreak = wrap
+
     return M.current
 end
 
