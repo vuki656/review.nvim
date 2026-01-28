@@ -1,6 +1,7 @@
 local commands = require("review.commands")
 local config = require("review.config")
 local export = require("review.export.markdown")
+local quick_comments = require("review.quick_comments")
 local state = require("review.state")
 local ui = require("review.ui")
 
@@ -22,6 +23,9 @@ function M.setup(opts)
 
     -- Set up commands
     commands.setup()
+
+    -- Set up quick comments
+    quick_comments.setup()
 
     -- Set up keymaps
     if cfg.keymaps.toggle then

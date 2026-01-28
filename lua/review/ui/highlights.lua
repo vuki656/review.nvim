@@ -71,6 +71,13 @@ function M.setup()
         -- Footer
         ReviewFooterText = { fg = "#5c6370" },
         ReviewFooterCount = { fg = "#61afef" },
+
+        -- Quick Comments Panel
+        ReviewQCPanelHeader = { fg = "#61afef", bold = true },
+        ReviewQCPanelBorder = { fg = "#3e4452" },
+        ReviewQCPanelFile = { fg = "#abb2bf", bold = true },
+        ReviewQCPanelContext = { fg = "#5c6370", italic = true },
+        ReviewQCPanelLineNr = { fg = "#5c6370" },
     }
 
     for name, opts in pairs(highlights) do

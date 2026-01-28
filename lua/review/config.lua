@@ -3,6 +3,7 @@
 ---@field diff ReviewDiffConfig
 ---@field ui ReviewUIConfig
 ---@field tmux ReviewTmuxConfig
+---@field quick_comments ReviewQuickCommentsConfig
 
 ---@class ReviewKeymaps
 ---@field toggle string
@@ -18,6 +19,22 @@
 ---@class ReviewTmuxConfig
 ---@field target string Target window/pane name (e.g., "CLAUDE" or "CLAUDE.0")
 ---@field auto_enter boolean Whether to send Enter key after pasting
+
+---@class ReviewQuickCommentsConfig
+---@field keymaps ReviewQuickCommentsKeymaps
+---@field panel ReviewQuickCommentsPanelConfig
+---@field signs ReviewQuickCommentsSignsConfig
+
+---@class ReviewQuickCommentsKeymaps
+---@field add string|nil Keymap to add a quick comment
+---@field toggle_panel string|nil Keymap to toggle the quick comments panel
+
+---@class ReviewQuickCommentsPanelConfig
+---@field width number Panel width in columns
+---@field position "left"|"right" Panel position
+
+---@class ReviewQuickCommentsSignsConfig
+---@field enabled boolean Whether to show gutter signs
 
 local M = {}
 
@@ -37,6 +54,19 @@ M.defaults = {
     tmux = {
         target = "CLAUDE", -- Target window name
         auto_enter = false, -- Don't auto-submit, let user review first
+    },
+    quick_comments = {
+        keymaps = {
+            add = "<leader>qi",
+            toggle_panel = "<leader>qo",
+        },
+        panel = {
+            width = 65,
+            position = "right",
+        },
+        signs = {
+            enabled = true,
+        },
     },
 }
 

@@ -36,6 +36,12 @@ function M.setup()
         elseif subcommand == "pick" then
             local count = args[2] and tonumber(args[2]) or 20
             ui.pick_commit(count)
+        elseif subcommand == "qc" then
+            local quick_comments = require("review.quick_comments")
+            quick_comments.add()
+        elseif subcommand == "qp" then
+            local quick_comments = require("review.quick_comments")
+            quick_comments.toggle_panel()
         else
             vim.notify("Unknown subcommand: " .. subcommand, vim.log.levels.ERROR)
         end
@@ -44,7 +50,7 @@ function M.setup()
         complete = function(_, cmdline, _)
             local args = vim.split(cmdline, "%s+")
             if #args == 2 then
-                return { "close", "export", "send", "commit", "pick" }
+                return { "close", "export", "send", "commit", "pick", "qc", "qp" }
             end
             return {}
         end,
