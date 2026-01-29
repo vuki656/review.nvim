@@ -49,7 +49,7 @@ function M.get_changed_files(base)
     local seen = {}
 
     -- Get unstaged changes
-    local unstaged = vim.system({ "git", "diff", "--name-only", base }, { text = true, cwd = git_root }):wait()
+    local unstaged = vim.system({ "git", "diff", "-M", "--name-only", base }, { text = true, cwd = git_root }):wait()
 
     if unstaged.code == 0 then
         for line in unstaged.stdout:gmatch("[^\r\n]+") do
@@ -61,7 +61,8 @@ function M.get_changed_files(base)
     end
 
     -- Get staged changes
-    local staged = vim.system({ "git", "diff", "--cached", "--name-only" }, { text = true, cwd = git_root }):wait()
+    local staged = vim.system({ "git", "diff", "-M", "--cached", "--name-only" }, { text = true, cwd = git_root })
+        :wait()
 
     if staged.code == 0 then
         for line in staged.stdout:gmatch("[^\r\n]+") do
@@ -160,9 +161,9 @@ function M.get_diff(file, base)
     -- Get the appropriate diff
     local cmd
     if is_staged_only then
-        cmd = { "git", "diff", "--cached", "--", file }
+        cmd = { "git", "diff", "-M", "--cached", "--", file }
     else
-        cmd = { "git", "diff", base, "--", file }
+        cmd = { "git", "diff", "-M", base, "--", file }
     end
 
     local result = vim.system(cmd, { text = true, cwd = git_root }):wait()
@@ -284,7 +285,7 @@ function M.get_unstaged_files()
     return unstaged
 end
 
----@alias GitFileStatus "added"|"modified"|"deleted"
+---@alias GitFileStatus "added"|"modified"|"deleted"|"renamed"
 
 ---Get the git status of a file
 ---@param file string File path relative to git root
@@ -303,7 +304,10 @@ function M.get_file_status(file, base)
     end
 
     -- Check file status relative to base
-    local result = vim.system({ "git", "diff", "--name-status", base, "--", file }, { text = true, cwd = git_root })
+    local result = vim.system(
+        { "git", "diff", "-M", "--name-status", base, "--", file },
+        { text = true, cwd = git_root }
+    )
         :wait()
 
     if result.code == 0 and result.stdout ~= "" then
@@ -312,13 +316,15 @@ function M.get_file_status(file, base)
             return "deleted"
         elseif status_char == "A" then
             return "added"
+        elseif status_char == "R" then
+            return "renamed"
         end
     end
 
     -- Also check staged changes (only for HEAD comparison)
     if base == "HEAD" then
         local staged_result = vim.system(
-            { "git", "diff", "--cached", "--name-status", "--", file },
+            { "git", "diff", "-M", "--cached", "--name-status", "--", file },
             { text = true, cwd = git_root }
         ):wait()
 
@@ -328,6 +334,8 @@ function M.get_file_status(file, base)
                 return "deleted"
             elseif status_char == "A" then
                 return "added"
+            elseif status_char == "R" then
+                return "renamed"
             end
         end
     end
@@ -340,6 +348,7 @@ end
 ---@param files string[] List of file paths relative to git root
 ---@param base string|nil Base commit to compare against (default: HEAD)
 ---@return table<string, GitFileStatus> Map of file path to status
+---@return table<string, string> Map of new_path to old_path for renamed files
 function M.get_all_file_statuses(files, base)
     base = base or "HEAD"
     local git_root = M.get_root()
@@ -353,6 +362,7 @@ function M.get_all_file_statuses(files, base)
     end
 
     local statuses = {}
+    local rename_map = {}
     local untracked_set = {}
 
     -- Get all untracked files (only for HEAD comparison)
@@ -372,35 +382,17 @@ function M.get_all_file_statuses(files, base)
     end
 
     -- Get all file statuses relative to base in one call
-    local result = vim.system({ "git", "diff", "--name-status", base }, { text = true, cwd = git_root }):wait()
+    local result = vim.system({ "git", "diff", "-M", "--name-status", base }, { text = true, cwd = git_root }):wait()
 
     if result.code == 0 then
         for line in result.stdout:gmatch("[^\r\n]+") do
-            local status_char, file_path = line:match("^(%S+)%s+(.+)$")
-            if status_char and file_path then
-                if status_char == "D" then
-                    statuses[file_path] = "deleted"
-                elseif status_char == "A" then
-                    statuses[file_path] = "added"
-                else
-                    statuses[file_path] = "modified"
-                end
-            end
-        end
-    end
-
-    -- Also check staged changes (only for HEAD comparison)
-    if base == "HEAD" then
-        local staged_result = vim.system(
-            { "git", "diff", "--cached", "--name-status" },
-            { text = true, cwd = git_root }
-        )
-            :wait()
-
-        if staged_result.code == 0 then
-            for line in staged_result.stdout:gmatch("[^\r\n]+") do
+            local rename_status, old_path, new_path = line:match("^(R%d*)%s+(.+)%s+(.+)$")
+            if rename_status and old_path and new_path then
+                statuses[new_path] = "renamed"
+                rename_map[new_path] = old_path
+            else
                 local status_char, file_path = line:match("^(%S+)%s+(.+)$")
-                if status_char and file_path and not statuses[file_path] then
+                if status_char and file_path then
                     if status_char == "D" then
                         statuses[file_path] = "deleted"
                     elseif status_char == "A" then
@@ -413,19 +405,53 @@ function M.get_all_file_statuses(files, base)
         end
     end
 
+    -- Also check staged changes (only for HEAD comparison)
+    if base == "HEAD" then
+        local staged_result = vim.system(
+            { "git", "diff", "-M", "--cached", "--name-status" },
+            { text = true, cwd = git_root }
+        )
+            :wait()
+
+        if staged_result.code == 0 then
+            for line in staged_result.stdout:gmatch("[^\r\n]+") do
+                local rename_status, old_path, new_path = line:match("^(R%d*)%s+(.+)%s+(.+)$")
+                if rename_status and old_path and new_path and not statuses[new_path] then
+                    statuses[new_path] = "renamed"
+                    rename_map[new_path] = old_path
+                else
+                    local status_char, file_path = line:match("^(%S+)%s+(.+)$")
+                    if status_char and file_path and not statuses[file_path] then
+                        if status_char == "D" then
+                            statuses[file_path] = "deleted"
+                        elseif status_char == "A" then
+                            statuses[file_path] = "added"
+                        else
+                            statuses[file_path] = "modified"
+                        end
+                    end
+                end
+            end
+        end
+    end
+
     -- Build final result for requested files
     local result_map = {}
+    local result_rename_map = {}
     for _, file in ipairs(files) do
         if base == "HEAD" and untracked_set[file] then
             result_map[file] = "added"
         elseif statuses[file] then
             result_map[file] = statuses[file]
+            if rename_map[file] then
+                result_rename_map[file] = rename_map[file]
+            end
         else
             result_map[file] = "modified"
         end
     end
 
-    return result_map
+    return result_map, result_rename_map
 end
 
 ---Get recent commits

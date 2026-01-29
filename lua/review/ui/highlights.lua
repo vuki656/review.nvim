@@ -57,6 +57,7 @@ function M.setup()
         ReviewGitAdded = { fg = "#89ca78" },
         ReviewGitModified = { fg = "#d19a66" },
         ReviewGitDeleted = { fg = "#ef596f" },
+        ReviewGitRenamed = { fg = "#c678dd" },
 
         -- UI elements
         ReviewBorder = { fg = "#3e4452" },

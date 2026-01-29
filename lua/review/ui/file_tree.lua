@@ -61,13 +61,15 @@ local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧",
 ---@field filename_end number
 
 ---Get git status highlight
----@param git_status string "added"|"modified"|"deleted"
+---@param git_status string "added"|"modified"|"deleted"|"renamed"
 ---@return string highlight
 local function get_git_status_hl(git_status)
     if git_status == "added" then
         return "ReviewGitAdded"
     elseif git_status == "deleted" then
         return "ReviewGitDeleted"
+    elseif git_status == "renamed" then
+        return "ReviewGitRenamed"
     else
         return "ReviewGitModified"
     end
@@ -79,8 +81,9 @@ end
 ---@param in_deleted_section boolean Whether file is in the deleted section
 ---@param base string|nil Base commit for git status comparison
 ---@param git_status GitFileStatus|nil Pre-fetched git status (avoids subprocess call if provided)
+---@param old_path string|nil Original path for renamed files
 ---@return FileNode
-local function create_file_node(file, in_reviewed_section, in_deleted_section, base, git_status)
+local function create_file_node(file, in_reviewed_section, in_deleted_section, base, git_status, old_path)
     local is_history_mode = base ~= nil and base ~= "HEAD"
     -- In history mode, don't show reviewed state
     local reviewed = not is_history_mode and state.is_reviewed(file)
@@ -98,6 +101,11 @@ local function create_file_node(file, in_reviewed_section, in_deleted_section, b
     -- Get the directory path (empty if file is in root)
     local dir = vim.fn.fnamemodify(file, ":h")
     local path_suffix = dir ~= "." and ("  " .. file) or ""
+
+    -- For renamed files, show old path as suffix instead
+    if old_path then
+        path_suffix = "  ← " .. old_path
+    end
 
     -- Build text: "  ● file_icon [x] filename  path" (with left padding)
     -- In history mode, skip checkbox: "  ● file_icon filename  path"
@@ -190,7 +198,7 @@ local function create_nodes(files, base)
     local is_history_mode = base ~= nil and base ~= "HEAD"
 
     -- Batch fetch all git statuses in one call (major perf win)
-    local status_map = git.get_all_file_statuses(files, base)
+    local status_map, rename_map = git.get_all_file_statuses(files, base)
     -- Batch fetch unstaged files set
     local unstaged_set = not is_history_mode and git.get_unstaged_files() or {}
 
@@ -198,6 +206,7 @@ local function create_nodes(files, base)
     local unstaged_modified = {} -- modified, not staged
     local unstaged_added = {} -- added/new, not staged
     local unstaged_deleted = {} -- deleted, not staged
+    local unstaged_renamed = {} -- renamed, not staged
     local staged_files = {} -- all staged files
 
     for _, file in ipairs(files) do
@@ -209,6 +218,8 @@ local function create_nodes(files, base)
                 table.insert(unstaged_deleted, file)
             elseif git_status == "added" then
                 table.insert(unstaged_added, file)
+            elseif git_status == "renamed" then
+                table.insert(unstaged_renamed, file)
             else
                 table.insert(unstaged_modified, file)
             end
@@ -225,6 +236,8 @@ local function create_nodes(files, base)
                 table.insert(unstaged_deleted, file)
             elseif git_status == "added" then
                 table.insert(unstaged_added, file)
+            elseif git_status == "renamed" then
+                table.insert(unstaged_renamed, file)
             else
                 table.insert(unstaged_modified, file)
             end
@@ -249,7 +262,15 @@ local function create_nodes(files, base)
         end
     end
 
-    -- 3. Deleted files (unstaged)
+    -- 3. Renamed files (unstaged)
+    if #unstaged_renamed > 0 then
+        table.insert(nodes, create_header_node("󰁔", "Renamed", #unstaged_renamed, "ReviewGitRenamed", "─"))
+        for _, file in ipairs(unstaged_renamed) do
+            table.insert(nodes, create_file_node(file, false, false, base, status_map[file], rename_map[file]))
+        end
+    end
+
+    -- 4. Deleted files (unstaged)
     if #unstaged_deleted > 0 then
         table.insert(nodes, create_header_node("󰩹", "Deleted", #unstaged_deleted, "ReviewGitDeleted", "─"))
         for _, file in ipairs(unstaged_deleted) do
@@ -257,7 +278,7 @@ local function create_nodes(files, base)
         end
     end
 
-    -- 4. Staged files - with double border (only in normal mode)
+    -- 5. Staged files - with double border (only in normal mode)
     if #staged_files > 0 then
         table.insert(nodes, create_header_node("󰄬", "Staged", #staged_files, "ReviewFileReviewed", "═"))
         for _, file in ipairs(staged_files) do
