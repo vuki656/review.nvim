@@ -1,4 +1,3 @@
-local config = require("review.config")
 local git = require("review.core.git")
 local state = require("review.state")
 
@@ -336,7 +335,7 @@ local function create_tree_nodes(files, base)
         local left_pad_len = 1 -- 1 char left padding
         local pos = left_pad_len
 
-        for i, marker in ipairs(indent_stack) do
+        for _, marker in ipairs(indent_stack) do
             table.insert(indent_parts, marker)
             table.insert(indent_ranges, { start = pos, finish = pos + #marker })
             pos = pos + #marker
@@ -347,7 +346,6 @@ local function create_tree_nodes(files, base)
             local marker = is_last and INDENT_MARKER_LAST or INDENT_MARKER_BRANCH
             table.insert(indent_parts, marker)
             table.insert(indent_ranges, { start = pos, finish = pos + #marker })
-            pos = pos + #marker
         end
 
         local indent = table.concat(indent_parts)
@@ -627,8 +625,7 @@ end
 
 ---Render the footer (unpushed count or push spinner) below file nodes
 ---@param bufnr number
----@param winid number
-local function render_footer(bufnr, winid)
+local function render_footer(bufnr)
     if not vim.api.nvim_buf_is_valid(bufnr) then
         return
     end
@@ -690,7 +687,7 @@ local function update_footer()
     git.get_unpushed_count(function(count)
         footer_state.unpushed_count = count
         if M.current then
-            render_footer(M.current.bufnr, M.current.winid)
+            render_footer(M.current.bufnr)
         end
     end)
 end
@@ -807,8 +804,7 @@ local function commit_flow(callbacks)
 end
 
 ---Push to remote with spinner animation in footer
----@param callbacks table
-local function push_flow(callbacks)
+local function push_flow()
     if state.state.is_pushing then
         vim.notify("Already pushing...", vim.log.levels.WARN)
         return
@@ -836,7 +832,7 @@ local function push_flow(callbacks)
                 return
             end
             if M.current then
-                render_footer(M.current.bufnr, M.current.winid)
+                render_footer(M.current.bufnr)
             end
         end)
     )
@@ -1119,7 +1115,7 @@ local function setup_keymaps(bufnr, callbacks)
 
     -- Push to remote
     vim.keymap.set("n", "P", function()
-        push_flow(callbacks)
+        push_flow()
     end, { buffer = bufnr, desc = "Push to remote" })
 
     -- Toggle list/tree view

@@ -107,8 +107,6 @@ function M.parse(diff_text)
                 })
                 old_line = old_line + 1
                 new_line = new_line + 1
-            elseif prefix == "\\" then
-                -- "\ No newline at end of file" - skip
             end
         end
     end
