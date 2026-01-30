@@ -920,7 +920,9 @@ local function setup_keymaps(bufnr, callbacks)
                 for i = line, line_count do
                     local n = M.get_node_at_line(i)
                     if n and n.is_file and n.path ~= staged_file then
-                        vim.api.nvim_win_set_cursor(M.current.winid, { i, 0 })
+                        if vim.api.nvim_win_is_valid(M.current.winid) then
+                            vim.api.nvim_win_set_cursor(M.current.winid, { i, 0 })
+                        end
                         if callbacks.on_file_select then
                             callbacks.on_file_select(n.path)
                         end
