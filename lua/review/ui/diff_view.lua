@@ -289,19 +289,9 @@ local function render_diff(bufnr, file)
     -- Find line pairs for word-level diff
     local line_pairs = find_line_pairs(render_lines)
 
-    -- Check if file is entirely new (all adds) or entirely deleted (all deletes)
-    local has_adds = false
-    local has_deletes = false
-    for _, line in ipairs(render_lines) do
-        if line.type == "add" then
-            has_adds = true
-        end
-        if line.type == "delete" then
-            has_deletes = true
-        end
-    end
-    local is_new_file = has_adds and not has_deletes
-    local is_deleted_file = has_deletes and not has_adds
+    -- Detect new/deleted files from diff headers (not from line types)
+    local is_new_file = parsed.file_old == "/dev/null"
+    local is_deleted_file = parsed.file_new == "/dev/null"
 
     -- Apply highlights and colored border
     vim.api.nvim_buf_clear_namespace(bufnr, ns_diff, 0, -1)
