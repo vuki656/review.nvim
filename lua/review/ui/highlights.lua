@@ -16,6 +16,9 @@ function M.setup()
         ReviewDiffSignDelete = { fg = "#ef596f", bold = true },
         ReviewDiffSignContext = { fg = "#3e4452" },
 
+        -- Diff view file path header
+        ReviewDiffFilePath = { fg = "#abb2bf", bold = true },
+
         -- Legacy (keep for compatibility)
         ReviewDiffChange = { fg = "#a8c8e8", bg = "#2a2a3a" },
         ReviewDiffText = { fg = "#e5c07b", bg = "#3e4452", bold = true },

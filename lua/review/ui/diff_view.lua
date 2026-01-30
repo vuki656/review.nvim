@@ -256,8 +256,11 @@ local function render_diff(bufnr, file)
     local raw_lines = diff_parser.get_render_lines(parsed)
 
     -- Build clean display lines (no +/-, no @@ headers)
-    local display_lines = {}
-    local render_lines = {}
+    local display_lines = { file, "" }
+    local render_lines = {
+        { type = "filepath", content = file },
+        { type = "filepath", content = "" },
+    }
 
     for _, line in ipairs(raw_lines) do
         if line.type ~= "header" then
@@ -310,7 +313,16 @@ local function render_diff(bufnr, file)
 
         local line_hl = nil
 
-        if line.type == "add" then
+        if line.type == "filepath" then
+            local line_text = display_lines[i] or ""
+            if #line_text > 0 then
+                vim.api.nvim_buf_set_extmark(bufnr, ns_diff, i - 1, 0, {
+                    end_col = #line_text,
+                    hl_group = "ReviewDiffFilePath",
+                    priority = 10000,
+                })
+            end
+        elseif line.type == "add" then
             line_hl = "ReviewDiffAdd"
             sign_hl = "ReviewDiffSignAdd"
             inline_hl = "ReviewDiffAddInline"
