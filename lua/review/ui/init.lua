@@ -1,3 +1,4 @@
+local config = require("review.config")
 local diff_view = require("review.ui.diff_view")
 local file_tree = require("review.ui.file_tree")
 local git = require("review.core.git")
@@ -30,6 +31,7 @@ function M.open()
     layout.mount()
 
     state.state.is_open = true
+    state.state.diff_mode = config.get().ui.diff_view_mode
 
     -- Initialize file tree
     file_tree.create(l.file_tree, {
@@ -97,6 +99,7 @@ function M.show_welcome()
         "    dc     - Delete comment",
         "    ]c/[c  - Next/prev hunk",
         "    ]f/[f  - Next/prev file",
+        "    S      - Toggle split/unified diff",
         "    <C-n>  - Toggle file tree",
         "",
     }

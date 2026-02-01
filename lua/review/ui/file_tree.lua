@@ -1129,6 +1129,18 @@ local function setup_keymaps(bufnr, callbacks)
         local ui = require("review.ui")
         ui.toggle_file_tree()
     end, { buffer = bufnr, desc = "Toggle file tree" })
+
+    -- Toggle split/unified diff
+    vim.keymap.set("n", "S", function()
+        local diff_view = require("review.ui.diff_view")
+        diff_view.toggle_diff_mode({
+            on_close = function(send_comments)
+                if callbacks.on_close then
+                    callbacks.on_close(send_comments)
+                end
+            end,
+        })
+    end, { buffer = bufnr, desc = "Toggle split/unified diff" })
 end
 
 ---Get node at a specific line (1-indexed)

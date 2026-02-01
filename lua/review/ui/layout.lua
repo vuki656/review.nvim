@@ -9,6 +9,8 @@ local M = {}
 ---@class ReviewLayout
 ---@field file_tree ReviewLayoutComponent
 ---@field diff_view ReviewLayoutComponent
+---@field diff_view_old ReviewLayoutComponent|nil
+---@field diff_view_new ReviewLayoutComponent|nil
 
 ---@type ReviewLayout|nil
 M.current = nil
@@ -25,6 +27,7 @@ local function apply_tree_win_options(winid)
     vim.api.nvim_win_set_option(winid, "signcolumn", "no")
     vim.api.nvim_win_set_option(winid, "wrap", false)
     vim.api.nvim_win_set_option(winid, "winhighlight", "Normal:Normal,CursorLine:ReviewSelected")
+    vim.api.nvim_win_set_option(winid, "winfixwidth", true)
 end
 
 ---Create the main layout with file tree and diff view in a new tab
@@ -155,6 +158,127 @@ function M.toggle_file_tree()
     end
 end
 
+---Apply diff view window options
+---@param winid number
+local function apply_diff_win_options(winid)
+    vim.api.nvim_win_set_option(winid, "number", true)
+    vim.api.nvim_win_set_option(winid, "relativenumber", false)
+    vim.api.nvim_win_set_option(winid, "cursorline", true)
+    vim.api.nvim_win_set_option(winid, "signcolumn", "yes")
+    vim.api.nvim_win_set_option(winid, "wrap", false)
+    vim.api.nvim_win_set_option(winid, "winhighlight", "Normal:Normal,CursorLine:ReviewSelected")
+end
+
+---Enter split (side-by-side) diff mode
+function M.enter_split_mode()
+    if not M.current then
+        return
+    end
+
+    if M.is_split_mode() then
+        return
+    end
+
+    local diff_win = M.current.diff_view.winid
+    if not vim.api.nvim_win_is_valid(diff_win) then
+        return
+    end
+
+    local prev_win = vim.api.nvim_get_current_win()
+    local saved_ea = vim.o.equalalways
+    vim.o.equalalways = false
+
+    vim.api.nvim_set_current_win(diff_win)
+
+    local old_buf = vim.api.nvim_create_buf(false, true)
+    vim.bo[old_buf].buftype = "nofile"
+    vim.bo[old_buf].swapfile = false
+    vim.bo[old_buf].modifiable = true
+    vim.bo[old_buf].readonly = false
+
+    vim.cmd("vsplit")
+    local old_win = vim.api.nvim_get_current_win()
+    vim.api.nvim_win_set_buf(old_win, old_buf)
+
+    apply_diff_win_options(old_win)
+
+    local new_win = diff_win
+
+    vim.wo[old_win].scrollbind = true
+    vim.wo[old_win].cursorbind = true
+    vim.wo[new_win].scrollbind = true
+    vim.wo[new_win].cursorbind = true
+    vim.cmd("syncbind")
+
+    M.current.diff_view_old = { bufnr = old_buf, winid = old_win }
+    M.current.diff_view_new = { bufnr = M.current.diff_view.bufnr, winid = new_win }
+
+    vim.o.equalalways = saved_ea
+
+    if vim.api.nvim_win_is_valid(prev_win) then
+        vim.api.nvim_set_current_win(prev_win)
+    end
+end
+
+---Exit split (side-by-side) diff mode
+function M.exit_split_mode()
+    if not M.current then
+        return
+    end
+
+    if not M.is_split_mode() then
+        return
+    end
+
+    local saved_ea = vim.o.equalalways
+    vim.o.equalalways = false
+
+    local old_component = M.current.diff_view_old
+    local new_win = M.current.diff_view_new and M.current.diff_view_new.winid
+
+    if new_win and vim.api.nvim_win_is_valid(new_win) then
+        vim.wo[new_win].scrollbind = false
+        vim.wo[new_win].cursorbind = false
+    end
+
+    if old_component then
+        if vim.api.nvim_win_is_valid(old_component.winid) then
+            vim.api.nvim_win_close(old_component.winid, true)
+        end
+        vim.schedule(function()
+            if vim.api.nvim_buf_is_valid(old_component.bufnr) then
+                vim.api.nvim_buf_delete(old_component.bufnr, { force = true })
+            end
+        end)
+    end
+
+    M.current.diff_view_old = nil
+    M.current.diff_view_new = nil
+
+    vim.o.equalalways = saved_ea
+end
+
+---Check if currently in split mode
+---@return boolean
+function M.is_split_mode()
+    if not M.current or not M.current.diff_view_old then
+        return false
+    end
+    return vim.api.nvim_win_is_valid(M.current.diff_view_old.winid)
+end
+
+---Get the old-side diff view component
+---@return ReviewLayoutComponent|nil
+function M.get_diff_view_old()
+    return M.current and M.current.diff_view_old
+end
+
+---Get the new-side diff view component
+---@return ReviewLayoutComponent|nil
+function M.get_diff_view_new()
+    return M.current and M.current.diff_view_new
+end
+
 ---Mount the layout (no-op in tab-based approach, create() does everything)
 function M.mount()
     -- Layout is already mounted when create() is called
@@ -163,6 +287,11 @@ end
 ---Unmount the layout
 function M.unmount()
     if M.current then
+        -- Clean up split mode if active
+        if M.is_split_mode() then
+            M.exit_split_mode()
+        end
+
         -- Store buffer references before closing
         local tree_buf = M.current.file_tree.bufnr
         local diff_buf = M.current.diff_view.bufnr

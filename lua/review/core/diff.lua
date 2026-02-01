@@ -139,6 +139,132 @@ function M.get_render_lines(parsed_diff)
     return render_lines
 end
 
+---@class SplitLine
+---@field type "context"|"add"|"delete"|"padding"|"filepath"
+---@field content string
+---@field source_line number|nil
+---@field pair_content string|nil
+
+---Get aligned split render lines for side-by-side diff
+---@param parsed_diff ParsedDiff
+---@return SplitLine[] old_lines, SplitLine[] new_lines
+function M.get_split_render_lines(parsed_diff)
+    local old_lines = {}
+    local new_lines = {}
+
+    local file_path = parsed_diff.file_new or parsed_diff.file_old or ""
+
+    table.insert(old_lines, { type = "filepath", content = file_path, source_line = nil, pair_content = nil })
+    table.insert(new_lines, { type = "filepath", content = file_path, source_line = nil, pair_content = nil })
+    table.insert(old_lines, { type = "filepath", content = "", source_line = nil, pair_content = nil })
+    table.insert(new_lines, { type = "filepath", content = "", source_line = nil, pair_content = nil })
+
+    for _, hunk in ipairs(parsed_diff.hunks) do
+        local line_idx = 1
+        local lines = hunk.lines
+
+        while line_idx <= #lines do
+            local line = lines[line_idx]
+
+            if line.type == "context" then
+                table.insert(old_lines, {
+                    type = "context",
+                    content = line.content,
+                    source_line = line.old_line,
+                    pair_content = nil,
+                })
+                table.insert(new_lines, {
+                    type = "context",
+                    content = line.content,
+                    source_line = line.new_line,
+                    pair_content = nil,
+                })
+                line_idx = line_idx + 1
+            elseif line.type == "delete" then
+                local deletes = {}
+                local scan = line_idx
+                while scan <= #lines and lines[scan].type == "delete" do
+                    table.insert(deletes, lines[scan])
+                    scan = scan + 1
+                end
+
+                local adds = {}
+                while scan <= #lines and lines[scan].type == "add" do
+                    table.insert(adds, lines[scan])
+                    scan = scan + 1
+                end
+
+                local max_count = math.max(#deletes, #adds)
+                for pair_idx = 1, max_count do
+                    local delete_line = deletes[pair_idx]
+                    local add_line = adds[pair_idx]
+
+                    if delete_line and add_line then
+                        table.insert(old_lines, {
+                            type = "delete",
+                            content = delete_line.content,
+                            source_line = delete_line.old_line,
+                            pair_content = add_line.content,
+                        })
+                        table.insert(new_lines, {
+                            type = "add",
+                            content = add_line.content,
+                            source_line = add_line.new_line,
+                            pair_content = delete_line.content,
+                        })
+                    elseif delete_line then
+                        table.insert(old_lines, {
+                            type = "delete",
+                            content = delete_line.content,
+                            source_line = delete_line.old_line,
+                            pair_content = nil,
+                        })
+                        table.insert(new_lines, {
+                            type = "padding",
+                            content = "",
+                            source_line = nil,
+                            pair_content = nil,
+                        })
+                    elseif add_line then
+                        table.insert(old_lines, {
+                            type = "padding",
+                            content = "",
+                            source_line = nil,
+                            pair_content = nil,
+                        })
+                        table.insert(new_lines, {
+                            type = "add",
+                            content = add_line.content,
+                            source_line = add_line.new_line,
+                            pair_content = nil,
+                        })
+                    end
+                end
+
+                line_idx = scan
+            elseif line.type == "add" then
+                table.insert(old_lines, {
+                    type = "padding",
+                    content = "",
+                    source_line = nil,
+                    pair_content = nil,
+                })
+                table.insert(new_lines, {
+                    type = "add",
+                    content = line.content,
+                    source_line = line.new_line,
+                    pair_content = nil,
+                })
+                line_idx = line_idx + 1
+            else
+                line_idx = line_idx + 1
+            end
+        end
+    end
+
+    return old_lines, new_lines
+end
+
 ---Get the source line number for a rendered line
 ---@param rendered_line_num number 1-based line number in rendered buffer
 ---@param render_lines DiffLine[]

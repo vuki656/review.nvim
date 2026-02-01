@@ -39,8 +39,7 @@ function M.generate()
 
         for _, comment in ipairs(comments) do
             local type_label = type_labels[comment.type] or "Unknown"
-            local line_info = comment.original_line
-                    and string.format("Line %d", comment.original_line)
+            local line_info = comment.original_line and string.format("Line %d", comment.original_line)
                 or string.format("Line %d", comment.line)
 
             table.insert(lines, string.format("### %s [%s]", line_info, type_label))

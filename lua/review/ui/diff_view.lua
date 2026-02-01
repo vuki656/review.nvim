@@ -1,5 +1,6 @@
 local diff_parser = require("review.core.diff")
 local git = require("review.core.git")
+local layout = require("review.ui.layout")
 local state = require("review.state")
 
 local M = {}
@@ -11,8 +12,17 @@ local M = {}
 ---@field render_lines table[]
 ---@field ns_id number
 
+---@class SplitDiffState
+---@field old_bufnr number
+---@field new_bufnr number
+---@field old_lines table[]
+---@field new_lines table[]
+
 ---@type DiffViewComponent|nil
 M.current = nil
+
+---@type SplitDiffState|nil
+M.split_state = nil
 
 ---Namespace for diff highlights
 local ns_diff = vim.api.nvim_create_namespace("review_diff")
@@ -355,6 +365,160 @@ local function render_diff(bufnr, file)
     return render_lines
 end
 
+---Render split (side-by-side) diff to two buffers
+---@param old_bufnr number
+---@param new_bufnr number
+---@param file string
+---@return table[]|nil old_lines, table[]|nil new_lines
+local function render_split_diff(old_bufnr, new_bufnr, file)
+    local result = git.get_diff(file, state.state.base)
+    if not result.success then
+        return nil, nil
+    end
+
+    if result.output == "" then
+        return nil, nil
+    end
+
+    local parsed = diff_parser.parse(result.output)
+    local old_lines, new_lines = diff_parser.get_split_render_lines(parsed)
+
+    local old_display = {}
+    local new_display = {}
+    for _, line in ipairs(old_lines) do
+        table.insert(old_display, line.content)
+    end
+    for _, line in ipairs(new_lines) do
+        table.insert(new_display, line.content)
+    end
+
+    for _, bufnr in ipairs({ old_bufnr, new_bufnr }) do
+        vim.bo[bufnr].readonly = false
+        vim.bo[bufnr].modifiable = true
+    end
+
+    vim.api.nvim_buf_set_lines(old_bufnr, 0, -1, false, old_display)
+    vim.api.nvim_buf_set_lines(new_bufnr, 0, -1, false, new_display)
+
+    local ext = vim.fn.fnamemodify(file, ":e")
+    local ft = vim.filetype.match({ filename = file }) or ext
+    if ft and ft ~= "" then
+        vim.bo[old_bufnr].filetype = ft
+        vim.bo[new_bufnr].filetype = ft
+    end
+
+    for _, bufnr in ipairs({ old_bufnr, new_bufnr }) do
+        vim.bo[bufnr].modifiable = false
+        vim.bo[bufnr].readonly = true
+    end
+
+    local is_new_file = parsed.file_old == "/dev/null"
+    local is_deleted_file = parsed.file_new == "/dev/null"
+
+    vim.api.nvim_buf_clear_namespace(old_bufnr, ns_diff, 0, -1)
+    vim.api.nvim_buf_clear_namespace(new_bufnr, ns_diff, 0, -1)
+
+    for i, line in ipairs(old_lines) do
+        if line.type == "filepath" then
+            local text = old_display[i] or ""
+            if #text > 0 then
+                vim.api.nvim_buf_set_extmark(old_bufnr, ns_diff, i - 1, 0, {
+                    end_col = #text,
+                    hl_group = "ReviewDiffFilePath",
+                    priority = 10000,
+                })
+            end
+        elseif line.type == "delete" then
+            local extmark_opts = {
+                sign_text = "▌",
+                sign_hl_group = "ReviewDiffSignDelete",
+            }
+            if not is_deleted_file then
+                extmark_opts.line_hl_group = "ReviewDiffDelete"
+            end
+            vim.api.nvim_buf_set_extmark(old_bufnr, ns_diff, i - 1, 0, extmark_opts)
+
+            if line.pair_content then
+                local ranges = compute_inline_diff(line.pair_content, line.content)
+                for _, range in ipairs(ranges) do
+                    if range[1] < range[2] then
+                        vim.api.nvim_buf_add_highlight(
+                            old_bufnr,
+                            ns_diff,
+                            "ReviewDiffDeleteInline",
+                            i - 1,
+                            range[1],
+                            range[2]
+                        )
+                    end
+                end
+            end
+        elseif line.type == "padding" then
+            vim.api.nvim_buf_set_extmark(old_bufnr, ns_diff, i - 1, 0, {
+                line_hl_group = "ReviewDiffPadding",
+                sign_text = " ",
+                sign_hl_group = "ReviewDiffSignContext",
+            })
+        elseif line.type == "context" then
+            vim.api.nvim_buf_set_extmark(old_bufnr, ns_diff, i - 1, 0, {
+                sign_text = " ",
+                sign_hl_group = "ReviewDiffSignContext",
+            })
+        end
+    end
+
+    for i, line in ipairs(new_lines) do
+        if line.type == "filepath" then
+            local text = new_display[i] or ""
+            if #text > 0 then
+                vim.api.nvim_buf_set_extmark(new_bufnr, ns_diff, i - 1, 0, {
+                    end_col = #text,
+                    hl_group = "ReviewDiffFilePath",
+                    priority = 10000,
+                })
+            end
+        elseif line.type == "add" then
+            local extmark_opts = {
+                sign_text = "▌",
+                sign_hl_group = "ReviewDiffSignAdd",
+            }
+            if not is_new_file then
+                extmark_opts.line_hl_group = "ReviewDiffAdd"
+            end
+            vim.api.nvim_buf_set_extmark(new_bufnr, ns_diff, i - 1, 0, extmark_opts)
+
+            if line.pair_content then
+                local ranges = compute_inline_diff(line.pair_content, line.content)
+                for _, range in ipairs(ranges) do
+                    if range[1] < range[2] then
+                        vim.api.nvim_buf_add_highlight(
+                            new_bufnr,
+                            ns_diff,
+                            "ReviewDiffAddInline",
+                            i - 1,
+                            range[1],
+                            range[2]
+                        )
+                    end
+                end
+            end
+        elseif line.type == "padding" then
+            vim.api.nvim_buf_set_extmark(new_bufnr, ns_diff, i - 1, 0, {
+                line_hl_group = "ReviewDiffPadding",
+                sign_text = " ",
+                sign_hl_group = "ReviewDiffSignContext",
+            })
+        elseif line.type == "context" then
+            vim.api.nvim_buf_set_extmark(new_bufnr, ns_diff, i - 1, 0, {
+                sign_text = " ",
+                sign_hl_group = "ReviewDiffSignContext",
+            })
+        end
+    end
+
+    return old_lines, new_lines
+end
+
 ---Render comment markers
 ---@param bufnr number
 ---@param file string
@@ -459,6 +623,13 @@ local function get_current_source_line()
     return diff_parser.get_source_line(line_num, M.current.render_lines)
 end
 
+---Check if a split line is a change
+---@param line table
+---@return boolean
+local function is_split_change(line)
+    return line.type == "add" or line.type == "delete"
+end
+
 ---Navigate to next change (add/delete block)
 local function goto_next_hunk()
     if not M.current or not M.current.render_lines then
@@ -467,7 +638,7 @@ local function goto_next_hunk()
 
     local cursor = vim.api.nvim_win_get_cursor(0)
     local current_line = cursor[1]
-    local lines = M.current.render_lines
+    local lines = M.split_state and M.split_state.new_lines or M.current.render_lines
 
     -- Find next line that starts a change block (after context)
     local in_change = lines[current_line]
@@ -504,7 +675,7 @@ local function goto_prev_hunk()
 
     local cursor = vim.api.nvim_win_get_cursor(0)
     local current_line = cursor[1]
-    local lines = M.current.render_lines
+    local lines = M.split_state and M.split_state.new_lines or M.current.render_lines
 
     -- Find the start of previous change block
     local found_start = nil
@@ -613,6 +784,15 @@ local function add_comment()
 
     local cursor = vim.api.nvim_win_get_cursor(0)
     local line_num = cursor[1]
+
+    if M.split_state then
+        local new_line = M.split_state.new_lines[line_num]
+        if new_line and new_line.type == "padding" then
+            vim.notify("Cannot comment on this line", vim.log.levels.WARN)
+            return
+        end
+    end
+
     local original_line = get_current_source_line()
     local file = M.current.file
     local bufnr = M.current.bufnr
@@ -769,6 +949,7 @@ local function show_help()
         "  [c      Previous hunk",
         "  ]f      Next file",
         "  [f      Previous file",
+        "  S       Toggle split/unified diff",
         "  <C-n>   Toggle file tree",
         "  q/<Esc> Close review",
         "  ?       Show this help",
@@ -784,43 +965,54 @@ end
 ---Setup keymaps for diff view
 ---@param bufnr number
 ---@param callbacks table
-local function setup_keymaps(bufnr, callbacks)
-    -- Add comment
-    vim.keymap.set("n", "c", add_comment, { buffer = bufnr, desc = "Add comment" })
-
-    -- Delete comment
-    vim.keymap.set("n", "dc", delete_comment, { buffer = bufnr, desc = "Delete comment" })
-
-    -- Next hunk
-    vim.keymap.set("n", "]c", goto_next_hunk, { buffer = bufnr, desc = "Next hunk" })
-
-    -- Previous hunk
-    vim.keymap.set("n", "[c", goto_prev_hunk, { buffer = bufnr, desc = "Previous hunk" })
-
-    -- Next file
-    vim.keymap.set("n", "]f", goto_next_file, { buffer = bufnr, desc = "Next file" })
-
-    -- Previous file
-    vim.keymap.set("n", "[f", goto_prev_file, { buffer = bufnr, desc = "Previous file" })
-
-    -- Close (shows exit popup)
+---@param old_bufnr number|nil
+local function setup_keymaps(bufnr, callbacks, old_bufnr)
     local function close_review()
         if callbacks.on_close then
             callbacks.on_close()
         end
     end
 
-    vim.keymap.set("n", "q", close_review, { buffer = bufnr, nowait = true, desc = "Close review" })
-    vim.keymap.set("n", "<Esc>", close_review, { buffer = bufnr, nowait = true, desc = "Close review" })
+    local function toggle_mode()
+        M.toggle_diff_mode(callbacks)
+    end
 
-    -- Help
-    vim.keymap.set("n", "?", show_help, { buffer = bufnr, desc = "Show help" })
+    local function set_nav_keymaps(target_bufnr)
+        vim.keymap.set("n", "]c", goto_next_hunk, { buffer = target_bufnr, desc = "Next hunk" })
+        vim.keymap.set("n", "[c", goto_prev_hunk, { buffer = target_bufnr, desc = "Previous hunk" })
+        vim.keymap.set("n", "]f", goto_next_file, { buffer = target_bufnr, desc = "Next file" })
+        vim.keymap.set("n", "[f", goto_prev_file, { buffer = target_bufnr, desc = "Previous file" })
+        vim.keymap.set("n", "q", close_review, { buffer = target_bufnr, nowait = true, desc = "Close review" })
+        vim.keymap.set("n", "<Esc>", close_review, { buffer = target_bufnr, nowait = true, desc = "Close review" })
+        vim.keymap.set("n", "?", show_help, { buffer = target_bufnr, desc = "Show help" })
+        vim.keymap.set("n", "S", toggle_mode, { buffer = target_bufnr, desc = "Toggle split/unified diff" })
+        vim.keymap.set("n", "<C-n>", function()
+            local ui = require("review.ui")
+            ui.toggle_file_tree()
+        end, { buffer = target_bufnr, desc = "Toggle file tree" })
+    end
 
-    -- Toggle file tree
-    vim.keymap.set("n", "<C-n>", function()
-        local ui = require("review.ui")
-        ui.toggle_file_tree()
-    end, { buffer = bufnr, desc = "Toggle file tree" })
+    vim.keymap.set("n", "c", add_comment, { buffer = bufnr, desc = "Add comment" })
+    vim.keymap.set("n", "dc", delete_comment, { buffer = bufnr, desc = "Delete comment" })
+
+    set_nav_keymaps(bufnr)
+
+    if old_bufnr then
+        set_nav_keymaps(old_bufnr)
+    end
+end
+
+---Apply common window options to a diff view window
+---@param winid number
+---@param bufnr number
+local function apply_diff_view_win_options(winid, bufnr)
+    vim.wo[winid].spell = false
+    vim.wo[winid].list = false
+
+    local ft = vim.bo[bufnr].filetype
+    local wrap = ft == "markdown" or ft == "text"
+    vim.wo[winid].wrap = wrap
+    vim.wo[winid].linebreak = wrap
 end
 
 ---Create the diff view component
@@ -831,7 +1023,60 @@ end
 function M.create(layout_component, file, callbacks)
     local bufnr = layout_component.bufnr
 
-    -- Render diff
+    if state.state.diff_mode == "split" then
+        if not layout.is_split_mode() then
+            layout.enter_split_mode()
+        end
+
+        local old_component = layout.get_diff_view_old()
+        local new_component = layout.get_diff_view_new()
+
+        if not old_component or not new_component then
+            state.state.diff_mode = "unified"
+            return M.create(layout_component, file, callbacks)
+        end
+
+        local old_lines, new_lines = render_split_diff(old_component.bufnr, new_component.bufnr, file)
+
+        if not old_lines then
+            state.state.diff_mode = "unified"
+            layout.exit_split_mode()
+            return M.create(layout_component, file, callbacks)
+        end
+
+        M.split_state = {
+            old_bufnr = old_component.bufnr,
+            new_bufnr = new_component.bufnr,
+            old_lines = old_lines,
+            new_lines = new_lines,
+        }
+
+        M.current = {
+            bufnr = new_component.bufnr,
+            winid = new_component.winid,
+            file = file,
+            render_lines = new_lines,
+            ns_id = ns_diff,
+        }
+
+        render_comments(new_component.bufnr, file)
+
+        setup_keymaps(new_component.bufnr, callbacks, old_component.bufnr)
+
+        pcall(vim.api.nvim_buf_set_name, old_component.bufnr, "Review (old): " .. file)
+        pcall(vim.api.nvim_buf_set_name, new_component.bufnr, "Review (new): " .. file)
+
+        apply_diff_view_win_options(old_component.winid, old_component.bufnr)
+        apply_diff_view_win_options(new_component.winid, new_component.bufnr)
+
+        return M.current
+    end
+
+    if layout.is_split_mode() then
+        layout.exit_split_mode()
+    end
+    M.split_state = nil
+
     local render_lines = render_diff(bufnr, file)
 
     M.current = {
@@ -842,26 +1087,57 @@ function M.create(layout_component, file, callbacks)
         ns_id = ns_diff,
     }
 
-    -- Render comments
     render_comments(bufnr, file)
 
-    -- Setup keymaps
     setup_keymaps(bufnr, callbacks)
 
-    -- Set buffer name and options (ignore if name already exists)
     pcall(vim.api.nvim_buf_set_name, bufnr, "Review: " .. file)
 
-    -- Disable spell check and list chars on diff view
-    vim.wo[layout_component.winid].spell = false
-    vim.wo[layout_component.winid].list = false
-
-    -- Enable wrap for text-heavy filetypes
-    local ft = vim.bo[bufnr].filetype
-    local wrap = ft == "markdown" or ft == "text"
-    vim.wo[layout_component.winid].wrap = wrap
-    vim.wo[layout_component.winid].linebreak = wrap
+    apply_diff_view_win_options(layout_component.winid, bufnr)
 
     return M.current
+end
+
+---Toggle between unified and split diff modes
+---@param callbacks table
+function M.toggle_diff_mode(callbacks)
+    if not M.current then
+        return
+    end
+
+    local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
+    local source_line = nil
+    local current_render_lines = M.split_state and M.split_state.new_lines or M.current.render_lines
+
+    if current_render_lines and current_render_lines[cursor_line] then
+        source_line = current_render_lines[cursor_line].source_line
+            or current_render_lines[cursor_line].new_line
+            or current_render_lines[cursor_line].old_line
+    end
+
+    if state.state.diff_mode == "unified" then
+        state.state.diff_mode = "split"
+    else
+        state.state.diff_mode = "unified"
+    end
+
+    local diff_split = layout.get_diff_view()
+    if not diff_split then
+        return
+    end
+
+    M.create(diff_split, M.current.file, callbacks)
+
+    if source_line and M.current.render_lines then
+        local target_lines = M.split_state and M.split_state.new_lines or M.current.render_lines
+        for i, line in ipairs(target_lines) do
+            local line_nr = line.source_line or line.new_line or line.old_line
+            if line_nr and line_nr >= source_line then
+                pcall(vim.api.nvim_win_set_cursor, 0, { i, 0 })
+                return
+            end
+        end
+    end
 end
 
 ---Render the diff (for refreshing)
@@ -870,8 +1146,18 @@ function M.render()
         return
     end
 
-    M.current.render_lines = render_diff(M.current.bufnr, M.current.file)
-    render_comments(M.current.bufnr, M.current.file)
+    if M.split_state then
+        local old_lines, new_lines = render_split_diff(M.split_state.old_bufnr, M.split_state.new_bufnr, M.current.file)
+        if old_lines then
+            M.split_state.old_lines = old_lines
+            M.split_state.new_lines = new_lines
+            M.current.render_lines = new_lines
+        end
+        render_comments(M.split_state.new_bufnr, M.current.file)
+    else
+        M.current.render_lines = render_diff(M.current.bufnr, M.current.file)
+        render_comments(M.current.bufnr, M.current.file)
+    end
 end
 
 ---Get the current component
@@ -883,6 +1169,7 @@ end
 ---Destroy the component
 function M.destroy()
     M.current = nil
+    M.split_state = nil
 end
 
 return M

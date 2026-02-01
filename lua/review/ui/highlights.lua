@@ -19,6 +19,9 @@ function M.setup()
         -- Diff view file path header
         ReviewDiffFilePath = { fg = "#abb2bf", bold = true },
 
+        -- Split diff padding (empty side)
+        ReviewDiffPadding = { bg = "#1e1e1e" },
+
         -- Legacy (keep for compatibility)
         ReviewDiffChange = { fg = "#a8c8e8", bg = "#2a2a3a" },
         ReviewDiffText = { fg = "#e5c07b", bg = "#3e4452", bold = true },
