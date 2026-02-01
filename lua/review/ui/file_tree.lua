@@ -721,6 +721,8 @@ local function show_help()
         "  C       Commit staged changes",
         "  P       Push to remote",
         "  `       Toggle list/tree view",
+        "  }       Expand diff context",
+        "  {       Shrink diff context",
         "  <C-n>   Toggle file tree",
         "  L       Show full path",
         "  q/<Esc> Close review",
@@ -1141,6 +1143,23 @@ local function setup_keymaps(bufnr, callbacks)
             end,
         })
     end, { buffer = bufnr, desc = "Toggle split/unified diff" })
+
+    -- Expand/shrink diff context
+    vim.keymap.set("n", "}", function()
+        state.state.diff_context = state.state.diff_context + 1
+        local ui = require("review.ui")
+        if state.state.current_file then
+            ui.show_diff(state.state.current_file)
+        end
+    end, { buffer = bufnr, desc = "Expand diff context" })
+
+    vim.keymap.set("n", "{", function()
+        state.state.diff_context = math.max(0, state.state.diff_context - 1)
+        local ui = require("review.ui")
+        if state.state.current_file then
+            ui.show_diff(state.state.current_file)
+        end
+    end, { buffer = bufnr, desc = "Shrink diff context" })
 end
 
 ---Get node at a specific line (1-indexed)

@@ -20,6 +20,7 @@
 ---@field diff_mode "unified"|"split"
 ---@field base string Git base for comparison
 ---@field comment_id_counter number
+---@field diff_context number
 
 local M = {}
 
@@ -32,6 +33,7 @@ M.state = {
     base = "HEAD",
     comment_id_counter = 0,
     is_pushing = false,
+    diff_context = 3,
 }
 
 function M.reset()
@@ -43,6 +45,7 @@ function M.reset()
         base = "HEAD",
         comment_id_counter = 0,
         is_pushing = false,
+        diff_context = 3,
     }
 end
 

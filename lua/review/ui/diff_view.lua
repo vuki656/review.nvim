@@ -1035,6 +1035,8 @@ local function show_help()
         "  [c      Previous hunk",
         "  ]f      Next file",
         "  [f      Previous file",
+        "  }       Expand diff context",
+        "  {       Shrink diff context",
         "  S       Toggle split/unified diff",
         "  <C-n>   Toggle file tree",
         "  q/<Esc> Close review",
@@ -1076,6 +1078,16 @@ local function setup_keymaps(bufnr, callbacks, old_bufnr)
             local ui = require("review.ui")
             ui.toggle_file_tree()
         end, { buffer = target_bufnr, desc = "Toggle file tree" })
+        vim.keymap.set("n", "}", function()
+            state.state.diff_context = state.state.diff_context + 1
+            local ui = require("review.ui")
+            ui.show_diff(state.state.current_file)
+        end, { buffer = target_bufnr, desc = "Expand diff context" })
+        vim.keymap.set("n", "{", function()
+            state.state.diff_context = math.max(0, state.state.diff_context - 1)
+            local ui = require("review.ui")
+            ui.show_diff(state.state.current_file)
+        end, { buffer = target_bufnr, desc = "Shrink diff context" })
     end
 
     vim.keymap.set("n", "c", add_comment, { buffer = bufnr, desc = "Add comment" })

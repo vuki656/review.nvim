@@ -159,11 +159,12 @@ function M.get_diff(file, base)
     end
 
     -- Get the appropriate diff
+    local context_flag = "-U" .. (require("review.state").state.diff_context or 3)
     local cmd
     if is_staged_only then
-        cmd = { "git", "diff", "-M", "--cached", "--", file }
+        cmd = { "git", "diff", "-M", context_flag, "--cached", "--", file }
     else
-        cmd = { "git", "diff", "-M", base, "--", file }
+        cmd = { "git", "diff", "-M", context_flag, base, "--", file }
     end
 
     local result = vim.system(cmd, { text = true, cwd = git_root }):wait()
