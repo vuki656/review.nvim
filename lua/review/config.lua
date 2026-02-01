@@ -41,7 +41,7 @@ local M = {}
 ---@type ReviewConfig
 M.defaults = {
     keymaps = {
-        toggle = "<leader>lr",
+        toggle = nil,
     },
     diff = {
         base = "HEAD", -- Compare against HEAD (unstaged changes)
@@ -57,8 +57,8 @@ M.defaults = {
     },
     quick_comments = {
         keymaps = {
-            add = "<leader>qi",
-            toggle_panel = "<leader>qo",
+            add = nil,
+            toggle_panel = nil,
         },
         panel = {
             width = 65,
