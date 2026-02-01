@@ -4,6 +4,10 @@
 ---@field ui ReviewUIConfig
 ---@field tmux ReviewTmuxConfig
 ---@field quick_comments ReviewQuickCommentsConfig
+---@field export ReviewExportConfig
+---@field auto_refresh ReviewAutoRefreshConfig
+---@field persistence ReviewPersistenceConfig
+---@field templates ReviewTemplate[]
 
 ---@class ReviewKeymaps
 ---@field toggle string
@@ -36,6 +40,21 @@
 ---@class ReviewQuickCommentsSignsConfig
 ---@field enabled boolean Whether to show gutter signs
 
+---@class ReviewExportConfig
+---@field context_lines number Number of context lines to include around commented line
+
+---@class ReviewAutoRefreshConfig
+---@field enabled boolean Whether to auto-refresh on file changes
+---@field debounce_ms number Debounce interval in milliseconds
+
+---@class ReviewPersistenceConfig
+---@field enabled boolean Whether to persist review sessions
+
+---@class ReviewTemplate
+---@field key string Single character shortcut key
+---@field label string Display label
+---@field text string Template text to insert
+
 local M = {}
 
 ---@type ReviewConfig
@@ -67,6 +86,26 @@ M.defaults = {
         signs = {
             enabled = true,
         },
+    },
+    export = {
+        context_lines = 3,
+    },
+    auto_refresh = {
+        enabled = true,
+        debounce_ms = 500,
+    },
+    persistence = {
+        enabled = true,
+    },
+    templates = {
+        { key = "e", label = "Extract", text = "Extract this into a separate function/component" },
+        { key = "r", label = "Rename", text = "Rename to: " },
+        { key = "m", label = "Move", text = "Move this to a separate file" },
+        { key = "t", label = "Types", text = "Add proper types" },
+        { key = "h", label = "Error handling", text = "Add error handling" },
+        { key = "p", label = "Performance", text = "Performance concern: " },
+        { key = "s", label = "Simplify", text = "Simplify this" },
+        { key = "d", label = "Delete", text = "Remove this" },
     },
 }
 

@@ -11,6 +11,7 @@
 ---@field path string File path
 ---@field reviewed boolean Whether file has been reviewed (staged)
 ---@field comments ReviewComment[]
+---@field render_lines table[]|nil Cached parsed diff lines for export context
 
 ---@class ReviewState
 ---@field is_open boolean Whether UI is currently open

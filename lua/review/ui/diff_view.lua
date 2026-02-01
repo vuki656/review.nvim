@@ -362,6 +362,8 @@ local function render_diff(bufnr, file)
         end
     end
 
+    state.get_file_state(file).render_lines = render_lines
+
     return render_lines
 end
 
@@ -515,6 +517,8 @@ local function render_split_diff(old_bufnr, new_bufnr, file)
             })
         end
     end
+
+    state.get_file_state(file).render_lines = new_lines
 
     return old_lines, new_lines
 end
@@ -793,7 +797,8 @@ local function add_comment()
         end
     end
 
-    local original_line = get_current_source_line()
+    local source_line = get_current_source_line()
+    local original_line = source_line or line_num
     local file = M.current.file
     local bufnr = M.current.bufnr
 
@@ -915,6 +920,86 @@ local function add_comment()
         update_title()
     end, { buffer = input_buf, nowait = true })
 
+    -- Template picker with Ctrl-T
+    vim.keymap.set("i", "<C-t>", function()
+        local cfg = require("review.config").get()
+        local templates = cfg.templates
+        if not templates or #templates == 0 then
+            return
+        end
+
+        local picker_lines = {}
+        for _, template in ipairs(templates) do
+            table.insert(picker_lines, string.format("  %s  %s", template.key, template.label))
+        end
+
+        local picker_width = 30
+        for _, line in ipairs(picker_lines) do
+            picker_width = math.max(picker_width, vim.api.nvim_strwidth(line) + 4)
+        end
+
+        local picker_buf = vim.api.nvim_create_buf(false, true)
+        vim.api.nvim_buf_set_lines(picker_buf, 0, -1, false, picker_lines)
+
+        for line_idx, _ in ipairs(templates) do
+            vim.api.nvim_buf_add_highlight(picker_buf, -1, "ReviewTemplateKey", line_idx - 1, 2, 3)
+            vim.api.nvim_buf_add_highlight(picker_buf, -1, "ReviewTemplateLabel", line_idx - 1, 5, -1)
+        end
+
+        local picker_win = vim.api.nvim_open_win(picker_buf, true, {
+            relative = "cursor",
+            row = 1,
+            col = 0,
+            width = picker_width,
+            height = #picker_lines,
+            style = "minimal",
+            border = "rounded",
+            title = " Templates ",
+            title_pos = "center",
+        })
+
+        vim.api.nvim_set_option_value(
+            "winhighlight",
+            "FloatBorder:ReviewTemplateBorder,FloatTitle:ReviewTemplateTitle",
+            { win = picker_win }
+        )
+
+        local function close_picker()
+            if vim.api.nvim_win_is_valid(picker_win) then
+                vim.api.nvim_win_close(picker_win, true)
+            end
+            if vim.api.nvim_buf_is_valid(picker_buf) then
+                vim.api.nvim_buf_delete(picker_buf, { force = true })
+            end
+            if vim.api.nvim_win_is_valid(input_win) then
+                vim.api.nvim_set_current_win(input_win)
+                vim.cmd("startinsert!")
+            end
+        end
+
+        local function apply_template(template)
+            close_picker()
+            if vim.api.nvim_buf_is_valid(input_buf) then
+                vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, { template.text })
+                if template.text:match(": $") then
+                    vim.api.nvim_win_set_cursor(input_win, { 1, #template.text })
+                else
+                    submit()
+                end
+            end
+        end
+
+        for _, template in ipairs(templates) do
+            vim.keymap.set("n", template.key, function()
+                apply_template(template)
+            end, { buffer = picker_buf, nowait = true })
+        end
+
+        vim.keymap.set("n", "<Esc>", close_picker, { buffer = picker_buf, nowait = true })
+        vim.keymap.set("n", "q", close_picker, { buffer = picker_buf, nowait = true })
+        vim.keymap.set("n", "<C-t>", close_picker, { buffer = picker_buf, nowait = true })
+    end, { buffer = input_buf, nowait = true })
+
     -- Start in insert mode
     vim.cmd("startinsert")
 end
@@ -944,6 +1029,7 @@ local function show_help()
         "Diff View Keymaps",
         "",
         "  c       Add comment (Tab to cycle type)",
+        "            <C-t> to open template picker",
         "  dc      Delete comment",
         "  ]c      Next hunk",
         "  [c      Previous hunk",

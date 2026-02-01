@@ -2,16 +2,99 @@ local state = require("review.state")
 
 local M = {}
 
----Comment type labels
 local type_labels = {
-    note = "Note",
-    fix = "Fix",
-    question = "Question",
+    note = "NOTE",
+    fix = "FIX",
+    question = "QUESTION",
 }
+
+---Get file extension for fenced code block language
+---@param file string
+---@return string
+local function get_language(file)
+    local ext = vim.fn.fnamemodify(file, ":e")
+    local lang_map = {
+        ts = "typescript",
+        js = "javascript",
+        py = "python",
+        rb = "ruby",
+        rs = "rust",
+        yml = "yaml",
+        md = "markdown",
+    }
+    return lang_map[ext] or ext
+end
+
+---Extract context lines from render_lines around a comment
+---@param render_lines table[]|nil
+---@param comment_line number
+---@param context_count number
+---@return string[]|nil
+local function get_diff_context(render_lines, comment_line, context_count)
+    if not render_lines or #render_lines == 0 then
+        return nil
+    end
+
+    if comment_line < 1 or comment_line > #render_lines then
+        return nil
+    end
+
+    local start_idx = math.max(1, comment_line - context_count)
+    local end_idx = math.min(#render_lines, comment_line + context_count)
+
+    local context = {}
+    for index = start_idx, end_idx do
+        local line = render_lines[index]
+        if line and line.type ~= "filepath" then
+            local prefix = ""
+            if line.type == "add" then
+                prefix = "+"
+            elseif line.type == "delete" then
+                prefix = "-"
+            else
+                prefix = " "
+            end
+            table.insert(context, prefix .. (line.content or ""))
+        end
+    end
+
+    return #context > 0 and context or nil
+end
+
+---Read source file lines for context when no diff is available
+---@param file string
+---@param line number
+---@param context_count number
+---@return string[]|nil
+local function get_source_context(file, line, context_count)
+    local git = require("review.core.git")
+    local git_root = git.get_root()
+    if not git_root then
+        return nil
+    end
+
+    local full_path = git_root .. "/" .. file
+    local content = vim.fn.readfile(full_path)
+    if not content or #content == 0 then
+        return nil
+    end
+
+    local start_idx = math.max(1, line - context_count)
+    local end_idx = math.min(#content, line + context_count)
+
+    local context = {}
+    for index = start_idx, end_idx do
+        table.insert(context, " " .. (content[index] or ""))
+    end
+
+    return #context > 0 and context or nil
+end
 
 ---Generate markdown export of all comments
 ---@return string
 function M.generate()
+    local config = require("review.config").get()
+    local context_count = config.export.context_lines
     local lines = {}
 
     table.insert(lines, "# Code Review Comments")
@@ -19,7 +102,6 @@ function M.generate()
 
     local grouped = state.get_comments_grouped_by_file()
 
-    -- Sort files alphabetically
     local files = {}
     for file in pairs(grouped) do
         table.insert(files, file)
@@ -31,19 +113,49 @@ function M.generate()
         return table.concat(lines, "\n")
     end
 
+    local language_cache = {}
+
     for _, file in ipairs(files) do
         local comments = grouped[file]
+        local file_state = state.state.files[file]
+        local render_lines_data = file_state and file_state.render_lines
 
         table.insert(lines, "## " .. file)
         table.insert(lines, "")
 
         for _, comment in ipairs(comments) do
-            local type_label = type_labels[comment.type] or "Unknown"
-            local line_info = comment.original_line and string.format("Line %d", comment.original_line)
-                or string.format("Line %d", comment.line)
+            local type_label = type_labels[comment.type] or "NOTE"
+            local display_line = comment.original_line or comment.line
 
-            table.insert(lines, string.format("### %s [%s]", line_info, type_label))
+            table.insert(lines, string.format("### [%s] %s:%d", type_label, file, display_line))
             table.insert(lines, "")
+
+            if not language_cache[file] then
+                language_cache[file] = get_language(file)
+            end
+            local language = language_cache[file]
+
+            local context = get_diff_context(render_lines_data, comment.line, context_count)
+            if context then
+                table.insert(lines, "```" .. language)
+                for _, context_line in ipairs(context) do
+                    table.insert(lines, context_line)
+                end
+                table.insert(lines, "```")
+                table.insert(lines, "")
+            else
+                local source_context = get_source_context(file, display_line, context_count)
+                if source_context then
+                    table.insert(lines, "*(no changes)*")
+                    table.insert(lines, "```" .. language)
+                    for _, context_line in ipairs(source_context) do
+                        table.insert(lines, context_line)
+                    end
+                    table.insert(lines, "```")
+                    table.insert(lines, "")
+                end
+            end
+
             table.insert(lines, comment.text)
             table.insert(lines, "")
         end
@@ -57,7 +169,6 @@ end
 function M.to_clipboard()
     local content = M.generate()
 
-    -- Use system clipboard
     vim.fn.setreg("+", content)
     vim.fn.setreg("*", content)
 
@@ -119,7 +230,6 @@ function M.to_tmux(target, silent)
         return false
     end
 
-    -- Write to temp file to avoid shell escaping issues
     local tmpfile = os.tmpname()
     local file = io.open(tmpfile, "w")
     if not file then
@@ -131,7 +241,6 @@ function M.to_tmux(target, silent)
     file:write(content)
     file:close()
 
-    -- Load into tmux buffer and paste to target pane
     local load_cmd = string.format("tmux load-buffer %s", tmpfile)
     local paste_cmd = string.format("tmux paste-buffer -t %s", target)
 
@@ -160,7 +269,6 @@ function M.to_tmux(target, silent)
                     return
                 end
 
-                -- Optionally send Enter key
                 if cfg.tmux.auto_enter then
                     vim.system({ "tmux", "send-keys", "-t", target, "Enter" })
                 end

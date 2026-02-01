@@ -85,6 +85,12 @@ function M.setup()
         ReviewQCPanelFile = { fg = "#abb2bf", bold = true },
         ReviewQCPanelContext = { fg = "#5c6370", italic = true },
         ReviewQCPanelLineNr = { fg = "#5c6370" },
+
+        -- Template picker
+        ReviewTemplateKey = { fg = "#e5c07b", bold = true },
+        ReviewTemplateLabel = { fg = "#abb2bf" },
+        ReviewTemplateBorder = { fg = "#5c6370" },
+        ReviewTemplateTitle = { fg = "#61afef", bold = true },
     }
 
     for name, opts in pairs(highlights) do

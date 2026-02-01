@@ -1,6 +1,7 @@
 local commands = require("review.commands")
 local config = require("review.config")
 local export = require("review.export.markdown")
+local persistence = require("review.core.persistence")
 local quick_comments = require("review.quick_comments")
 local state = require("review.state")
 local ui = require("review.ui")
@@ -26,6 +27,11 @@ function M.setup(opts)
 
     -- Set up quick comments
     quick_comments.setup()
+
+    -- Set up session persistence
+    if cfg.persistence.enabled then
+        persistence.setup_autosave()
+    end
 
     -- Set up keymaps
     if cfg.keymaps.toggle then

@@ -4,7 +4,9 @@ local file_tree = require("review.ui.file_tree")
 local git = require("review.core.git")
 local highlights = require("review.ui.highlights")
 local layout = require("review.ui.layout")
+local persistence = require("review.core.persistence")
 local state = require("review.state")
+local watcher = require("review.core.watcher")
 
 local M = {}
 
@@ -32,6 +34,12 @@ function M.open()
 
     state.state.is_open = true
     state.state.diff_mode = config.get().ui.diff_view_mode
+
+    -- Check for saved session
+    local has_session = config.get().persistence.enabled and persistence.exists()
+    if has_session then
+        persistence.load()
+    end
 
     -- Initialize file tree
     file_tree.create(l.file_tree, {
@@ -67,6 +75,20 @@ function M.open()
     else
         -- Show welcome message if no files
         M.show_welcome()
+    end
+
+    -- Start file watcher for auto-refresh
+    local git_root = git.get_root()
+    if git_root then
+        watcher.start(git_root, function()
+            if not state.state.is_open then
+                return
+            end
+            file_tree.refresh()
+            if state.state.current_file then
+                diff_view.render()
+            end
+        end)
     end
 end
 
@@ -158,6 +180,18 @@ local function do_close(action)
             end
         end
     end
+
+    -- Handle persistence
+    if config.get().persistence.enabled then
+        if action == "exit" then
+            persistence.save()
+        else
+            persistence.delete()
+        end
+    end
+
+    -- Stop file watcher
+    watcher.stop()
 
     -- Destroy components
     file_tree.destroy()
