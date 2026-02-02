@@ -30,6 +30,105 @@ local ns_diff = vim.api.nvim_create_namespace("review_diff")
 ---Namespace for comment markers
 local ns_comments = vim.api.nvim_create_namespace("review_comments")
 
+---Namespace for treesitter syntax highlights
+local ns_syntax = vim.api.nvim_create_namespace("review_syntax")
+
+---Apply treesitter highlights to a diff buffer by reconstructing valid source
+---@param bufnr number
+---@param render_lines table[]
+---@param display_lines string[]
+---@param file string
+local function apply_treesitter_highlights(bufnr, render_lines, display_lines, file)
+    vim.api.nvim_buf_clear_namespace(bufnr, ns_syntax, 0, -1)
+
+    local lang = vim.filetype.match({ filename = file })
+    if not lang or lang == "" then
+        return
+    end
+
+    local ok_lang, ts_lang = pcall(vim.treesitter.language.get_lang, lang)
+    if ok_lang and ts_lang then
+        lang = ts_lang
+    end
+
+    local ok_query, query = pcall(vim.treesitter.query.get, lang, "highlights")
+    if not ok_query or not query then
+        return
+    end
+
+    local old_source_lines = {}
+    local new_source_lines = {}
+    local old_line_map = {}
+    local new_line_map = {}
+
+    for index, line in ipairs(render_lines) do
+        if line.type == "context" then
+            table.insert(old_source_lines, display_lines[index])
+            old_line_map[#old_source_lines] = index
+            table.insert(new_source_lines, display_lines[index])
+            new_line_map[#new_source_lines] = index
+        elseif line.type == "delete" then
+            table.insert(old_source_lines, display_lines[index])
+            old_line_map[#old_source_lines] = index
+        elseif line.type == "add" then
+            table.insert(new_source_lines, display_lines[index])
+            new_line_map[#new_source_lines] = index
+        end
+    end
+
+    local function highlight_from_source(source_lines, line_map)
+        if #source_lines == 0 then
+            return
+        end
+
+        local source = table.concat(source_lines, "\n")
+        local ok_parser, parser = pcall(vim.treesitter.get_string_parser, source, lang)
+        if not ok_parser then
+            return
+        end
+
+        local ok_parse, trees = pcall(parser.parse, parser)
+        if not ok_parse or not trees then
+            return
+        end
+
+        for _, tree in ipairs(trees) do
+            for capture_id, node in query:iter_captures(tree:root(), source) do
+                local start_row, start_col, end_row, end_col = node:range()
+                local capture_name = query.captures[capture_id]
+                local hl_group = "@" .. capture_name .. "." .. lang
+
+                if start_row == end_row then
+                    local buf_line = line_map[start_row + 1]
+                    if buf_line then
+                        pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1, start_col, {
+                            end_col = end_col,
+                            hl_group = hl_group,
+                            priority = 50,
+                        })
+                    end
+                else
+                    for row = start_row, end_row do
+                        local buf_line = line_map[row + 1]
+                        if buf_line then
+                            local col_start = row == start_row and start_col or 0
+                            local col_end = row == end_row and end_col or #(display_lines[buf_line] or "")
+                            pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1, col_start, {
+                                end_col = col_end,
+                                hl_group = hl_group,
+                                priority = 50,
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    highlight_from_source(old_source_lines, old_line_map)
+    highlight_from_source(new_source_lines, new_line_map)
+end
+
 ---Split string into tokens (words, punctuation, whitespace)
 ---@param str string
 ---@return table[] tokens with {text, start, end}
@@ -286,15 +385,10 @@ local function render_diff(bufnr, file)
     vim.bo[bufnr].modifiable = true
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, display_lines)
 
-    -- Set filetype for treesitter syntax highlighting
-    local ext = vim.fn.fnamemodify(file, ":e")
-    local ft = vim.filetype.match({ filename = file }) or ext
-    if ft and ft ~= "" then
-        vim.bo[bufnr].filetype = ft
-    end
-
     vim.bo[bufnr].modifiable = false
     vim.bo[bufnr].readonly = true
+
+    apply_treesitter_highlights(bufnr, render_lines, display_lines, file)
 
     -- Find line pairs for word-level diff
     local line_pairs = find_line_pairs(render_lines)
@@ -402,17 +496,13 @@ local function render_split_diff(old_bufnr, new_bufnr, file)
     vim.api.nvim_buf_set_lines(old_bufnr, 0, -1, false, old_display)
     vim.api.nvim_buf_set_lines(new_bufnr, 0, -1, false, new_display)
 
-    local ext = vim.fn.fnamemodify(file, ":e")
-    local ft = vim.filetype.match({ filename = file }) or ext
-    if ft and ft ~= "" then
-        vim.bo[old_bufnr].filetype = ft
-        vim.bo[new_bufnr].filetype = ft
-    end
-
     for _, bufnr in ipairs({ old_bufnr, new_bufnr }) do
         vim.bo[bufnr].modifiable = false
         vim.bo[bufnr].readonly = true
     end
+
+    apply_treesitter_highlights(old_bufnr, old_lines, old_display, file)
+    apply_treesitter_highlights(new_bufnr, new_lines, new_display, file)
 
     local is_new_file = parsed.file_old == "/dev/null"
     local is_deleted_file = parsed.file_new == "/dev/null"
@@ -1107,8 +1197,8 @@ local function apply_diff_view_win_options(winid, bufnr)
     vim.wo[winid].spell = false
     vim.wo[winid].list = false
 
-    local ft = vim.bo[bufnr].filetype
-    local wrap = ft == "markdown" or ft == "text"
+    local ext = state.state.current_file and vim.fn.fnamemodify(state.state.current_file, ":e") or ""
+    local wrap = ext == "md" or ext == "txt"
     vim.wo[winid].wrap = wrap
     vim.wo[winid].linebreak = wrap
 end
