@@ -191,14 +191,10 @@ function M.close_panel()
     panel.close()
 end
 
----Export comments to clipboard
-function M.export()
-    local comments = qc_state.get_all_flat()
-    if #comments == 0 then
-        vim.notify("No comments to export", vim.log.levels.INFO)
-        return
-    end
-
+---Generate markdown content from comments and copy to clipboard
+---@param comments QuickComment[]
+---@return number comment_count
+local function copy_to_clipboard(comments)
     local lines = { "# Quick Comments" }
     local current_file = nil
 
@@ -227,7 +223,49 @@ function M.export()
 
     local content = table.concat(lines, "\n")
     vim.fn.setreg("+", content)
-    vim.notify("Exported " .. #comments .. " comment(s) to clipboard", vim.log.levels.INFO)
+
+    return #comments
+end
+
+---Export comments to clipboard
+function M.export()
+    local comments = qc_state.get_all_flat()
+    if #comments == 0 then
+        vim.notify("No comments to export", vim.log.levels.INFO)
+        return
+    end
+
+    local count = copy_to_clipboard(comments)
+    vim.notify("Exported " .. count .. " comment(s) to clipboard", vim.log.levels.INFO)
+end
+
+---Copy comments to clipboard, clear state, and notify
+function M.copy()
+    local comments = qc_state.get_all_flat()
+    if #comments == 0 then
+        vim.notify("No quick comments to copy", vim.log.levels.INFO)
+        return
+    end
+
+    local comment_count = copy_to_clipboard(comments)
+
+    -- Clear signs from all buffers that have comments
+    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_loaded(bufnr) then
+            signs.clear(bufnr)
+        end
+    end
+
+    -- Clear state
+    qc_state.clear()
+    persistence.save()
+
+    -- Close panel if open
+    if panel.is_open() then
+        panel.close()
+    end
+
+    vim.notify("Copied " .. comment_count .. " quick comment(s) to clipboard and cleared", vim.log.levels.INFO)
 end
 
 ---Set up the quick comments feature
