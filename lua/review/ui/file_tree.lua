@@ -1263,6 +1263,56 @@ local function setup_keymaps(bufnr, callbacks)
         end
     end, { desc = "Shrink diff context", group = "View" })
 
+    -- Open file at first change
+    map("E", function()
+        local line = vim.api.nvim_win_get_cursor(0)[1]
+        local node = M.get_node_at_line(line)
+
+        if not node or not node.is_file or not node.path then
+            return
+        end
+
+        if node.in_deleted_section then
+            vim.notify("Cannot open deleted file", vim.log.levels.WARN)
+            return
+        end
+
+        local diff = require("review.core.diff")
+        local diff_result = git.get_diff(node.path, state.state.base, state.state.base_end)
+        local first_changed_line = nil
+
+        if diff_result.success and diff_result.output ~= "" then
+            local parsed = diff.parse(diff_result.output)
+
+            if parsed.hunks[1] then
+                for _, hunk_line in ipairs(parsed.hunks[1].lines) do
+                    if hunk_line.type == "add" then
+                        first_changed_line = hunk_line.new_line
+                        break
+                    elseif hunk_line.type == "delete" then
+                        first_changed_line = hunk_line.old_line
+                        break
+                    end
+                end
+
+                if not first_changed_line then
+                    first_changed_line = parsed.hunks[1].new_start
+                end
+            end
+        end
+
+        local absolute_path = git.get_root() .. "/" .. node.path
+
+        local ui = require("review.ui")
+        ui.close(false)
+
+        vim.cmd("edit " .. vim.fn.fnameescape(absolute_path))
+
+        if first_changed_line then
+            vim.api.nvim_win_set_cursor(0, { first_changed_line, 0 })
+        end
+    end, { desc = "Open file at first change", group = "Navigation" })
+
     -- Close (shows exit popup)
     local function close_review()
         if callbacks.on_close then
