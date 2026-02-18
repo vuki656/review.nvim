@@ -69,6 +69,8 @@ function M.setup()
         ReviewBorder = { fg = "#3e4452" },
         ReviewTitle = { fg = "#61afef", bold = true },
         ReviewSelected = { bg = "#3e4452" },
+        ReviewHelpGroup = { fg = "#abb2bf", bg = "#2c313a", bold = true },
+        ReviewHelpKey = { fg = "#e5c07b" },
 
         -- Line numbers in diff
         ReviewLineNrAdd = { fg = "#89ca78" },

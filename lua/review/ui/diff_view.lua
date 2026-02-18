@@ -334,7 +334,7 @@ local comment_types = {
 ---@param file string
 ---@return table[]|nil render_lines
 local function render_diff(bufnr, file)
-    local result = git.get_diff(file, state.state.base)
+    local result = git.get_diff(file, state.state.base, state.state.base_end)
     if not result.success then
         vim.bo[bufnr].readonly = false
         vim.bo[bufnr].modifiable = true
@@ -467,7 +467,7 @@ end
 ---@param file string
 ---@return table[]|nil old_lines, table[]|nil new_lines
 local function render_split_diff(old_bufnr, new_bufnr, file)
-    local result = git.get_diff(file, state.state.base)
+    local result = git.get_diff(file, state.state.base, state.state.base_end)
     if not result.success then
         return nil, nil
     end
@@ -822,7 +822,7 @@ end
 ---Get the current file's index in the changed files list
 ---@return number|nil current_idx, string[] files
 local function get_current_file_index()
-    local files = git.get_changed_files(state.state.base)
+    local files = git.get_changed_files(state.state.base, state.state.base_end)
     if #files == 0 then
         return nil, files
     end
@@ -1113,31 +1113,13 @@ local function delete_comment()
     end
 end
 
+---@type {lhs: string, desc: string, group: string}[]
+local registered_keymaps = {}
+
 ---Show help popup
 local function show_help()
-    local lines = {
-        "Diff View Keymaps",
-        "",
-        "  c       Add comment (Tab to cycle type)",
-        "            <C-t> to open template picker",
-        "  dc      Delete comment",
-        "  ]c      Next hunk",
-        "  [c      Previous hunk",
-        "  ]f      Next file",
-        "  [f      Previous file",
-        "  }       Expand diff context",
-        "  {       Shrink diff context",
-        "  S       Toggle split/unified diff",
-        "  <C-n>   Toggle file tree",
-        "  q/<Esc> Close review",
-        "  ?       Show this help",
-    }
-
-    vim.lsp.util.open_floating_preview(lines, "markdown", {
-        border = "rounded",
-        title = " Help ",
-        title_pos = "center",
-    })
+    local help = require("review.ui.help")
+    help.show("Diff View", registered_keymaps)
 end
 
 ---Setup keymaps for diff view
@@ -1145,6 +1127,25 @@ end
 ---@param callbacks table
 ---@param old_bufnr number|nil
 local function setup_keymaps(bufnr, callbacks, old_bufnr)
+    registered_keymaps = {}
+
+    ---Helper to register a keymap for help display and set it on one or more buffers
+    ---@param lhs string
+    ---@param rhs string|function
+    ---@param opts table opts.group is used for help grouping (not passed to vim.keymap.set)
+    ---@param target_bufnrs number[]
+    local function map(lhs, rhs, opts, target_bufnrs)
+        local group = opts.group
+        opts.group = nil
+        if opts.desc and group then
+            table.insert(registered_keymaps, { lhs = lhs, desc = opts.desc, group = group })
+        end
+        for _, target_bufnr in ipairs(target_bufnrs) do
+            local keymap_opts = vim.tbl_extend("force", opts, { buffer = target_bufnr })
+            vim.keymap.set("n", lhs, rhs, keymap_opts)
+        end
+    end
+
     local function close_review()
         if callbacks.on_close then
             callbacks.on_close()
@@ -1155,39 +1156,32 @@ local function setup_keymaps(bufnr, callbacks, old_bufnr)
         M.toggle_diff_mode(callbacks)
     end
 
-    local function set_nav_keymaps(target_bufnr)
-        vim.keymap.set("n", "]c", goto_next_hunk, { buffer = target_bufnr, desc = "Next hunk" })
-        vim.keymap.set("n", "[c", goto_prev_hunk, { buffer = target_bufnr, desc = "Previous hunk" })
-        vim.keymap.set("n", "]f", goto_next_file, { buffer = target_bufnr, desc = "Next file" })
-        vim.keymap.set("n", "[f", goto_prev_file, { buffer = target_bufnr, desc = "Previous file" })
-        vim.keymap.set("n", "q", close_review, { buffer = target_bufnr, nowait = true, desc = "Close review" })
-        vim.keymap.set("n", "<Esc>", close_review, { buffer = target_bufnr, nowait = true, desc = "Close review" })
-        vim.keymap.set("n", "?", show_help, { buffer = target_bufnr, desc = "Show help" })
-        vim.keymap.set("n", "S", toggle_mode, { buffer = target_bufnr, desc = "Toggle split/unified diff" })
-        vim.keymap.set("n", "<C-n>", function()
-            local ui = require("review.ui")
-            ui.toggle_file_tree()
-        end, { buffer = target_bufnr, desc = "Toggle file tree" })
-        vim.keymap.set("n", "}", function()
-            state.state.diff_context = state.state.diff_context + 1
-            local ui = require("review.ui")
-            ui.show_diff(state.state.current_file)
-        end, { buffer = target_bufnr, desc = "Expand diff context" })
-        vim.keymap.set("n", "{", function()
-            state.state.diff_context = math.max(0, state.state.diff_context - 1)
-            local ui = require("review.ui")
-            ui.show_diff(state.state.current_file)
-        end, { buffer = target_bufnr, desc = "Shrink diff context" })
-    end
+    local all_bufnrs = old_bufnr and { bufnr, old_bufnr } or { bufnr }
 
-    vim.keymap.set("n", "c", add_comment, { buffer = bufnr, desc = "Add comment" })
-    vim.keymap.set("n", "dc", delete_comment, { buffer = bufnr, desc = "Delete comment" })
-
-    set_nav_keymaps(bufnr)
-
-    if old_bufnr then
-        set_nav_keymaps(old_bufnr)
-    end
+    map("c", add_comment, { desc = "Add comment", group = "Comments" }, { bufnr })
+    map("dc", delete_comment, { desc = "Delete comment", group = "Comments" }, { bufnr })
+    map("]c", goto_next_hunk, { desc = "Next hunk", group = "Navigation" }, all_bufnrs)
+    map("[c", goto_prev_hunk, { desc = "Previous hunk", group = "Navigation" }, all_bufnrs)
+    map("]f", goto_next_file, { desc = "Next file", group = "Navigation" }, all_bufnrs)
+    map("[f", goto_prev_file, { desc = "Previous file", group = "Navigation" }, all_bufnrs)
+    map("S", toggle_mode, { desc = "Toggle split/unified diff", group = "View" }, all_bufnrs)
+    map("<C-n>", function()
+        local ui = require("review.ui")
+        ui.toggle_file_tree()
+    end, { desc = "Toggle file tree", group = "View" }, all_bufnrs)
+    map("}", function()
+        state.state.diff_context = state.state.diff_context + 1
+        local ui = require("review.ui")
+        ui.show_diff(state.state.current_file)
+    end, { desc = "Expand diff context", group = "View" }, all_bufnrs)
+    map("{", function()
+        state.state.diff_context = math.max(0, state.state.diff_context - 1)
+        local ui = require("review.ui")
+        ui.show_diff(state.state.current_file)
+    end, { desc = "Shrink diff context", group = "View" }, all_bufnrs)
+    map("q", close_review, { nowait = true, desc = "Close review", group = "General" }, all_bufnrs)
+    map("<Esc>", close_review, { nowait = true, desc = "Close review", group = "General" }, all_bufnrs)
+    map("?", show_help, { desc = "Show help", group = "General" }, all_bufnrs)
 end
 
 ---Apply common window options to a diff view window

@@ -19,6 +19,7 @@
 ---@field current_file string|nil Currently selected file
 ---@field diff_mode "unified"|"split"
 ---@field base string Git base for comparison
+---@field base_end string|nil End of commit range (for history mode: base..base_end)
 ---@field comment_id_counter number
 ---@field diff_context number
 
@@ -31,6 +32,7 @@ M.state = {
     current_file = nil,
     diff_mode = "unified",
     base = "HEAD",
+    base_end = nil,
     comment_id_counter = 0,
     is_pushing = false,
     diff_context = 3,
@@ -43,6 +45,7 @@ function M.reset()
         current_file = nil,
         diff_mode = "unified",
         base = "HEAD",
+        base_end = nil,
         comment_id_counter = 0,
         is_pushing = false,
         diff_context = 3,

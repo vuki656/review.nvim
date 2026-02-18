@@ -37,8 +37,9 @@ end
 
 ---Get list of changed files (unstaged, staged, and untracked)
 ---@param base string|nil Base commit to compare against (default: HEAD)
+---@param base_end string|nil End of commit range (when set, uses base..base_end)
 ---@return string[]
-function M.get_changed_files(base)
+function M.get_changed_files(base, base_end)
     base = base or "HEAD"
     local git_root = M.get_root()
     if not git_root then
@@ -47,6 +48,25 @@ function M.get_changed_files(base)
 
     local files = {}
     local seen = {}
+
+    if base_end then
+        local range_result = vim.system(
+            { "git", "diff", "-M", "--name-only", base, base_end },
+            { text = true, cwd = git_root }
+        )
+            :wait()
+
+        if range_result.code == 0 then
+            for line in range_result.stdout:gmatch("[^\r\n]+") do
+                if line ~= "" and not seen[line] then
+                    seen[line] = true
+                    table.insert(files, line)
+                end
+            end
+        end
+
+        return files
+    end
 
     -- Get unstaged changes
     local unstaged = vim.system({ "git", "diff", "-M", "--name-only", base }, { text = true, cwd = git_root }):wait()
@@ -112,12 +132,25 @@ end
 ---Get diff for a specific file
 ---@param file string File path relative to git root
 ---@param base string|nil Base commit to compare against
+---@param base_end string|nil End of commit range (when set, uses base..base_end)
 ---@return GitDiffResult
-function M.get_diff(file, base)
+function M.get_diff(file, base, base_end)
     base = base or "HEAD"
     local git_root = M.get_root()
     if not git_root then
         return { success = false, output = "", error = "Not in a git repository" }
+    end
+
+    if base_end then
+        local context_flag = "-U" .. (require("review.state").state.diff_context or 3)
+        local cmd = { "git", "diff", "-M", context_flag, base, base_end, "--", file }
+        local result = vim.system(cmd, { text = true, cwd = git_root }):wait()
+
+        if result.code ~= 0 then
+            return { success = false, output = "", error = result.stderr }
+        end
+
+        return { success = true, output = result.stdout, error = nil }
     end
 
     -- Check if file is untracked (new file)
@@ -348,13 +381,13 @@ end
 ---This is much more efficient than calling get_file_status() for each file
 ---@param files string[] List of file paths relative to git root
 ---@param base string|nil Base commit to compare against (default: HEAD)
+---@param base_end string|nil End of commit range (when set, uses base..base_end)
 ---@return table<string, GitFileStatus> Map of file path to status
 ---@return table<string, string> Map of new_path to old_path for renamed files
-function M.get_all_file_statuses(files, base)
+function M.get_all_file_statuses(files, base, base_end)
     base = base or "HEAD"
     local git_root = M.get_root()
     if not git_root then
-        -- Return all as modified if not in git repo
         local result = {}
         for _, file in ipairs(files) do
             result[file] = "modified"
@@ -365,6 +398,50 @@ function M.get_all_file_statuses(files, base)
     local statuses = {}
     local rename_map = {}
     local untracked_set = {}
+
+    if base_end then
+        local result = vim.system(
+            { "git", "diff", "-M", "--name-status", base, base_end },
+            { text = true, cwd = git_root }
+        )
+            :wait()
+
+        if result.code == 0 then
+            for line in result.stdout:gmatch("[^\r\n]+") do
+                local rename_status, old_path, new_path = line:match("^(R%d*)%s+(.+)%s+(.+)$")
+                if rename_status and old_path and new_path then
+                    statuses[new_path] = "renamed"
+                    rename_map[new_path] = old_path
+                else
+                    local status_char, file_path = line:match("^(%S+)%s+(.+)$")
+                    if status_char and file_path then
+                        if status_char == "D" then
+                            statuses[file_path] = "deleted"
+                        elseif status_char == "A" then
+                            statuses[file_path] = "added"
+                        else
+                            statuses[file_path] = "modified"
+                        end
+                    end
+                end
+            end
+        end
+
+        local result_map = {}
+        local result_rename_map = {}
+        for _, file in ipairs(files) do
+            if statuses[file] then
+                result_map[file] = statuses[file]
+                if rename_map[file] then
+                    result_rename_map[file] = rename_map[file]
+                end
+            else
+                result_map[file] = "modified"
+            end
+        end
+
+        return result_map, result_rename_map
+    end
 
     -- Get all untracked files (only for HEAD comparison)
     if base == "HEAD" then

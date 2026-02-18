@@ -192,12 +192,13 @@ end
 ---Create file nodes from file list
 ---@param files string[]
 ---@param base string|nil Base commit for comparison
+---@param base_end string|nil End of commit range
 ---@return FileNode[]
-local function create_nodes(files, base)
+local function create_nodes(files, base, base_end)
     local is_history_mode = base ~= nil and base ~= "HEAD"
 
     -- Batch fetch all git statuses in one call (major perf win)
-    local status_map, rename_map = git.get_all_file_statuses(files, base)
+    local status_map, rename_map = git.get_all_file_statuses(files, base, base_end)
     -- Batch fetch unstaged files set
     local unstaged_set = not is_history_mode and git.get_unstaged_files() or {}
 
@@ -291,12 +292,13 @@ end
 ---Create tree nodes from file list (hierarchical directory view)
 ---@param files string[]
 ---@param base string|nil Base commit for comparison
+---@param base_end string|nil End of commit range
 ---@return FileNode[]
-local function create_tree_nodes(files, base)
+local function create_tree_nodes(files, base, base_end)
     local is_history_mode = base ~= nil and base ~= "HEAD"
 
     -- Batch fetch all git statuses in one call (major perf win)
-    local status_map = git.get_all_file_statuses(files, base)
+    local status_map = git.get_all_file_statuses(files, base, base_end)
 
     -- Build directory tree structure
     local tree = {}
@@ -707,33 +709,19 @@ local function show_full_path()
     })
 end
 
+---@type {lhs: string, desc: string, group: string}[]
+local registered_keymaps = {}
+
+---Get the registered keymaps for external use (e.g., welcome screen)
+---@return {lhs: string, desc: string, group: string}[]
+function M.get_registered_keymaps()
+    return registered_keymaps
+end
+
 ---Show help popup
 local function show_help()
-    local lines = {
-        "File Tree Keymaps",
-        "",
-        "  j/k     Navigate (auto-preview)",
-        "  J/K     Scroll diff view",
-        "  <CR>    Focus diff view",
-        "  <Space> Toggle stage",
-        "  R       Refresh file list",
-        "  B       Pick base commit",
-        "  C       Commit staged changes",
-        "  P       Push to remote",
-        "  `       Toggle list/tree view",
-        "  }       Expand diff context",
-        "  {       Shrink diff context",
-        "  <C-n>   Toggle file tree",
-        "  L       Show full path",
-        "  q/<Esc> Close review",
-        "  ?       Show this help",
-    }
-
-    vim.lsp.util.open_floating_preview(lines, "markdown", {
-        border = "rounded",
-        title = " Help ",
-        title_pos = "center",
-    })
+    local help = require("review.ui.help")
+    help.show("File Tree", registered_keymaps)
 end
 
 ---Commit staged changes with input prompt and spinner
@@ -862,6 +850,22 @@ end
 ---@param bufnr number
 ---@param callbacks table
 local function setup_keymaps(bufnr, callbacks)
+    registered_keymaps = {}
+
+    ---Helper to set a keymap and register it for help display
+    ---@param lhs string
+    ---@param rhs string|function
+    ---@param opts table opts.group is used for help grouping (not passed to vim.keymap.set)
+    local function map(lhs, rhs, opts)
+        local group = opts.group
+        opts.group = nil
+        opts.buffer = bufnr
+        if opts.desc and group then
+            table.insert(registered_keymaps, { lhs = lhs, desc = opts.desc, group = group })
+        end
+        vim.keymap.set("n", lhs, rhs, opts)
+    end
+
     -- Check if we're in history mode (can't stage)
     local function is_history_mode()
         return state.state.base ~= nil and state.state.base ~= "HEAD"
@@ -966,7 +970,7 @@ local function setup_keymaps(bufnr, callbacks)
     end
 
     -- Navigate and auto-select (skip separators and logo)
-    vim.keymap.set("n", "j", function()
+    map("j", function()
         local line = vim.api.nvim_win_get_cursor(0)[1]
         local line_count = vim.api.nvim_buf_line_count(0)
         local next_line = line + 1
@@ -984,9 +988,9 @@ local function setup_keymaps(bufnr, callbacks)
             vim.api.nvim_win_set_cursor(0, { next_line, 0 })
             select_current_file()
         end
-    end, { buffer = bufnr, nowait = true, desc = "Next file" })
+    end, { nowait = true, desc = "Next file", group = "Navigation" })
 
-    vim.keymap.set("n", "k", function()
+    map("k", function()
         local line = vim.api.nvim_win_get_cursor(0)[1]
         local prev_line = line - 1
 
@@ -1003,10 +1007,10 @@ local function setup_keymaps(bufnr, callbacks)
             vim.api.nvim_win_set_cursor(0, { prev_line, 0 })
             select_current_file()
         end
-    end, { buffer = bufnr, nowait = true, desc = "Previous file" })
+    end, { nowait = true, desc = "Previous file", group = "Navigation" })
 
     -- Select file and focus diff view
-    vim.keymap.set("n", "<CR>", function()
+    map("<CR>", function()
         local line = vim.api.nvim_win_get_cursor(0)[1]
         local node = M.get_node_at_line(line)
         if node and node.is_file and callbacks.on_file_select then
@@ -1018,7 +1022,7 @@ local function setup_keymaps(bufnr, callbacks)
                 vim.api.nvim_set_current_win(diff_view.winid)
             end
         end
-    end, { buffer = bufnr, nowait = true, desc = "Focus diff view" })
+    end, { nowait = true, desc = "Focus diff view", group = "Navigation" })
 
     -- Smooth scroll diff view with J/K (uses module-level timer for cleanup)
     local function smooth_scroll(direction)
@@ -1063,13 +1067,13 @@ local function setup_keymaps(bufnr, callbacks)
         )
     end
 
-    vim.keymap.set("n", "J", function()
+    map("J", function()
         smooth_scroll("down")
-    end, { buffer = bufnr, nowait = true, desc = "Scroll diff down" })
+    end, { nowait = true, desc = "Scroll diff down", group = "Navigation" })
 
-    vim.keymap.set("n", "K", function()
+    map("K", function()
         smooth_scroll("up")
-    end, { buffer = bufnr, nowait = true, desc = "Scroll diff up" })
+    end, { nowait = true, desc = "Scroll diff up", group = "Navigation" })
 
     -- Prevent horizontal movement
     vim.keymap.set("n", "h", "<Nop>", { buffer = bufnr, nowait = true })
@@ -1078,62 +1082,49 @@ local function setup_keymaps(bufnr, callbacks)
     vim.keymap.set("n", "<Right>", "<Nop>", { buffer = bufnr, nowait = true })
 
     -- Toggle stage with space
-    vim.keymap.set("n", "<Space>", toggle_stage, { buffer = bufnr, nowait = true, desc = "Toggle stage" })
+    map("<Space>", toggle_stage, { nowait = true, desc = "Toggle stage", group = "Review" })
 
     -- Refresh
-    vim.keymap.set("n", "R", function()
+    map("R", function()
         M.refresh()
         if callbacks.on_refresh then
             callbacks.on_refresh()
         end
-    end, { buffer = bufnr, desc = "Refresh file list" })
-
-    -- Close (shows exit popup)
-    local function close_review()
-        if callbacks.on_close then
-            callbacks.on_close()
-        end
-    end
-
-    vim.keymap.set("n", "q", close_review, { buffer = bufnr, nowait = true, desc = "Close review" })
-    vim.keymap.set("n", "<Esc>", close_review, { buffer = bufnr, nowait = true, desc = "Close review" })
+    end, { desc = "Refresh file list", group = "Review" })
 
     -- Show full path
-    vim.keymap.set("n", "L", show_full_path, { buffer = bufnr, desc = "Show full path" })
-
-    -- Help
-    vim.keymap.set("n", "?", show_help, { buffer = bufnr, desc = "Show help" })
+    map("L", show_full_path, { desc = "Show full path", group = "Review" })
 
     -- Pick base commit
-    vim.keymap.set("n", "B", function()
+    map("B", function()
         local ui = require("review.ui")
         ui.pick_commit()
-    end, { buffer = bufnr, desc = "Pick base commit" })
+    end, { desc = "Pick base commit", group = "Git" })
 
     -- Commit staged changes
-    vim.keymap.set("n", "C", function()
+    map("C", function()
         commit_flow(callbacks)
-    end, { buffer = bufnr, desc = "Commit staged changes" })
+    end, { desc = "Commit staged changes", group = "Git" })
 
     -- Push to remote
-    vim.keymap.set("n", "P", function()
+    map("P", function()
         push_flow()
-    end, { buffer = bufnr, desc = "Push to remote" })
+    end, { desc = "Push to remote", group = "Git" })
 
     -- Toggle list/tree view
-    vim.keymap.set("n", "`", function()
+    map("`", function()
         M.view_mode = M.view_mode == "list" and "tree" or "list"
         M.refresh()
-    end, { buffer = bufnr, desc = "Toggle list/tree view" })
+    end, { desc = "Toggle list/tree view", group = "View" })
 
     -- Toggle file tree
-    vim.keymap.set("n", "<C-n>", function()
+    map("<C-n>", function()
         local ui = require("review.ui")
         ui.toggle_file_tree()
-    end, { buffer = bufnr, desc = "Toggle file tree" })
+    end, { desc = "Toggle file tree", group = "View" })
 
     -- Toggle split/unified diff
-    vim.keymap.set("n", "S", function()
+    map("S", function()
         local diff_view = require("review.ui.diff_view")
         diff_view.toggle_diff_mode({
             on_close = function(send_comments)
@@ -1142,24 +1133,35 @@ local function setup_keymaps(bufnr, callbacks)
                 end
             end,
         })
-    end, { buffer = bufnr, desc = "Toggle split/unified diff" })
+    end, { desc = "Toggle split/unified diff", group = "View" })
 
     -- Expand/shrink diff context
-    vim.keymap.set("n", "}", function()
+    map("}", function()
         state.state.diff_context = state.state.diff_context + 1
         local ui = require("review.ui")
         if state.state.current_file then
             ui.show_diff(state.state.current_file)
         end
-    end, { buffer = bufnr, desc = "Expand diff context" })
+    end, { desc = "Expand diff context", group = "View" })
 
-    vim.keymap.set("n", "{", function()
+    map("{", function()
         state.state.diff_context = math.max(0, state.state.diff_context - 1)
         local ui = require("review.ui")
         if state.state.current_file then
             ui.show_diff(state.state.current_file)
         end
-    end, { buffer = bufnr, desc = "Shrink diff context" })
+    end, { desc = "Shrink diff context", group = "View" })
+
+    -- Close (shows exit popup)
+    local function close_review()
+        if callbacks.on_close then
+            callbacks.on_close()
+        end
+    end
+
+    map("q", close_review, { nowait = true, desc = "Close review", group = "General" })
+    map("<Esc>", close_review, { nowait = true, desc = "Close review", group = "General" })
+    map("?", show_help, { desc = "Show help", group = "General" })
 end
 
 ---Get node at a specific line (1-indexed)
@@ -1180,23 +1182,25 @@ function M.create(layout_component, callbacks)
     local bufnr = layout_component.bufnr
 
     -- Get changed files
-    local files = git.get_changed_files(state.state.base)
+    local files = git.get_changed_files(state.state.base, state.state.base_end)
 
     -- Initialize file states
     -- A file is only considered "reviewed/staged" if it's staged AND has no additional unstaged changes
-    local unstaged_set = git.get_unstaged_files()
-    for _, file in ipairs(files) do
-        local is_staged = git.is_staged(file)
-        local has_unstaged = unstaged_set[file] or false
-        state.set_reviewed(file, is_staged and not has_unstaged)
+    if not state.state.base_end then
+        local unstaged_set = git.get_unstaged_files()
+        for _, file in ipairs(files) do
+            local is_staged = git.is_staged(file)
+            local has_unstaged = unstaged_set[file] or false
+            state.set_reviewed(file, is_staged and not has_unstaged)
+        end
     end
 
     -- Create nodes based on view mode
     local nodes
     if M.view_mode == "tree" then
-        nodes = create_tree_nodes(files, state.state.base)
+        nodes = create_tree_nodes(files, state.state.base, state.state.base_end)
     else
-        nodes = create_nodes(files, state.state.base)
+        nodes = create_nodes(files, state.state.base, state.state.base_end)
     end
 
     M.current = {
@@ -1236,12 +1240,12 @@ function M.refresh()
     end
 
     -- Get updated file list
-    M.current.files = git.get_changed_files(state.state.base)
+    M.current.files = git.get_changed_files(state.state.base, state.state.base_end)
 
-    -- Update reviewed states (only in normal mode)
+    -- Update reviewed states (only in normal mode, not in history/range mode)
     -- A file is only considered "reviewed/staged" if it's staged AND has no additional unstaged changes
     local is_history_mode = state.state.base ~= nil and state.state.base ~= "HEAD"
-    if not is_history_mode then
+    if not is_history_mode and not state.state.base_end then
         local unstaged_set = git.get_unstaged_files()
         for _, file in ipairs(M.current.files) do
             local is_staged = git.is_staged(file)
@@ -1252,9 +1256,9 @@ function M.refresh()
 
     -- Recreate nodes and render based on view mode
     if M.view_mode == "tree" then
-        M.current.nodes = create_tree_nodes(M.current.files, state.state.base)
+        M.current.nodes = create_tree_nodes(M.current.files, state.state.base, state.state.base_end)
     else
-        M.current.nodes = create_nodes(M.current.files, state.state.base)
+        M.current.nodes = create_nodes(M.current.files, state.state.base, state.state.base_end)
     end
     render_to_buffer(M.current.bufnr, M.current.nodes, M.current.winid)
 

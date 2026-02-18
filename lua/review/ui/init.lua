@@ -64,16 +64,19 @@ function M.open()
 
     -- Auto-select first file if exists (use nodes to respect section ordering)
     local ft = file_tree.get()
-    if ft and ft.nodes then
+    local found_file = false
+    if ft and #ft.nodes > 0 then
         -- Find first file node (respects section ordering: unstaged first, then staged)
         for _, node in ipairs(ft.nodes) do
             if node.is_file then
                 M.show_diff(node.path)
+                found_file = true
                 break
             end
         end
-    else
-        -- Show welcome message if no files
+    end
+
+    if not found_file then
         M.show_welcome()
     end
 
@@ -110,21 +113,25 @@ function M.show_welcome()
         "  Select a file from the left panel to view changes.",
         "",
         "  Keybindings:",
-        "    <CR>   - Select file",
-        "    r      - Mark as reviewed (stage)",
-        "    u      - Unmark (unstage)",
-        "    R      - Refresh file list",
-        "    q/<Esc> - Close review",
-        "",
-        "  In diff view:",
-        "    c      - Add comment",
-        "    dc     - Delete comment",
-        "    ]c/[c  - Next/prev hunk",
-        "    ]f/[f  - Next/prev file",
-        "    S      - Toggle split/unified diff",
-        "    <C-n>  - Toggle file tree",
-        "",
     }
+
+    local group_highlight_lines = {}
+    local keymaps = file_tree.get_registered_keymaps()
+    if keymaps and #keymaps > 0 then
+        local help = require("review.ui.help")
+        local keymap_lines, group_line_indices = help.format_lines(keymaps, "    ")
+        local welcome_offset = #welcome
+
+        for _, line in ipairs(keymap_lines) do
+            table.insert(welcome, line)
+        end
+
+        for _, index in ipairs(group_line_indices) do
+            table.insert(group_highlight_lines, welcome_offset + index)
+        end
+    end
+
+    table.insert(welcome, "")
 
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, welcome)
     vim.bo[bufnr].modifiable = false
@@ -132,6 +139,11 @@ function M.show_welcome()
 
     -- Apply title highlight
     vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewTitle", 1, 0, -1)
+
+    -- Apply group header highlights
+    for _, line_index in ipairs(group_highlight_lines) do
+        vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewHelpGroup", line_index - 1, 0, -1)
+    end
 end
 
 ---Toggle the file tree sidebar
@@ -315,7 +327,13 @@ function M.pick_commit(count)
                 M.close(false)
             end
             -- Set base and open
-            state.state.base = choice.hash
+            if choice.hash == "HEAD" then
+                state.state.base = "HEAD"
+                state.state.base_end = nil
+            else
+                state.state.base = choice.hash .. "~1"
+                state.state.base_end = choice.hash
+            end
             M.open()
         end
     end)
