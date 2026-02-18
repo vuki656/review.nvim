@@ -240,22 +240,19 @@ local function create_file_node(file, in_reviewed_section, in_deleted_section, b
     }
 end
 
----Create a centered separator line
+---Create a left-aligned separator line
 ---@param label string The label text (e.g., "󰏫 Changes (5)")
 ---@param width number The total width
 ---@param char string The separator character (─ or ═)
 ---@return string
-local function create_centered_separator(label, width, char)
-    -- Account for display width of icons (they may be wider than 1 byte)
+local function create_left_aligned_separator(label, width, char)
+    local prefix = "  "
     local label_display_width = vim.fn.strdisplaywidth(label)
-    local padding = 2 -- space on each side of label
-    local available = width - label_display_width - (padding * 2)
-    if available < 4 then
-        return label
+    local remaining = width - #prefix - label_display_width - 1
+    if remaining < 2 then
+        return prefix .. label
     end
-    local left_count = math.floor(available / 2)
-    local right_count = available - left_count
-    return string.rep(char, left_count) .. " " .. label .. " " .. string.rep(char, right_count)
+    return prefix .. label .. " " .. string.rep(char, remaining)
 end
 
 ---Create a header node
@@ -617,8 +614,8 @@ local function render_to_buffer(bufnr, nodes, winid)
 
     for idx, node in ipairs(nodes) do
         if node.is_separator and node.separator_label and not node.is_sub_separator then
-            -- Generate centered separator for main headers
-            local sep_text = create_centered_separator(node.separator_label, width, node.separator_char or "─")
+            -- Generate left-aligned separator for main headers
+            local sep_text = create_left_aligned_separator(node.separator_label, width, node.separator_char or "─")
             table.insert(lines, sep_text)
             -- Find label position for highlighting
             local label_start = sep_text:find(node.separator_label, 1, true)
