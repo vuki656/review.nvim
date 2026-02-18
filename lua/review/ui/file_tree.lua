@@ -369,25 +369,25 @@ local function create_nodes(files, base, base_end)
 
     -- 1. Modified files (unstaged)
     if #unstaged_modified > 0 then
-        table.insert(nodes, create_header_node("󰏫", "Changes", #unstaged_modified, "ReviewGitModified", "─"))
+        table.insert(nodes, create_header_node("󰏫", "Changes", #unstaged_modified, "ReviewGitModified", "═"))
         insert_partitioned_files(unstaged_modified, false, false, false)
     end
 
     -- 2. New/Added files (unstaged)
     if #unstaged_added > 0 then
-        table.insert(nodes, create_header_node("󰐕", "New", #unstaged_added, "ReviewGitAdded", "─"))
+        table.insert(nodes, create_header_node("󰐕", "New", #unstaged_added, "ReviewGitAdded", "═"))
         insert_partitioned_files(unstaged_added, false, false, false)
     end
 
     -- 3. Renamed files (unstaged)
     if #unstaged_renamed > 0 then
-        table.insert(nodes, create_header_node("󰁔", "Renamed", #unstaged_renamed, "ReviewGitRenamed", "─"))
+        table.insert(nodes, create_header_node("󰁔", "Renamed", #unstaged_renamed, "ReviewGitRenamed", "═"))
         insert_partitioned_files(unstaged_renamed, false, false, true)
     end
 
     -- 4. Deleted files (unstaged)
     if #unstaged_deleted > 0 then
-        table.insert(nodes, create_header_node("󰩹", "Deleted", #unstaged_deleted, "ReviewGitDeleted", "─"))
+        table.insert(nodes, create_header_node("󰩹", "Deleted", #unstaged_deleted, "ReviewGitDeleted", "═"))
         insert_partitioned_files(unstaged_deleted, false, true, false)
     end
 
