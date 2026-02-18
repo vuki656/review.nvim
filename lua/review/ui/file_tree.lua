@@ -59,6 +59,108 @@ local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧",
 ---@field filename_start number
 ---@field filename_end number
 
+---Check if a file is "non-important" (tests, index/barrel, config, type defs)
+---@param path string
+---@return boolean
+local function is_non_important_file(path)
+    local basename = vim.fn.fnamemodify(path, ":t")
+
+    -- Test files
+    if path:match("test/") or path:match("tests/") or path:match("__tests__/") then
+        return true
+    end
+    if basename:match("%.test%.") or basename:match("%.spec%.") then
+        return true
+    end
+
+    -- Index/barrel files
+    if
+        basename == "index.ts"
+        or basename == "index.js"
+        or basename == "index.tsx"
+        or basename == "index.jsx"
+        or basename == "index.mjs"
+        or basename == "index.cjs"
+    then
+        return true
+    end
+
+    -- Lockfiles
+    if
+        basename == "package-lock.json"
+        or basename == "yarn.lock"
+        or basename == "pnpm-lock.yaml"
+        or basename == "bun.lock"
+    then
+        return true
+    end
+
+    -- Config files
+    if basename:match("%.config%.") then
+        return true
+    end
+    if basename:match("^tsconfig.*%.json$") then
+        return true
+    end
+    if basename == "package.json" then
+        return true
+    end
+    if basename:match("^%.eslintrc") or basename:match("^%.prettierrc") then
+        return true
+    end
+
+    -- Type definition files
+    if basename:match("%.d%.ts$") or basename:match("%.d%.mts$") or basename:match("%.d%.cts$") then
+        return true
+    end
+
+    return false
+end
+
+---Partition a file list into regular and non-important files
+---@param file_list string[]
+---@return string[] regular
+---@return string[] non_important
+local function partition_files(file_list)
+    local regular = {}
+    local non_important = {}
+    for _, file in ipairs(file_list) do
+        if is_non_important_file(file) then
+            table.insert(non_important, file)
+        else
+            table.insert(regular, file)
+        end
+    end
+    return regular, non_important
+end
+
+---Create a sub-separator node for non-important files
+---@param count number
+---@return FileNode
+local function create_sub_separator_node()
+    local label = "  Other"
+    return {
+        path = nil,
+        text = label,
+        is_file = false,
+        is_separator = true,
+        is_sub_separator = true,
+        reviewed = false,
+        in_reviewed_section = false,
+        in_deleted_section = false,
+        git_status_hl = "ReviewFileFaded",
+        file_icon_hl = nil,
+        dot_start = 0,
+        dot_end = 0,
+        file_icon_start = 0,
+        file_icon_end = 0,
+        checkbox_start = 0,
+        checkbox_end = 0,
+        filename_start = 0,
+        filename_end = 0,
+    }
+end
+
 ---Get git status highlight
 ---@param git_status string "added"|"modified"|"deleted"|"renamed"
 ---@return string highlight
@@ -246,44 +348,56 @@ local function create_nodes(files, base, base_end)
 
     local nodes = {}
 
+    ---Insert file nodes for a group, partitioned into regular and non-important
+    ---@param file_list string[]
+    ---@param in_reviewed boolean
+    ---@param in_deleted boolean
+    ---@param use_rename boolean
+    local function insert_partitioned_files(file_list, in_reviewed, in_deleted, use_rename)
+        local regular, non_important = partition_files(file_list)
+        for _, file in ipairs(regular) do
+            local old_path = use_rename and rename_map[file] or nil
+            table.insert(nodes, create_file_node(file, in_reviewed, in_deleted, base, status_map[file], old_path))
+        end
+        if #non_important > 0 then
+            table.insert(nodes, create_sub_separator_node())
+            for _, file in ipairs(non_important) do
+                local old_path = use_rename and rename_map[file] or nil
+                local node = create_file_node(file, in_reviewed, in_deleted, base, status_map[file], old_path)
+                node.is_non_important = true
+                table.insert(nodes, node)
+            end
+        end
+    end
+
     -- 1. Modified files (unstaged)
     if #unstaged_modified > 0 then
         table.insert(nodes, create_header_node("󰏫", "Changes", #unstaged_modified, "ReviewGitModified", "─"))
-        for _, file in ipairs(unstaged_modified) do
-            table.insert(nodes, create_file_node(file, false, false, base, status_map[file]))
-        end
+        insert_partitioned_files(unstaged_modified, false, false, false)
     end
 
     -- 2. New/Added files (unstaged)
     if #unstaged_added > 0 then
         table.insert(nodes, create_header_node("󰐕", "New", #unstaged_added, "ReviewGitAdded", "─"))
-        for _, file in ipairs(unstaged_added) do
-            table.insert(nodes, create_file_node(file, false, false, base, status_map[file]))
-        end
+        insert_partitioned_files(unstaged_added, false, false, false)
     end
 
     -- 3. Renamed files (unstaged)
     if #unstaged_renamed > 0 then
         table.insert(nodes, create_header_node("󰁔", "Renamed", #unstaged_renamed, "ReviewGitRenamed", "─"))
-        for _, file in ipairs(unstaged_renamed) do
-            table.insert(nodes, create_file_node(file, false, false, base, status_map[file], rename_map[file]))
-        end
+        insert_partitioned_files(unstaged_renamed, false, false, true)
     end
 
     -- 4. Deleted files (unstaged)
     if #unstaged_deleted > 0 then
         table.insert(nodes, create_header_node("󰩹", "Deleted", #unstaged_deleted, "ReviewGitDeleted", "─"))
-        for _, file in ipairs(unstaged_deleted) do
-            table.insert(nodes, create_file_node(file, false, true, base, status_map[file]))
-        end
+        insert_partitioned_files(unstaged_deleted, false, true, false)
     end
 
     -- 5. Staged files - with double border (only in normal mode)
     if #staged_files > 0 then
         table.insert(nodes, create_header_node("󰄬", "Staged", #staged_files, "ReviewFileReviewed", "═"))
-        for _, file in ipairs(staged_files) do
-            table.insert(nodes, create_file_node(file, true, false, base, status_map[file]))
-        end
+        insert_partitioned_files(staged_files, true, false, false)
     end
 
     return nodes
@@ -502,8 +616,8 @@ local function render_to_buffer(bufnr, nodes, winid)
     local separator_info = {} -- Store info for highlighting separators
 
     for idx, node in ipairs(nodes) do
-        if node.is_separator and node.separator_label then
-            -- Generate centered separator
+        if node.is_separator and node.separator_label and not node.is_sub_separator then
+            -- Generate centered separator for main headers
             local sep_text = create_centered_separator(node.separator_label, width, node.separator_char or "─")
             table.insert(lines, sep_text)
             -- Find label position for highlighting
@@ -530,7 +644,7 @@ local function render_to_buffer(bufnr, nodes, winid)
             -- Separator line - faded for dashes
             vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewFileFaded", i - 1, 0, -1)
             local info = separator_info[i]
-            if info then
+            if info and not node.is_sub_separator then
                 if node.is_logo then
                     -- Logo: color entire label with header_hl
                     vim.api.nvim_buf_add_highlight(
@@ -615,8 +729,8 @@ local function render_to_buffer(bufnr, nodes, winid)
             vim.api.nvim_buf_add_highlight(bufnr, -1, checkbox_hl, i - 1, node.checkbox_start, node.checkbox_end)
 
             -- Filename and path coloring
-            -- Normal filename, faded path (same for all sections)
-            vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewFilePath", i - 1, node.filename_start, node.filename_end)
+            local filename_hl = node.is_non_important and "ReviewFileFaded" or "ReviewFilePath"
+            vim.api.nvim_buf_add_highlight(bufnr, -1, filename_hl, i - 1, node.filename_start, node.filename_end)
             vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewFilePathFaded", i - 1, node.filename_end, -1)
         end
     end
