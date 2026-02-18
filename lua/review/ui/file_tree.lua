@@ -1264,7 +1264,7 @@ local function setup_keymaps(bufnr, callbacks)
     end, { desc = "Shrink diff context", group = "View" })
 
     -- Open file at first change
-    map("E", function()
+    map("e", function()
         local line = vim.api.nvim_win_get_cursor(0)[1]
         local node = M.get_node_at_line(line)
 
@@ -1312,6 +1312,38 @@ local function setup_keymaps(bufnr, callbacks)
             vim.api.nvim_win_set_cursor(0, { first_changed_line, 0 })
         end
     end, { desc = "Open file at first change", group = "Navigation" })
+
+    -- Revert file changes
+    map("D", function()
+        local line = vim.api.nvim_win_get_cursor(0)[1]
+        local node = M.get_node_at_line(line)
+
+        if not node or not node.is_file or not node.path then
+            return
+        end
+
+        vim.ui.select({ { label = "Yes" }, { label = "No" } }, {
+            prompt = "Revert all changes to " .. node.path .. "?",
+            format_item = function(item)
+                return item.label
+            end,
+        }, function(choice)
+            if not choice or choice.label ~= "Yes" then
+                return
+            end
+
+            if git.restore_file(node.path) then
+                state.set_reviewed(node.path, false)
+                M.refresh()
+                if callbacks.on_refresh then
+                    callbacks.on_refresh()
+                end
+                vim.notify("Reverted " .. node.path, vim.log.levels.INFO)
+            else
+                vim.notify("Failed to revert " .. node.path, vim.log.levels.ERROR)
+            end
+        end)
+    end, { desc = "Revert file changes", group = "Git" })
 
     -- Close (shows exit popup)
     local function close_review()

@@ -256,6 +256,26 @@ function M.unstage_file(file)
     return result.code == 0
 end
 
+---Revert all changes to a file (both staged and unstaged)
+---@param file string File path relative to git root
+---@return boolean success
+function M.restore_file(file)
+    local git_root = M.get_root()
+    if not git_root then
+        return false
+    end
+
+    if M.is_untracked(file) then
+        local full_path = git_root .. "/" .. file
+        local ok = os.remove(full_path)
+        return ok ~= nil
+    end
+
+    local reset = vim.system({ "git", "checkout", "HEAD", "--", file }, { text = true, cwd = git_root }):wait()
+
+    return reset.code == 0
+end
+
 ---Check if a file is staged
 ---@param file string File path relative to git root
 ---@return boolean
