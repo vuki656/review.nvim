@@ -1,3 +1,4 @@
+local commit_list = require("review.ui.commit_list")
 local config = require("review.config")
 local diff_view = require("review.ui.diff_view")
 local file_tree = require("review.ui.file_tree")
@@ -54,6 +55,19 @@ function M.open()
             if state.state.current_file then
                 M.show_diff(state.state.current_file)
             end
+        end,
+    })
+
+    -- Initialize commit list
+    commit_list.create(l.commit_list, {
+        on_commit_select = function(entry)
+            M.select_commit(entry)
+        end,
+        on_commit_preview = function(entry)
+            M.preview_commit(entry)
+        end,
+        on_close = function()
+            M.close()
         end,
     })
 
@@ -207,6 +221,7 @@ local function do_close(action)
 
     -- Destroy components
     file_tree.destroy()
+    commit_list.destroy()
     diff_view.destroy()
 
     -- Unmount layout
@@ -290,6 +305,73 @@ end
 ---@return boolean
 function M.is_history_mode()
     return state.state.base ~= nil and state.state.base ~= "HEAD"
+end
+
+---Select a commit in-place (from commit list panel)
+---@param entry CommitEntry
+function M.select_commit(entry)
+    if entry.is_head then
+        state.state.base = "HEAD"
+        state.state.base_end = nil
+    else
+        state.state.base = entry.hash .. "~1"
+        state.state.base_end = entry.hash
+    end
+
+    file_tree.refresh()
+    commit_list.set_selected(entry)
+
+    local file_tree_component = file_tree.get()
+    if file_tree_component and file_tree_component.nodes then
+        local first_file = nil
+        for index, node in ipairs(file_tree_component.nodes) do
+            if node.is_file then
+                first_file = node.path
+                if vim.api.nvim_win_is_valid(file_tree_component.winid) then
+                    vim.api.nvim_win_set_cursor(file_tree_component.winid, { index, 0 })
+                end
+                break
+            end
+        end
+
+        if first_file then
+            M.show_diff(first_file)
+        else
+            M.show_welcome()
+        end
+    end
+end
+
+---Preview a commit's diff without updating state or file tree
+---@param entry CommitEntry
+function M.preview_commit(entry)
+    if entry.is_head then
+        local file_tree_component = file_tree.get()
+        if file_tree_component and file_tree_component.nodes then
+            for _, node in ipairs(file_tree_component.nodes) do
+                if node.is_file then
+                    M.show_diff(node.path)
+                    return
+                end
+            end
+        end
+        M.show_welcome()
+        return
+    end
+
+    local base = entry.hash .. "~1"
+    local base_end = entry.hash
+
+    local diff_split = layout.get_diff_view()
+    if not diff_split then
+        return
+    end
+
+    diff_view.create_commit_preview(diff_split, base, base_end, {
+        on_close = function()
+            M.close()
+        end,
+    })
 end
 
 ---Show commit picker and open review with selected base

@@ -18,6 +18,9 @@ function M.setup()
 
         -- Diff view file path header
         ReviewDiffFilePath = { fg = "#abb2bf", bold = true },
+        ReviewDiffFileHeaderBg = { bg = "#1e2940" },
+        ReviewDiffFileDivider = { fg = "#e5e5e5", bg = "#1e2940", bold = true },
+        ReviewDiffFileDividerBorder = { fg = "#4a90d9", bg = "#1e2940" },
 
         -- Split diff padding (empty side)
         ReviewDiffPadding = { bg = "#1e1e1e" },
@@ -93,6 +96,12 @@ function M.setup()
         ReviewTemplateLabel = { fg = "#abb2bf" },
         ReviewTemplateBorder = { fg = "#5c6370" },
         ReviewTemplateTitle = { fg = "#61afef", bold = true },
+
+        -- Commit list
+        ReviewCommitHash = { fg = "#61afef" },
+        ReviewCommitDate = { fg = "#4b5263" },
+        ReviewCommitActive = { fg = "#89ca78", bold = true },
+        ReviewCommitSeparator = { fg = "#3e4452" },
     }
 
     for name, opts in pairs(highlights) do

@@ -1206,11 +1206,18 @@ local function setup_keymaps(bufnr, callbacks)
     -- Show full path
     map("L", show_full_path, { desc = "Show full path", group = "Review" })
 
-    -- Pick base commit
+    -- Focus commit list
     map("B", function()
-        local ui = require("review.ui")
-        ui.pick_commit()
-    end, { desc = "Pick base commit", group = "Git" })
+        local current_layout = require("review.ui.layout")
+        local commit_list_component = current_layout.get_commit_list()
+        if
+            commit_list_component
+            and commit_list_component.winid
+            and vim.api.nvim_win_is_valid(commit_list_component.winid)
+        then
+            vim.api.nvim_set_current_win(commit_list_component.winid)
+        end
+    end, { desc = "Focus commit list", group = "Git" })
 
     -- Commit staged changes
     map("C", function()

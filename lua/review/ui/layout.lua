@@ -8,6 +8,7 @@ local M = {}
 
 ---@class ReviewLayout
 ---@field file_tree ReviewLayoutComponent
+---@field commit_list ReviewLayoutComponent
 ---@field diff_view ReviewLayoutComponent
 ---@field diff_view_old ReviewLayoutComponent|nil
 ---@field diff_view_new ReviewLayoutComponent|nil
@@ -42,8 +43,9 @@ function M.create()
     -- Create new tab
     vim.cmd("tabnew")
 
-    -- Create buffers for file tree and diff view
+    -- Create buffers for file tree, commit list, and diff view
     local tree_buf = vim.api.nvim_create_buf(false, true)
+    local commit_list_buf = vim.api.nvim_create_buf(false, true)
     local diff_buf = vim.api.nvim_create_buf(false, true)
 
     -- Set buffer options for file tree
@@ -52,6 +54,13 @@ function M.create()
     vim.bo[tree_buf].filetype = "review-tree"
     vim.bo[tree_buf].modifiable = true
     vim.bo[tree_buf].readonly = false
+
+    -- Set buffer options for commit list
+    vim.bo[commit_list_buf].buftype = "nofile"
+    vim.bo[commit_list_buf].swapfile = false
+    vim.bo[commit_list_buf].filetype = "review-commits"
+    vim.bo[commit_list_buf].modifiable = true
+    vim.bo[commit_list_buf].readonly = false
 
     -- Set buffer options for diff view
     vim.bo[diff_buf].buftype = "nofile"
@@ -81,8 +90,27 @@ function M.create()
     -- Set file tree window options
     apply_tree_win_options(tree_win)
 
+    -- Create horizontal split below tree for commit list
+    local saved_ea = vim.o.equalalways
+    vim.o.equalalways = false
+    vim.api.nvim_set_current_win(tree_win)
+    vim.cmd("belowright split")
+    vim.api.nvim_win_set_buf(0, commit_list_buf)
+    local commit_list_win = vim.api.nvim_get_current_win()
+
+    -- Set commit list window height to ~30% of editor height
+    local total_height = vim.o.lines
+    local commit_list_height = math.floor(total_height * 0.3)
+    vim.api.nvim_win_set_height(commit_list_win, commit_list_height)
+
+    -- Apply window options (same as tree)
+    apply_tree_win_options(commit_list_win)
+
+    vim.o.equalalways = saved_ea
+
     M.current = {
         file_tree = { bufnr = tree_buf, winid = tree_win },
+        commit_list = { bufnr = commit_list_buf, winid = commit_list_win },
         diff_view = { bufnr = diff_buf, winid = diff_win },
     }
 
@@ -98,24 +126,29 @@ function M.is_file_tree_visible()
     return vim.api.nvim_win_is_valid(M.current.file_tree.winid)
 end
 
----Hide the file tree panel
+---Hide the file tree panel (and commit list)
 function M.hide_file_tree()
     if not M.current then
         return
     end
 
-    local tree = M.current.file_tree
-    if not vim.api.nvim_win_is_valid(tree.winid) then
-        return
-    end
-
-    -- Focus diff view before closing tree window
+    -- Focus diff view before closing windows
     local diff_win = M.current.diff_view.winid
     if vim.api.nvim_win_is_valid(diff_win) then
         vim.api.nvim_set_current_win(diff_win)
     end
 
-    vim.api.nvim_win_close(tree.winid, true)
+    -- Close commit list window
+    local commit_list = M.current.commit_list
+    if commit_list and vim.api.nvim_win_is_valid(commit_list.winid) then
+        vim.api.nvim_win_close(commit_list.winid, true)
+    end
+
+    -- Close tree window
+    local tree = M.current.file_tree
+    if vim.api.nvim_win_is_valid(tree.winid) then
+        vim.api.nvim_win_close(tree.winid, true)
+    end
 end
 
 ---Show the file tree panel (re-open the window with the existing buffer)
@@ -130,6 +163,9 @@ function M.show_file_tree()
     if vim.api.nvim_win_is_valid(tree.winid) then
         return
     end
+
+    local saved_ea = vim.o.equalalways
+    vim.o.equalalways = false
 
     local opts = config.get()
     local width = math.floor(vim.o.columns * opts.ui.file_tree_width / 100)
@@ -147,6 +183,24 @@ function M.show_file_tree()
 
     -- Disable spell check
     vim.wo[new_win].spell = false
+
+    -- Re-open commit list below tree
+    local commit_list = M.current.commit_list
+    if commit_list and not vim.api.nvim_win_is_valid(commit_list.winid) then
+        vim.api.nvim_set_current_win(new_win)
+        vim.cmd("belowright split")
+        vim.api.nvim_win_set_buf(0, commit_list.bufnr)
+        local commit_list_win = vim.api.nvim_get_current_win()
+
+        local total_height = vim.o.lines
+        local commit_list_height = math.floor(total_height * 0.3)
+        vim.api.nvim_win_set_height(commit_list_win, commit_list_height)
+
+        apply_tree_win_options(commit_list_win)
+        M.current.commit_list.winid = commit_list_win
+    end
+
+    vim.o.equalalways = saved_ea
 end
 
 ---Toggle the file tree panel visibility
@@ -294,6 +348,7 @@ function M.unmount()
 
         -- Store buffer references before closing
         local tree_buf = M.current.file_tree.bufnr
+        local commit_list_buf = M.current.commit_list and M.current.commit_list.bufnr
         local diff_buf = M.current.diff_view.bufnr
         local prev_tab = M.prev_tab
 
@@ -318,6 +373,11 @@ function M.unmount()
                 end
             end)
             pcall(function()
+                if commit_list_buf and vim.api.nvim_buf_is_valid(commit_list_buf) then
+                    vim.api.nvim_buf_delete(commit_list_buf, { force = true })
+                end
+            end)
+            pcall(function()
                 if vim.api.nvim_buf_is_valid(diff_buf) then
                     vim.api.nvim_buf_delete(diff_buf, { force = true })
                 end
@@ -336,6 +396,12 @@ end
 ---@return ReviewLayoutComponent|nil
 function M.get_file_tree()
     return M.current and M.current.file_tree
+end
+
+---Get the commit list component
+---@return ReviewLayoutComponent|nil
+function M.get_commit_list()
+    return M.current and M.current.commit_list
 end
 
 ---Get the diff view component

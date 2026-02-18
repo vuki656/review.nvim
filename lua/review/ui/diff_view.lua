@@ -38,8 +38,13 @@ local ns_syntax = vim.api.nvim_create_namespace("review_syntax")
 ---@param render_lines table[]
 ---@param display_lines string[]
 ---@param file string
-local function apply_treesitter_highlights(bufnr, render_lines, display_lines, file)
-    vim.api.nvim_buf_clear_namespace(bufnr, ns_syntax, 0, -1)
+---@param line_offset? number Buffer line offset for sliced render_lines (0-indexed, default 0)
+local function apply_treesitter_highlights(bufnr, render_lines, display_lines, file, line_offset)
+    line_offset = line_offset or 0
+
+    if line_offset == 0 then
+        vim.api.nvim_buf_clear_namespace(bufnr, ns_syntax, 0, -1)
+    end
 
     local lang = vim.filetype.match({ filename = file })
     if not lang or lang == "" then
@@ -101,7 +106,7 @@ local function apply_treesitter_highlights(bufnr, render_lines, display_lines, f
                 if start_row == end_row then
                     local buf_line = line_map[start_row + 1]
                     if buf_line then
-                        pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1, start_col, {
+                        pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1 + line_offset, start_col, {
                             end_col = end_col,
                             hl_group = hl_group,
                             priority = 50,
@@ -113,7 +118,7 @@ local function apply_treesitter_highlights(bufnr, render_lines, display_lines, f
                         if buf_line then
                             local col_start = row == start_row and start_col or 0
                             local col_end = row == end_row and end_col or #(display_lines[buf_line] or "")
-                            pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1, col_start, {
+                            pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1 + line_offset, col_start, {
                                 end_col = col_end,
                                 hl_group = hl_group,
                                 priority = 50,
@@ -1340,6 +1345,205 @@ function M.render()
         M.current.render_lines = render_diff(M.current.bufnr, M.current.file)
         render_comments(M.current.bufnr, M.current.file)
     end
+end
+
+---Render a full commit diff (all files) into a single buffer for preview
+---@param layout_component table { bufnr: number, winid: number }
+---@param base string
+---@param base_end string
+---@param preview_callbacks table { on_close: function }
+function M.create_commit_preview(layout_component, base, base_end, preview_callbacks)
+    local bufnr = layout_component.bufnr
+
+    if layout.is_split_mode() then
+        layout.exit_split_mode()
+    end
+    M.split_state = nil
+
+    local files = git.get_changed_files(base, base_end)
+    if #files == 0 then
+        vim.bo[bufnr].readonly = false
+        vim.bo[bufnr].modifiable = true
+        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+            "",
+            "  No changes in this commit.",
+        })
+        vim.bo[bufnr].modifiable = false
+        vim.bo[bufnr].readonly = true
+
+        M.current = {
+            bufnr = bufnr,
+            winid = layout_component.winid,
+            file = nil,
+            render_lines = nil,
+            ns_id = ns_diff,
+        }
+        return
+    end
+
+    local all_display_lines = {}
+    local all_render_lines = {}
+    local file_sections = {}
+
+    local win_width = 80
+    if layout_component.winid and vim.api.nvim_win_is_valid(layout_component.winid) then
+        local win_info = vim.fn.getwininfo(layout_component.winid)
+        local text_off = win_info[1] and win_info[1].textoff or 0
+        win_width = vim.api.nvim_win_get_width(layout_component.winid) - text_off
+    end
+
+    for file_index, file in ipairs(files) do
+        local result = git.get_diff(file, base, base_end)
+        if result.success and result.output ~= "" then
+            local parsed = diff_parser.parse(result.output)
+            local raw_lines = diff_parser.get_render_lines(parsed)
+
+            local border_line = string.rep("─", win_width)
+
+            table.insert(all_display_lines, border_line)
+            table.insert(all_render_lines, { type = "file_divider_border", content = border_line })
+
+            local label = "  " .. file
+            table.insert(all_display_lines, label)
+            table.insert(all_render_lines, { type = "file_divider", content = label })
+
+            table.insert(all_display_lines, border_line)
+            table.insert(all_render_lines, { type = "file_divider_border", content = border_line })
+
+            local section_start = #all_display_lines + 1
+
+            local is_new_file = parsed.file_old == "/dev/null"
+            local is_deleted_file = parsed.file_new == "/dev/null"
+
+            for _, line in ipairs(raw_lines) do
+                if line.type ~= "header" then
+                    local content = line.content or ""
+                    table.insert(all_display_lines, content)
+                    table.insert(all_render_lines, line)
+                end
+            end
+
+            table.insert(file_sections, {
+                file = file,
+                start_line = section_start,
+                end_line = #all_display_lines,
+                is_new_file = is_new_file,
+                is_deleted_file = is_deleted_file,
+            })
+        end
+    end
+
+    vim.bo[bufnr].readonly = false
+    vim.bo[bufnr].modifiable = true
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, all_display_lines)
+    vim.bo[bufnr].modifiable = false
+    vim.bo[bufnr].readonly = true
+
+    vim.api.nvim_buf_clear_namespace(bufnr, ns_syntax, 0, -1)
+    for _, section in ipairs(file_sections) do
+        local section_render = { unpack(all_render_lines, section.start_line, section.end_line) }
+        local section_display = { unpack(all_display_lines, section.start_line, section.end_line) }
+        apply_treesitter_highlights(bufnr, section_render, section_display, section.file, section.start_line - 1)
+    end
+
+    local line_pairs = find_line_pairs(all_render_lines)
+
+    vim.api.nvim_buf_clear_namespace(bufnr, ns_diff, 0, -1)
+
+    local section_lookup = {}
+    for _, section in ipairs(file_sections) do
+        for line_index = section.start_line, section.end_line do
+            section_lookup[line_index] = section
+        end
+    end
+
+    for line_index, line in ipairs(all_render_lines) do
+        local sign_hl = nil
+        local sign_text = "▌"
+        local inline_hl = nil
+        local line_hl = nil
+
+        local section = section_lookup[line_index]
+        local is_new_file = section and section.is_new_file
+        local is_deleted_file = section and section.is_deleted_file
+
+        if line.type == "file_divider_border" then
+            vim.api.nvim_buf_set_extmark(bufnr, ns_diff, line_index - 1, 0, {
+                end_col = #(all_display_lines[line_index] or ""),
+                hl_group = "ReviewDiffFileDividerBorder",
+                line_hl_group = "ReviewDiffFileHeaderBg",
+                priority = 10000,
+            })
+        elseif line.type == "file_divider" then
+            vim.api.nvim_buf_set_extmark(bufnr, ns_diff, line_index - 1, 0, {
+                end_col = #(all_display_lines[line_index] or ""),
+                hl_group = "ReviewDiffFileDivider",
+                line_hl_group = "ReviewDiffFileHeaderBg",
+                priority = 10000,
+            })
+        elseif line.type == "add" then
+            line_hl = "ReviewDiffAdd"
+            sign_hl = "ReviewDiffSignAdd"
+            inline_hl = "ReviewDiffAddInline"
+        elseif line.type == "delete" then
+            line_hl = "ReviewDiffDelete"
+            sign_hl = "ReviewDiffSignDelete"
+            inline_hl = "ReviewDiffDeleteInline"
+        elseif line.type == "context" then
+            sign_hl = "ReviewDiffSignContext"
+            sign_text = " "
+        end
+
+        if sign_hl then
+            local extmark_opts = {
+                sign_text = sign_text,
+                sign_hl_group = sign_hl,
+            }
+            if line_hl and not is_new_file and not is_deleted_file then
+                extmark_opts.line_hl_group = line_hl
+            end
+            vim.api.nvim_buf_set_extmark(bufnr, ns_diff, line_index - 1, 0, extmark_opts)
+        end
+
+        if inline_hl and line_pairs[line_index] then
+            local old_content = line_pairs[line_index]
+            local new_content = line.content or ""
+            local inline_ranges = compute_inline_diff(old_content, new_content)
+
+            for _, range in ipairs(inline_ranges) do
+                if range[1] < range[2] then
+                    vim.api.nvim_buf_add_highlight(bufnr, ns_diff, inline_hl, line_index - 1, range[1], range[2])
+                end
+            end
+        end
+    end
+
+    M.current = {
+        bufnr = bufnr,
+        winid = layout_component.winid,
+        file = nil,
+        render_lines = all_render_lines,
+        ns_id = ns_diff,
+    }
+
+    vim.api.nvim_buf_clear_namespace(bufnr, ns_comments, 0, -1)
+
+    local function close_review()
+        if preview_callbacks.on_close then
+            preview_callbacks.on_close()
+        end
+    end
+
+    registered_keymaps = {}
+    vim.keymap.set("n", "q", close_review, { buffer = bufnr, nowait = true })
+    vim.keymap.set("n", "<Esc>", close_review, { buffer = bufnr, nowait = true })
+
+    pcall(vim.api.nvim_buf_set_name, bufnr, "Review: commit preview")
+
+    vim.wo[layout_component.winid].spell = false
+    vim.wo[layout_component.winid].list = false
+    vim.wo[layout_component.winid].wrap = false
+    vim.wo[layout_component.winid].linebreak = false
 end
 
 ---Get the current component
