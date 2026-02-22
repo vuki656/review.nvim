@@ -33,13 +33,15 @@ local ns_comments = vim.api.nvim_create_namespace("review_comments")
 ---Namespace for treesitter syntax highlights
 local ns_syntax = vim.api.nvim_create_namespace("review_syntax")
 
----Apply treesitter highlights to a diff buffer by reconstructing valid source
+---Apply treesitter highlights to a diff buffer using full file contents from git
 ---@param bufnr number
 ---@param render_lines table[]
 ---@param display_lines string[]
 ---@param file string
 ---@param line_offset? number Buffer line offset for sliced render_lines (0-indexed, default 0)
-local function apply_treesitter_highlights(bufnr, render_lines, display_lines, file, line_offset)
+---@param base_override? string Git base revision override (for commit preview)
+---@param base_end_override? string Git base_end revision override (for commit preview)
+local function apply_treesitter_highlights(bufnr, render_lines, display_lines, file, line_offset, base_override, base_end_override)
     line_offset = line_offset or 0
 
     if line_offset == 0 then
@@ -61,33 +63,56 @@ local function apply_treesitter_highlights(bufnr, render_lines, display_lines, f
         return
     end
 
-    local old_source_lines = {}
-    local new_source_lines = {}
-    local old_line_map = {}
-    local new_line_map = {}
+    local base = base_override or state.state.base
+    local base_end = base_end_override or state.state.base_end
+
+    local old_source_line_to_display = {}
+    local new_source_line_to_display = {}
+    local has_old_lines = false
+    local has_new_lines = false
 
     for index, line in ipairs(render_lines) do
-        if line.type == "context" then
-            table.insert(old_source_lines, display_lines[index])
-            old_line_map[#old_source_lines] = index
-            table.insert(new_source_lines, display_lines[index])
-            new_line_map[#new_source_lines] = index
-        elseif line.type == "delete" then
-            table.insert(old_source_lines, display_lines[index])
-            old_line_map[#old_source_lines] = index
-        elseif line.type == "add" then
-            table.insert(new_source_lines, display_lines[index])
-            new_line_map[#new_source_lines] = index
+        if line.source_line then
+            if line.type == "delete" or (line.type == "context" and not new_source_line_to_display[line.source_line]) then
+                old_source_line_to_display[line.source_line] = index
+                has_old_lines = true
+            end
+            if line.type == "add" or line.type == "context" then
+                new_source_line_to_display[line.source_line] = index
+                has_new_lines = true
+            end
+        elseif line.old_line or line.new_line then
+            if line.old_line and (line.type == "delete" or line.type == "context") then
+                old_source_line_to_display[line.old_line] = index
+                has_old_lines = true
+            end
+            if line.new_line and (line.type == "add" or line.type == "context") then
+                new_source_line_to_display[line.new_line] = index
+                has_new_lines = true
+            end
         end
     end
 
-    local function highlight_from_source(source_lines, line_map)
-        if #source_lines == 0 then
+    local old_content = nil
+    if has_old_lines then
+        old_content = git.get_file_at_rev(file, base)
+    end
+
+    local new_content = nil
+    if has_new_lines then
+        if base_end then
+            new_content = git.get_file_at_rev(file, base_end)
+        else
+            new_content = git.get_working_tree_file(file)
+        end
+    end
+
+    local function highlight_from_full_source(source_content, source_line_to_display)
+        if not source_content then
             return
         end
 
-        local source = table.concat(source_lines, "\n")
-        local ok_parser, parser = pcall(vim.treesitter.get_string_parser, source, lang)
+        local ok_parser, parser = pcall(vim.treesitter.get_string_parser, source_content, lang)
         if not ok_parser then
             return
         end
@@ -98,13 +123,13 @@ local function apply_treesitter_highlights(bufnr, render_lines, display_lines, f
         end
 
         for _, tree in ipairs(trees) do
-            for capture_id, node in query:iter_captures(tree:root(), source) do
+            for capture_id, node in query:iter_captures(tree:root(), source_content) do
                 local start_row, start_col, end_row, end_col = node:range()
                 local capture_name = query.captures[capture_id]
                 local hl_group = "@" .. capture_name .. "." .. lang
 
                 if start_row == end_row then
-                    local buf_line = line_map[start_row + 1]
+                    local buf_line = source_line_to_display[start_row + 1]
                     if buf_line then
                         pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1 + line_offset, start_col, {
                             end_col = end_col,
@@ -114,7 +139,7 @@ local function apply_treesitter_highlights(bufnr, render_lines, display_lines, f
                     end
                 else
                     for row = start_row, end_row do
-                        local buf_line = line_map[row + 1]
+                        local buf_line = source_line_to_display[row + 1]
                         if buf_line then
                             local col_start = row == start_row and start_col or 0
                             local col_end = row == end_row and end_col or #(display_lines[buf_line] or "")
@@ -130,8 +155,8 @@ local function apply_treesitter_highlights(bufnr, render_lines, display_lines, f
         end
     end
 
-    highlight_from_source(old_source_lines, old_line_map)
-    highlight_from_source(new_source_lines, new_line_map)
+    highlight_from_full_source(old_content, old_source_line_to_display)
+    highlight_from_full_source(new_content, new_source_line_to_display)
 end
 
 ---Split string into tokens (words, punctuation, whitespace)
@@ -1443,7 +1468,7 @@ function M.create_commit_preview(layout_component, base, base_end, preview_callb
     for _, section in ipairs(file_sections) do
         local section_render = { unpack(all_render_lines, section.start_line, section.end_line) }
         local section_display = { unpack(all_display_lines, section.start_line, section.end_line) }
-        apply_treesitter_highlights(bufnr, section_render, section_display, section.file, section.start_line - 1)
+        apply_treesitter_highlights(bufnr, section_render, section_display, section.file, section.start_line - 1, base, base_end)
     end
 
     local line_pairs = find_line_pairs(all_render_lines)

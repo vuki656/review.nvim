@@ -629,6 +629,24 @@ function M.get_file_at_rev(file, rev)
     return result.stdout, nil
 end
 
+---Get file content from the working tree
+---@param file string File path relative to git root
+---@return string|nil content, string|nil error
+function M.get_working_tree_file(file)
+    local git_root = M.get_root()
+    if not git_root then
+        return nil, "Not in a git repository"
+    end
+
+    local full_path = git_root .. "/" .. file
+    local lines = vim.fn.readfile(full_path)
+    if not lines then
+        return nil, "Could not read file: " .. full_path
+    end
+
+    return table.concat(lines, "\n"), nil
+end
+
 ---Get count of unpushed commits (commits ahead of upstream)
 ---@param callback fun(count: number|nil) nil if no upstream configured
 function M.get_unpushed_count(callback)
