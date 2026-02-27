@@ -102,6 +102,13 @@ function M.setup()
         ReviewCommitDate = { fg = "#4b5263" },
         ReviewCommitActive = { fg = "#89ca78", bold = true },
         ReviewCommitSeparator = { fg = "#3e4452" },
+
+        -- Branch list
+        ReviewBranchName = { fg = "#abb2bf" },
+        ReviewBranchHead = { fg = "#61afef" },
+        ReviewBranchActive = { fg = "#89ca78", bold = true },
+        ReviewBranchCurrent = { fg = "#c678dd" },
+        ReviewBranchSeparator = { fg = "#3e4452" },
     }
 
     for name, opts in pairs(highlights) do

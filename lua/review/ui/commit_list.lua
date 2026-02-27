@@ -28,7 +28,7 @@ local active_timers = {
     scroll_timer = nil,
 }
 
-local COMMIT_COUNT = 20
+local COMMIT_COUNT = 5
 
 ---Build the list of commit entries (HEAD + recent commits)
 ---@return CommitEntry[]
@@ -392,6 +392,19 @@ local function setup_keymaps(bufnr)
 
     map("q", close_review, { nowait = true, desc = "Close review" })
     map("<Esc>", close_review, { nowait = true, desc = "Close review" })
+
+    -- Cycle to next left pane (commit_list → branch_list)
+    map("<Tab>", function()
+        local current_layout = require("review.ui.layout")
+        local branch_list_component = current_layout.get_branch_list()
+        if
+            branch_list_component
+            and branch_list_component.winid
+            and vim.api.nvim_win_is_valid(branch_list_component.winid)
+        then
+            vim.api.nvim_set_current_win(branch_list_component.winid)
+        end
+    end, { nowait = true, desc = "Next pane" })
 
     vim.keymap.set("n", "h", "<Nop>", { buffer = bufnr, nowait = true })
     vim.keymap.set("n", "l", "<Nop>", { buffer = bufnr, nowait = true })

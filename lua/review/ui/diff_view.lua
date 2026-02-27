@@ -359,11 +359,44 @@ local comment_types = {
     },
 }
 
+local LOCK_FILE_NAMES = {
+    ["package-lock.json"] = true,
+    ["yarn.lock"] = true,
+    ["pnpm-lock.yaml"] = true,
+    ["bun.lock"] = true,
+    ["bun.lockb"] = true,
+    ["Gemfile.lock"] = true,
+    ["composer.lock"] = true,
+    ["Cargo.lock"] = true,
+    ["poetry.lock"] = true,
+    ["go.sum"] = true,
+}
+
+---Check if a file is a lock file that should not render diffs
+---@param file string
+---@return boolean
+local function is_lock_file(file)
+    local filename = vim.fn.fnamemodify(file, ":t")
+    return LOCK_FILE_NAMES[filename] == true
+end
+
 ---Render diff to buffer
 ---@param bufnr number
 ---@param file string
 ---@return table[]|nil render_lines
 local function render_diff(bufnr, file)
+    if is_lock_file(file) then
+        vim.bo[bufnr].readonly = false
+        vim.bo[bufnr].modifiable = true
+        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+            "",
+            "  Lock file diff not shown.",
+        })
+        vim.bo[bufnr].modifiable = false
+        vim.bo[bufnr].readonly = true
+        return nil
+    end
+
     local result = git.get_diff(file, state.state.base, state.state.base_end)
     if not result.success then
         vim.bo[bufnr].readonly = false
@@ -497,6 +530,20 @@ end
 ---@param file string
 ---@return table[]|nil old_lines, table[]|nil new_lines
 local function render_split_diff(old_bufnr, new_bufnr, file)
+    if is_lock_file(file) then
+        for _, bufnr in ipairs({ old_bufnr, new_bufnr }) do
+            vim.bo[bufnr].readonly = false
+            vim.bo[bufnr].modifiable = true
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+                "",
+                "  Lock file diff not shown.",
+            })
+            vim.bo[bufnr].modifiable = false
+            vim.bo[bufnr].readonly = true
+        end
+        return nil, nil
+    end
+
     local result = git.get_diff(file, state.state.base, state.state.base_end)
     if not result.success then
         return nil, nil

@@ -9,6 +9,7 @@ local M = {}
 ---@class ReviewLayout
 ---@field file_tree ReviewLayoutComponent
 ---@field commit_list ReviewLayoutComponent
+---@field branch_list ReviewLayoutComponent
 ---@field diff_view ReviewLayoutComponent
 ---@field diff_view_old ReviewLayoutComponent|nil
 ---@field diff_view_new ReviewLayoutComponent|nil
@@ -43,9 +44,10 @@ function M.create()
     -- Create new tab
     vim.cmd("tabnew")
 
-    -- Create buffers for file tree, commit list, and diff view
+    -- Create buffers for file tree, commit list, branch list, and diff view
     local tree_buf = vim.api.nvim_create_buf(false, true)
     local commit_list_buf = vim.api.nvim_create_buf(false, true)
+    local branch_list_buf = vim.api.nvim_create_buf(false, true)
     local diff_buf = vim.api.nvim_create_buf(false, true)
 
     -- Set buffer options for file tree
@@ -61,6 +63,13 @@ function M.create()
     vim.bo[commit_list_buf].filetype = "review-commits"
     vim.bo[commit_list_buf].modifiable = true
     vim.bo[commit_list_buf].readonly = false
+
+    -- Set buffer options for branch list
+    vim.bo[branch_list_buf].buftype = "nofile"
+    vim.bo[branch_list_buf].swapfile = false
+    vim.bo[branch_list_buf].filetype = "review-branches"
+    vim.bo[branch_list_buf].modifiable = true
+    vim.bo[branch_list_buf].readonly = false
 
     -- Set buffer options for diff view
     vim.bo[diff_buf].buftype = "nofile"
@@ -98,19 +107,32 @@ function M.create()
     vim.api.nvim_win_set_buf(0, commit_list_buf)
     local commit_list_win = vim.api.nvim_get_current_win()
 
-    -- Set commit list window height to ~30% of editor height
-    local total_height = vim.o.lines
-    local commit_list_height = math.floor(total_height * 0.3)
+    -- Set commit list window height (5 commits + HEAD + separator = ~7 lines)
+    local commit_list_height = 7
     vim.api.nvim_win_set_height(commit_list_win, commit_list_height)
 
     -- Apply window options (same as tree)
     apply_tree_win_options(commit_list_win)
+
+    -- Create horizontal split below commit list for branch list
+    vim.api.nvim_set_current_win(commit_list_win)
+    vim.cmd("belowright split")
+    vim.api.nvim_win_set_buf(0, branch_list_buf)
+    local branch_list_win = vim.api.nvim_get_current_win()
+
+    -- Set branch list window height
+    local branch_list_height = 10
+    vim.api.nvim_win_set_height(branch_list_win, branch_list_height)
+
+    -- Apply window options (same as tree)
+    apply_tree_win_options(branch_list_win)
 
     vim.o.equalalways = saved_ea
 
     M.current = {
         file_tree = { bufnr = tree_buf, winid = tree_win },
         commit_list = { bufnr = commit_list_buf, winid = commit_list_win },
+        branch_list = { bufnr = branch_list_buf, winid = branch_list_win },
         diff_view = { bufnr = diff_buf, winid = diff_win },
     }
 
@@ -136,6 +158,12 @@ function M.hide_file_tree()
     local diff_win = M.current.diff_view.winid
     if vim.api.nvim_win_is_valid(diff_win) then
         vim.api.nvim_set_current_win(diff_win)
+    end
+
+    -- Close branch list window
+    local branch_list = M.current.branch_list
+    if branch_list and vim.api.nvim_win_is_valid(branch_list.winid) then
+        vim.api.nvim_win_close(branch_list.winid, true)
     end
 
     -- Close commit list window
@@ -192,12 +220,26 @@ function M.show_file_tree()
         vim.api.nvim_win_set_buf(0, commit_list.bufnr)
         local commit_list_win = vim.api.nvim_get_current_win()
 
-        local total_height = vim.o.lines
-        local commit_list_height = math.floor(total_height * 0.3)
+        local commit_list_height = 7
         vim.api.nvim_win_set_height(commit_list_win, commit_list_height)
 
         apply_tree_win_options(commit_list_win)
         M.current.commit_list.winid = commit_list_win
+
+        -- Re-open branch list below commit list
+        local branch_list = M.current.branch_list
+        if branch_list and not vim.api.nvim_win_is_valid(branch_list.winid) then
+            vim.api.nvim_set_current_win(commit_list_win)
+            vim.cmd("belowright split")
+            vim.api.nvim_win_set_buf(0, branch_list.bufnr)
+            local branch_list_win = vim.api.nvim_get_current_win()
+
+            local branch_list_height = 10
+            vim.api.nvim_win_set_height(branch_list_win, branch_list_height)
+
+            apply_tree_win_options(branch_list_win)
+            M.current.branch_list.winid = branch_list_win
+        end
     end
 
     vim.o.equalalways = saved_ea
@@ -349,6 +391,7 @@ function M.unmount()
         -- Store buffer references before closing
         local tree_buf = M.current.file_tree.bufnr
         local commit_list_buf = M.current.commit_list and M.current.commit_list.bufnr
+        local branch_list_buf = M.current.branch_list and M.current.branch_list.bufnr
         local diff_buf = M.current.diff_view.bufnr
         local prev_tab = M.prev_tab
 
@@ -378,6 +421,11 @@ function M.unmount()
                 end
             end)
             pcall(function()
+                if branch_list_buf and vim.api.nvim_buf_is_valid(branch_list_buf) then
+                    vim.api.nvim_buf_delete(branch_list_buf, { force = true })
+                end
+            end)
+            pcall(function()
                 if vim.api.nvim_buf_is_valid(diff_buf) then
                     vim.api.nvim_buf_delete(diff_buf, { force = true })
                 end
@@ -402,6 +450,12 @@ end
 ---@return ReviewLayoutComponent|nil
 function M.get_commit_list()
     return M.current and M.current.commit_list
+end
+
+---Get the branch list component
+---@return ReviewLayoutComponent|nil
+function M.get_branch_list()
+    return M.current and M.current.branch_list
 end
 
 ---Get the diff view component

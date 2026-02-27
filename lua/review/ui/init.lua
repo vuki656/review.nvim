@@ -1,3 +1,4 @@
+local branch_list = require("review.ui.branch_list")
 local commit_list = require("review.ui.commit_list")
 local config = require("review.config")
 local diff_view = require("review.ui.diff_view")
@@ -65,6 +66,16 @@ function M.open()
         end,
         on_commit_preview = function(entry)
             M.preview_commit(entry)
+        end,
+        on_close = function()
+            M.close()
+        end,
+    })
+
+    -- Initialize branch list
+    branch_list.create(l.branch_list, {
+        on_branch_select = function(entry)
+            M.select_branch(entry)
         end,
         on_close = function()
             M.close()
@@ -222,6 +233,7 @@ local function do_close(action)
     -- Destroy components
     file_tree.destroy()
     commit_list.destroy()
+    branch_list.destroy()
     diff_view.destroy()
 
     -- Unmount layout
@@ -320,6 +332,43 @@ function M.select_commit(entry)
 
     file_tree.refresh()
     commit_list.set_selected(entry)
+
+    local file_tree_component = file_tree.get()
+    if file_tree_component and file_tree_component.nodes then
+        local first_file = nil
+        for index, node in ipairs(file_tree_component.nodes) do
+            if node.is_file then
+                first_file = node.path
+                if vim.api.nvim_win_is_valid(file_tree_component.winid) then
+                    vim.api.nvim_win_set_cursor(file_tree_component.winid, { index, 0 })
+                end
+                break
+            end
+        end
+
+        if first_file then
+            M.show_diff(first_file)
+        else
+            M.show_welcome()
+        end
+    end
+end
+
+---Select a branch (from branch list panel)
+---@param entry BranchEntry
+function M.select_branch(entry)
+    if entry.is_working_changes then
+        state.state.base = "HEAD"
+        state.state.base_end = nil
+    else
+        local main_branch = git.get_main_branch()
+        state.state.base = main_branch
+        state.state.base_end = entry.name
+    end
+
+    file_tree.refresh()
+    branch_list.set_selected(entry)
+    commit_list.refresh()
 
     local file_tree_component = file_tree.get()
     if file_tree_component and file_tree_component.nodes then

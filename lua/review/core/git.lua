@@ -51,7 +51,7 @@ function M.get_changed_files(base, base_end)
 
     if base_end then
         local range_result = vim.system(
-            { "git", "diff", "-M", "--name-only", base, base_end },
+            { "git", "diff", "-M", "--name-only", base .. "..." .. base_end },
             { text = true, cwd = git_root }
         )
             :wait()
@@ -143,7 +143,7 @@ function M.get_diff(file, base, base_end)
 
     if base_end then
         local context_flag = "-U" .. (require("review.state").state.diff_context or 3)
-        local cmd = { "git", "diff", "-M", context_flag, base, base_end, "--", file }
+        local cmd = { "git", "diff", "-M", context_flag, base .. "..." .. base_end, "--", file }
         local result = vim.system(cmd, { text = true, cwd = git_root }):wait()
 
         if result.code ~= 0 then
@@ -421,7 +421,7 @@ function M.get_all_file_statuses(files, base, base_end)
 
     if base_end then
         local result = vim.system(
-            { "git", "diff", "-M", "--name-status", base, base_end },
+            { "git", "diff", "-M", "--name-status", base .. "..." .. base_end },
             { text = true, cwd = git_root }
         )
             :wait()
@@ -586,6 +586,90 @@ function M.get_recent_commits(count)
     end
 
     return commits
+end
+
+---Get local branch names
+---@param callback fun(branches: string[])
+function M.get_local_branches(callback)
+    local git_root = M.get_root()
+    if not git_root then
+        callback({})
+        return
+    end
+
+    vim.system(
+        { "git", "branch", "--format=%(refname:short)" },
+        { text = true, cwd = git_root },
+        function(result)
+            vim.schedule(function()
+                if result.code ~= 0 then
+                    callback({})
+                    return
+                end
+
+                local branches = {}
+                for line in result.stdout:gmatch("[^\r\n]+") do
+                    if line ~= "" then
+                        table.insert(branches, line)
+                    end
+                end
+                callback(branches)
+            end)
+        end
+    )
+end
+
+---Get the main branch name (checks for "main" first, then "master")
+---@return string
+function M.get_main_branch()
+    local git_root = M.get_root()
+    if not git_root then
+        return "main"
+    end
+
+    local result = vim.system(
+        { "git", "rev-parse", "--verify", "--quiet", "refs/heads/main" },
+        { text = true, cwd = git_root }
+    ):wait()
+
+    if result.code == 0 then
+        return "main"
+    end
+
+    local master_result = vim.system(
+        { "git", "rev-parse", "--verify", "--quiet", "refs/heads/master" },
+        { text = true, cwd = git_root }
+    ):wait()
+
+    if master_result.code == 0 then
+        return "master"
+    end
+
+    return "main"
+end
+
+---Get the current branch name
+---@param callback fun(branch: string|nil)
+function M.get_current_branch(callback)
+    local git_root = M.get_root()
+    if not git_root then
+        callback(nil)
+        return
+    end
+
+    vim.system(
+        { "git", "rev-parse", "--abbrev-ref", "HEAD" },
+        { text = true, cwd = git_root },
+        function(result)
+            vim.schedule(function()
+                if result.code == 0 then
+                    callback(vim.trim(result.stdout))
+                else
+                    callback(nil)
+                end
+            end)
+        end
+    )
 end
 
 ---Commit staged changes asynchronously

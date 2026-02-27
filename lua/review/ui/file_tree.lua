@@ -1219,6 +1219,19 @@ local function setup_keymaps(bufnr, callbacks)
         end
     end, { desc = "Focus commit list", group = "Git" })
 
+    -- Cycle to next left pane (file_tree → commit_list)
+    map("<Tab>", function()
+        local current_layout = require("review.ui.layout")
+        local commit_list_component = current_layout.get_commit_list()
+        if
+            commit_list_component
+            and commit_list_component.winid
+            and vim.api.nvim_win_is_valid(commit_list_component.winid)
+        then
+            vim.api.nvim_set_current_win(commit_list_component.winid)
+        end
+    end, { desc = "Next pane", group = "View" })
+
     -- Commit staged changes
     map("C", function()
         commit_flow(callbacks)
