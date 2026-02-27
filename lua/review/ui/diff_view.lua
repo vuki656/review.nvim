@@ -906,6 +906,9 @@ local function add_comment()
         return
     end
 
+    local original_winid = vim.api.nvim_get_current_win()
+    local original_cursor = vim.api.nvim_win_get_cursor(original_winid)
+
     local cursor = vim.api.nvim_win_get_cursor(0)
     local line_num = cursor[1]
 
@@ -921,6 +924,22 @@ local function add_comment()
     local original_line = source_line or line_num
     local file = M.current.file
     local bufnr = M.current.bufnr
+
+    -- Temporarily disable scrollbind/cursorbind in split mode to prevent scroll jump
+    local split_windows = {}
+    if M.split_state then
+        if layout.current and layout.current.diff_view_old and layout.current.diff_view_new then
+            local old_win = layout.current.diff_view_old.winid
+            local new_win = layout.current.diff_view_new.winid
+            for _, winid in ipairs({ old_win, new_win }) do
+                if vim.api.nvim_win_is_valid(winid) then
+                    table.insert(split_windows, winid)
+                    vim.wo[winid].scrollbind = false
+                    vim.wo[winid].cursorbind = false
+                end
+            end
+        end
+    end
 
     -- Current type index (default to note)
     local type_idx = 1
@@ -939,11 +958,9 @@ local function add_comment()
 
     -- Calculate window position (below current line, at the start of the line)
     local win_width = 60
-    local win_row = vim.fn.winline()
     local win_opts = {
-        relative = "win",
-        win = M.current.winid,
-        row = win_row,
+        relative = "cursor",
+        row = 1,
         col = 0,
         width = win_width,
         height = 5,
@@ -970,13 +987,26 @@ local function add_comment()
     vim.wo[input_win].wrap = true
     vim.wo[input_win].linebreak = true
 
-    -- Function to close the input window
+    -- Function to close the input window and restore state
     local function close_input()
         if vim.api.nvim_win_is_valid(input_win) then
             vim.api.nvim_win_close(input_win, true)
         end
         if vim.api.nvim_buf_is_valid(input_buf) then
             vim.api.nvim_buf_delete(input_buf, { force = true })
+        end
+        if vim.api.nvim_win_is_valid(original_winid) then
+            vim.api.nvim_set_current_win(original_winid)
+            vim.api.nvim_win_set_cursor(original_winid, original_cursor)
+        end
+        for _, winid in ipairs(split_windows) do
+            if vim.api.nvim_win_is_valid(winid) then
+                vim.wo[winid].scrollbind = true
+                vim.wo[winid].cursorbind = true
+            end
+        end
+        if #split_windows > 0 then
+            vim.cmd("syncbind")
         end
     end
 
@@ -1386,6 +1416,32 @@ function M.create_commit_preview(layout_component, base, base_end, preview_callb
     M.split_state = nil
 
     local files = git.get_changed_files(base, base_end)
+
+    local max_preview_files = 50
+
+    if #files > max_preview_files then
+        vim.bo[bufnr].readonly = false
+        vim.bo[bufnr].modifiable = true
+        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+            "",
+            "  Commit has " .. #files .. " changed files.",
+            "  Preview is disabled for commits with more than " .. max_preview_files .. " files.",
+            "",
+            "  Press <CR> to select this commit and browse files individually.",
+        })
+        vim.bo[bufnr].modifiable = false
+        vim.bo[bufnr].readonly = true
+
+        M.current = {
+            bufnr = bufnr,
+            winid = layout_component.winid,
+            file = nil,
+            render_lines = nil,
+            ns_id = ns_diff,
+        }
+        return
+    end
+
     if #files == 0 then
         vim.bo[bufnr].readonly = false
         vim.bo[bufnr].modifiable = true
