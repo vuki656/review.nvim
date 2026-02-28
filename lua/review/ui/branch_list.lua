@@ -6,6 +6,7 @@ local M = {}
 ---@class BranchEntry
 ---@field name string
 ---@field is_current boolean
+---@field is_main boolean
 
 ---@class BranchListComponent
 ---@field bufnr number
@@ -32,6 +33,11 @@ local function find_active_index(branches)
     local base_end = state.state.base_end
 
     if base_end == nil or state.state.base == "HEAD" or state.state.base == nil then
+        for index, entry in ipairs(branches) do
+            if entry.is_main then
+                return index
+            end
+        end
         return 1
     end
 
@@ -357,12 +363,11 @@ function M.fetch_and_render()
             local entries = {}
 
             for _, branch_name in ipairs(branch_names) do
-                if branch_name ~= main_branch then
-                    table.insert(entries, {
-                        name = branch_name,
-                        is_current = branch_name == current_branch,
-                    })
-                end
+                table.insert(entries, {
+                    name = branch_name,
+                    is_current = branch_name == current_branch,
+                    is_main = branch_name == main_branch,
+                })
             end
 
             M.current.branches = entries
