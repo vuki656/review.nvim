@@ -41,7 +41,15 @@ local ns_syntax = vim.api.nvim_create_namespace("review_syntax")
 ---@param line_offset? number Buffer line offset for sliced render_lines (0-indexed, default 0)
 ---@param base_override? string Git base revision override (for commit preview)
 ---@param base_end_override? string Git base_end revision override (for commit preview)
-local function apply_treesitter_highlights(bufnr, render_lines, display_lines, file, line_offset, base_override, base_end_override)
+local function apply_treesitter_highlights(
+    bufnr,
+    render_lines,
+    display_lines,
+    file,
+    line_offset,
+    base_override,
+    base_end_override
+)
     line_offset = line_offset or 0
 
     if line_offset == 0 then
@@ -73,7 +81,9 @@ local function apply_treesitter_highlights(bufnr, render_lines, display_lines, f
 
     for index, line in ipairs(render_lines) do
         if line.source_line then
-            if line.type == "delete" or (line.type == "context" and not new_source_line_to_display[line.source_line]) then
+            if
+                line.type == "delete" or (line.type == "context" and not new_source_line_to_display[line.source_line])
+            then
                 old_source_line_to_display[line.source_line] = index
                 has_old_lines = true
             end
@@ -143,11 +153,18 @@ local function apply_treesitter_highlights(bufnr, render_lines, display_lines, f
                         if buf_line then
                             local col_start = row == start_row and start_col or 0
                             local col_end = row == end_row and end_col or #(display_lines[buf_line] or "")
-                            pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1 + line_offset, col_start, {
-                                end_col = col_end,
-                                hl_group = hl_group,
-                                priority = 50,
-                            })
+                            pcall(
+                                vim.api.nvim_buf_set_extmark,
+                                bufnr,
+                                ns_syntax,
+                                buf_line - 1 + line_offset,
+                                col_start,
+                                {
+                                    end_col = col_end,
+                                    hl_group = hl_group,
+                                    priority = 50,
+                                }
+                            )
                         end
                     end
                 end
@@ -1572,7 +1589,15 @@ function M.create_commit_preview(layout_component, base, base_end, preview_callb
     for _, section in ipairs(file_sections) do
         local section_render = { unpack(all_render_lines, section.start_line, section.end_line) }
         local section_display = { unpack(all_display_lines, section.start_line, section.end_line) }
-        apply_treesitter_highlights(bufnr, section_render, section_display, section.file, section.start_line - 1, base, base_end)
+        apply_treesitter_highlights(
+            bufnr,
+            section_render,
+            section_display,
+            section.file,
+            section.start_line - 1,
+            base,
+            base_end
+        )
     end
 
     local line_pairs = find_line_pairs(all_render_lines)
