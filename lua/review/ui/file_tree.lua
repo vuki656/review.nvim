@@ -1196,9 +1196,19 @@ local function setup_keymaps(bufnr, callbacks)
         smooth_scroll("up")
     end, { nowait = true, desc = "Scroll diff up", group = "Navigation" })
 
-    -- Prevent horizontal movement
+    -- Panel navigation (file_tree is topmost, so h is nop)
     vim.keymap.set("n", "h", "<Nop>", { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "l", "<Nop>", { buffer = bufnr, nowait = true })
+    map("l", function()
+        local current_layout = require("review.ui.layout")
+        local commit_list_component = current_layout.get_commit_list()
+        if
+            commit_list_component
+            and commit_list_component.winid
+            and vim.api.nvim_win_is_valid(commit_list_component.winid)
+        then
+            vim.api.nvim_set_current_win(commit_list_component.winid)
+        end
+    end, { nowait = true, desc = "Next panel", group = "Navigation" })
     vim.keymap.set("n", "<Left>", "<Nop>", { buffer = bufnr, nowait = true })
     vim.keymap.set("n", "<Right>", "<Nop>", { buffer = bufnr, nowait = true })
 

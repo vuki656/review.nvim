@@ -451,8 +451,28 @@ local function setup_keymaps(bufnr)
         end
     end, { nowait = true, desc = "Next pane" })
 
-    vim.keymap.set("n", "h", "<Nop>", { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "l", "<Nop>", { buffer = bufnr, nowait = true })
+    map("h", function()
+        local current_layout = require("review.ui.layout")
+        local file_tree_component = current_layout.get_file_tree()
+        if
+            file_tree_component
+            and file_tree_component.winid
+            and vim.api.nvim_win_is_valid(file_tree_component.winid)
+        then
+            vim.api.nvim_set_current_win(file_tree_component.winid)
+        end
+    end, { nowait = true, desc = "Previous panel" })
+    map("l", function()
+        local current_layout = require("review.ui.layout")
+        local branch_list_component = current_layout.get_branch_list()
+        if
+            branch_list_component
+            and branch_list_component.winid
+            and vim.api.nvim_win_is_valid(branch_list_component.winid)
+        then
+            vim.api.nvim_set_current_win(branch_list_component.winid)
+        end
+    end, { nowait = true, desc = "Next panel" })
     vim.keymap.set("n", "<Left>", "<Nop>", { buffer = bufnr, nowait = true })
     vim.keymap.set("n", "<Right>", "<Nop>", { buffer = bufnr, nowait = true })
 end
