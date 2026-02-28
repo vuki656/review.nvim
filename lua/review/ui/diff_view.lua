@@ -1526,17 +1526,18 @@ function M.create_commit_preview(layout_component, base, base_end, preview_callb
             local parsed = diff_parser.parse(result.output)
             local raw_lines = diff_parser.get_render_lines(parsed)
 
-            local border_line = string.rep("─", win_width)
+            local top_border = string.rep("▁", win_width)
+            local bottom_border = string.rep("▔", win_width)
 
-            table.insert(all_display_lines, border_line)
-            table.insert(all_render_lines, { type = "file_divider_border", content = border_line })
+            table.insert(all_display_lines, top_border)
+            table.insert(all_render_lines, { type = "file_divider_border_top", content = top_border })
 
             local label = "  " .. file
             table.insert(all_display_lines, label)
             table.insert(all_render_lines, { type = "file_divider", content = label })
 
-            table.insert(all_display_lines, border_line)
-            table.insert(all_render_lines, { type = "file_divider_border", content = border_line })
+            table.insert(all_display_lines, bottom_border)
+            table.insert(all_render_lines, { type = "file_divider_border_bottom", content = bottom_border })
 
             local section_start = #all_display_lines + 1
 
@@ -1595,11 +1596,16 @@ function M.create_commit_preview(layout_component, base, base_end, preview_callb
         local is_new_file = section and section.is_new_file
         local is_deleted_file = section and section.is_deleted_file
 
-        if line.type == "file_divider_border" then
+        if line.type == "file_divider_border_top" then
             vim.api.nvim_buf_set_extmark(bufnr, ns_diff, line_index - 1, 0, {
                 end_col = #(all_display_lines[line_index] or ""),
-                hl_group = "ReviewDiffFileDividerBorder",
-                line_hl_group = "ReviewDiffFileHeaderBg",
+                hl_group = "ReviewDiffFileDividerBorderTop",
+                priority = 10000,
+            })
+        elseif line.type == "file_divider_border_bottom" then
+            vim.api.nvim_buf_set_extmark(bufnr, ns_diff, line_index - 1, 0, {
+                end_col = #(all_display_lines[line_index] or ""),
+                hl_group = "ReviewDiffFileDividerBorderBottom",
                 priority = 10000,
             })
         elseif line.type == "file_divider" then

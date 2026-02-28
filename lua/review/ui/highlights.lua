@@ -20,7 +20,8 @@ function M.setup()
         ReviewDiffFilePath = { fg = "#abb2bf", bold = true },
         ReviewDiffFileHeaderBg = { bg = "#1e2940" },
         ReviewDiffFileDivider = { fg = "#e5e5e5", bg = "#1e2940", bold = true },
-        ReviewDiffFileDividerBorder = { fg = "#4a90d9", bg = "#1e2940" },
+        ReviewDiffFileDividerBorderTop = { fg = "#4a90d9" },
+        ReviewDiffFileDividerBorderBottom = { fg = "#4a90d9" },
 
         -- Split diff padding (empty side)
         ReviewDiffPadding = { bg = "#1e1e1e" },
