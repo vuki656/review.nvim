@@ -69,6 +69,7 @@ function M.setup()
         ReviewGitRenamed = { fg = "#c678dd" },
 
         -- UI elements
+        ReviewWinSeparator = { fg = "#5c6370" },
         ReviewBorder = { fg = "#3e4452" },
         ReviewTitle = { fg = "#61afef", bold = true },
         ReviewWinBar = { fg = "#848b98", bold = true, bg = "NONE" },

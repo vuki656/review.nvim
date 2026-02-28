@@ -208,8 +208,6 @@ local function create_file_node(file, in_reviewed_section, in_deleted_section, b
         path_suffix = "  ← " .. old_path
     end
 
-    -- Build text: "  ● file_icon [x] filename  path" (with left padding)
-    -- In history mode, skip checkbox: "  ● file_icon filename  path"
     local padding = "  "
     local dot_part = "● "
     local file_icon_part = file_icon .. " "
@@ -771,7 +769,6 @@ local function render_footer(bufnr)
         local text = "  ↑ " .. count_str .. " unpushed"
         table.insert(footer_lines, "")
         table.insert(footer_lines, text)
-        -- "  ↑ " is prefix, then count highlighted in blue, rest in gray
         local prefix = "  ↑ "
         local prefix_len = #prefix
         table.insert(footer_hls, { 1, "ReviewFooterText", 0, prefix_len })

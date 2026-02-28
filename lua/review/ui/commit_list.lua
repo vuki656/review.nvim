@@ -161,16 +161,16 @@ local function render(bufnr, commits, selected_index, winid)
     for index, entry in ipairs(commits) do
         if not entry.is_head then
             local is_active = index == selected_index
-            local marker = is_active and "▎ " or "  "
+            local marker = is_active and " ▎" or "  "
             local node = is_active and "● " or "○ "
             local initials = author_initials(entry.author)
             local initials_segment = initials ~= "" and (initials .. " ") or ""
-            local line = "  " .. marker .. node .. entry.short_hash .. " " .. initials_segment .. " " .. entry.subject
+            local line = marker .. node .. entry.short_hash .. " " .. initials_segment .. " " .. entry.subject
             table.insert(lines, line)
 
             local line_index = render_index
             render_index = render_index + 1
-            local offset = 2
+            local offset = 0
             local marker_end = offset + #marker
             local node_start = marker_end
             local node_end = node_start + #node
@@ -255,7 +255,7 @@ local function line_to_commit_index(line)
     end
 
     local commit_index = line + 1
-    if commit_index > #M.current.commits then
+    if commit_index < 2 or commit_index > #M.current.commits then
         return nil
     end
 

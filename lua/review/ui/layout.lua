@@ -31,9 +31,10 @@ local function apply_tree_win_options(winid)
     vim.api.nvim_win_set_option(
         winid,
         "winhighlight",
-        "Normal:Normal,CursorLine:ReviewSelected,WinBar:ReviewWinBar,WinBarNC:ReviewWinBar"
+        "Normal:Normal,CursorLine:ReviewSelected,WinBar:ReviewWinBar,WinBarNC:ReviewWinBar,WinSeparator:ReviewWinSeparator"
     )
     vim.api.nvim_win_set_option(winid, "winfixwidth", true)
+    vim.wo[winid].fillchars = "horiz:─,horizup:┴,horizdown:┬,vert:│,vertleft:┤,vertright:├,verthoriz:┼"
 end
 
 ---Create the main layout with file tree and diff view in a new tab

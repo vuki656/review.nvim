@@ -28,17 +28,12 @@ local row_hl_ns = vim.api.nvim_create_namespace("review_branch_row_hl")
 
 ---Determine which branch entry is currently active based on state
 ---@param branches BranchEntry[]
----@return number
+---@return number|nil
 local function find_active_index(branches)
     local base_end = state.state.base_end
 
     if base_end == nil or state.state.base == "HEAD" or state.state.base == nil then
-        for index, entry in ipairs(branches) do
-            if entry.is_main then
-                return index
-            end
-        end
-        return 1
+        return nil
     end
 
     for index, entry in ipairs(branches) do
@@ -47,7 +42,7 @@ local function find_active_index(branches)
         end
     end
 
-    return 1
+    return nil
 end
 
 ---Render branches to buffer
@@ -68,27 +63,26 @@ local function render(bufnr, branches, selected_index, winid)
 
     for index, entry in ipairs(branches) do
         local is_active = index == selected_index
-        local marker = is_active and "▎ " or "  "
-        local icon = entry.is_current and "✱ " or "  "
+        local marker = is_active and " ▎" or "  "
+        local node = is_active and "● " or "○ "
         local head_suffix = entry.is_current and " HEAD" or ""
 
-        local line = "  " .. marker .. icon .. entry.name .. head_suffix
+        local line = marker .. node .. entry.name .. head_suffix
         table.insert(lines, line)
 
-        local offset = 2
-        local marker_start = offset
+        local offset = 0
         local marker_end = offset + #marker
-        local icon_start = marker_end
-        local icon_end = icon_start + #icon
-        local name_start = icon_end
+        local node_start = marker_end
+        local node_end = node_start + #node
+        local name_start = node_end
         local name_end = name_start + #entry.name
         local head_label_start = name_end
         local head_label_end = #line
 
         table.insert(highlight_ranges, {
             line_index = index - 1,
-            marker = { marker_start, marker_end },
-            icon = { icon_start, icon_end },
+            marker = { offset, marker_end },
+            node = { node_start, node_end },
             name = { name_start, name_end },
             head_label = entry.is_current and { head_label_start, head_label_end } or nil,
             is_active = is_active,
@@ -114,16 +108,8 @@ local function render(bufnr, branches, selected_index, winid)
             })
         end
 
-        if range.is_current then
-            vim.api.nvim_buf_add_highlight(
-                bufnr,
-                -1,
-                "ReviewBranchCurrent",
-                range.line_index,
-                range.icon[1],
-                range.icon[2]
-            )
-        end
+        local node_hl = range.is_active and "ReviewBranchActive" or "ReviewBranchCurrent"
+        vim.api.nvim_buf_add_highlight(bufnr, -1, node_hl, range.line_index, range.node[1], range.node[2])
 
         local name_highlight
         if range.is_active then
@@ -385,7 +371,7 @@ function M.fetch_and_render()
 
             render(M.current.bufnr, entries, M.current.selected_index, M.current.winid)
 
-            local cursor_line = branch_index_to_line(M.current.selected_index)
+            local cursor_line = M.current.selected_index and branch_index_to_line(M.current.selected_index) or 1
             if vim.api.nvim_win_is_valid(M.current.winid) then
                 vim.api.nvim_win_set_cursor(M.current.winid, { cursor_line, 0 })
             end
