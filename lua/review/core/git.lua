@@ -53,8 +53,7 @@ function M.get_changed_files(base, base_end)
         local range_result = vim.system(
             { "git", "diff", "-M", "--name-only", base .. "..." .. base_end },
             { text = true, cwd = git_root }
-        )
-            :wait()
+        ):wait()
 
         if range_result.code == 0 then
             for line in range_result.stdout:gmatch("[^\r\n]+") do
@@ -201,6 +200,30 @@ function M.get_diff(file, base, base_end)
     end
 
     local result = vim.system(cmd, { text = true, cwd = git_root }):wait()
+
+    if result.code ~= 0 then
+        return { success = false, output = "", error = result.stderr }
+    end
+
+    return { success = true, output = result.stdout, error = nil }
+end
+
+---Get combined diff for a commit range in a single git call
+---@param base string Base commit (parent)
+---@param base_end string End commit
+---@return GitDiffResult
+function M.get_commit_diff(base, base_end)
+    local git_root = M.get_root()
+    if not git_root then
+        return { success = false, output = "", error = "Not in a git repository" }
+    end
+
+    local context_flag = "-U" .. (require("review.state").state.diff_context or 3)
+    local result = vim.system(
+        { "git", "diff", "-M", context_flag, base .. "..." .. base_end },
+        { text = true, cwd = git_root }
+    )
+        :wait()
 
     if result.code ~= 0 then
         return { success = false, output = "", error = result.stderr }
@@ -423,8 +446,7 @@ function M.get_all_file_statuses(files, base, base_end)
         local result = vim.system(
             { "git", "diff", "-M", "--name-status", base .. "..." .. base_end },
             { text = true, cwd = git_root }
-        )
-            :wait()
+        ):wait()
 
         if result.code == 0 then
             for line in result.stdout:gmatch("[^\r\n]+") do
@@ -597,26 +619,22 @@ function M.get_local_branches(callback)
         return
     end
 
-    vim.system(
-        { "git", "branch", "--format=%(refname:short)" },
-        { text = true, cwd = git_root },
-        function(result)
-            vim.schedule(function()
-                if result.code ~= 0 then
-                    callback({})
-                    return
-                end
+    vim.system({ "git", "branch", "--format=%(refname:short)" }, { text = true, cwd = git_root }, function(result)
+        vim.schedule(function()
+            if result.code ~= 0 then
+                callback({})
+                return
+            end
 
-                local branches = {}
-                for line in result.stdout:gmatch("[^\r\n]+") do
-                    if line ~= "" then
-                        table.insert(branches, line)
-                    end
+            local branches = {}
+            for line in result.stdout:gmatch("[^\r\n]+") do
+                if line ~= "" then
+                    table.insert(branches, line)
                 end
-                callback(branches)
-            end)
-        end
-    )
+            end
+            callback(branches)
+        end)
+    end)
 end
 
 ---Get the main branch name (checks for "main" first, then "master")
@@ -630,7 +648,8 @@ function M.get_main_branch()
     local result = vim.system(
         { "git", "rev-parse", "--verify", "--quiet", "refs/heads/main" },
         { text = true, cwd = git_root }
-    ):wait()
+    )
+        :wait()
 
     if result.code == 0 then
         return "main"
@@ -657,19 +676,15 @@ function M.get_current_branch(callback)
         return
     end
 
-    vim.system(
-        { "git", "rev-parse", "--abbrev-ref", "HEAD" },
-        { text = true, cwd = git_root },
-        function(result)
-            vim.schedule(function()
-                if result.code == 0 then
-                    callback(vim.trim(result.stdout))
-                else
-                    callback(nil)
-                end
-            end)
-        end
-    )
+    vim.system({ "git", "rev-parse", "--abbrev-ref", "HEAD" }, { text = true, cwd = git_root }, function(result)
+        vim.schedule(function()
+            if result.code == 0 then
+                callback(vim.trim(result.stdout))
+            else
+                callback(nil)
+            end
+        end)
+    end)
 end
 
 ---Commit staged changes asynchronously

@@ -28,7 +28,7 @@ local active_timers = {
     scroll_timer = nil,
 }
 
-local COMMIT_COUNT = 6
+local COMMIT_COUNT = 30
 
 local date_extmark_ns = vim.api.nvim_create_namespace("review_commit_dates")
 local row_hl_ns = vim.api.nvim_create_namespace("review_commit_row_hl")
@@ -270,30 +270,25 @@ local function commit_index_to_line(index)
     return math.max(1, index - 1)
 end
 
+local preview_timer = vim.loop.new_timer()
+
 ---Trigger a debounced commit preview for the entry at the current cursor line
 local function trigger_preview()
-    if active_timers.preview_timer then
-        active_timers.preview_timer:stop()
-        active_timers.preview_timer:close()
-        active_timers.preview_timer = nil
-    end
-
-    active_timers.preview_timer = vim.loop.new_timer()
-    active_timers.preview_timer:start(
-        100,
+    preview_timer:stop()
+    preview_timer:start(
+        150,
         0,
         vim.schedule_wrap(function()
-            if active_timers.preview_timer then
-                active_timers.preview_timer:stop()
-                active_timers.preview_timer:close()
-                active_timers.preview_timer = nil
-            end
-
             if not M.current then
                 return
             end
 
-            local line = vim.api.nvim_win_get_cursor(0)[1]
+            local winid = M.current.winid
+            if not winid or not vim.api.nvim_win_is_valid(winid) then
+                return
+            end
+
+            local line = vim.api.nvim_win_get_cursor(winid)[1]
             local commit_index = line_to_commit_index(line)
             if not commit_index then
                 return
@@ -540,6 +535,7 @@ end
 
 ---Destroy the component
 function M.destroy()
+    preview_timer:stop()
     for name, timer in pairs(active_timers) do
         if timer then
             timer:stop()

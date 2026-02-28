@@ -1537,45 +1537,74 @@ function M.create_commit_preview(layout_component, base, base_end, preview_callb
         win_width = vim.api.nvim_win_get_width(layout_component.winid) - text_off
     end
 
-    for file_index, file in ipairs(files) do
-        local result = git.get_diff(file, base, base_end)
-        if result.success and result.output ~= "" then
-            local parsed = diff_parser.parse(result.output)
-            local raw_lines = diff_parser.get_render_lines(parsed)
+    local combined_result = git.get_commit_diff(base, base_end)
+    if combined_result.success and combined_result.output ~= "" then
+        local diff_chunks = vim.split(combined_result.output, "\ndiff --git ", { plain = true })
 
-            local top_border = string.rep("▁", win_width)
-            local bottom_border = string.rep("▔", win_width)
-
-            table.insert(all_display_lines, top_border)
-            table.insert(all_render_lines, { type = "file_divider_border_top", content = top_border })
-
-            local label = "  " .. file
-            table.insert(all_display_lines, label)
-            table.insert(all_render_lines, { type = "file_divider", content = label })
-
-            table.insert(all_display_lines, bottom_border)
-            table.insert(all_render_lines, { type = "file_divider_border_bottom", content = bottom_border })
-
-            local section_start = #all_display_lines + 1
-
-            local is_new_file = parsed.file_old == "/dev/null"
-            local is_deleted_file = parsed.file_new == "/dev/null"
-
-            for _, line in ipairs(raw_lines) do
-                if line.type ~= "header" then
-                    local content = line.content or ""
-                    table.insert(all_display_lines, content)
-                    table.insert(all_render_lines, line)
-                end
+        for chunk_index, chunk in ipairs(diff_chunks) do
+            local raw_chunk = chunk
+            if chunk_index > 1 then
+                raw_chunk = "diff --git " .. chunk
             end
 
-            table.insert(file_sections, {
-                file = file,
-                start_line = section_start,
-                end_line = #all_display_lines,
-                is_new_file = is_new_file,
-                is_deleted_file = is_deleted_file,
-            })
+            local file_path = raw_chunk:match("\n%-%-%- a/(.-)%s*\n") or raw_chunk:match("\n%+%+%+ b/(.-)%s*\n")
+            if not file_path then
+                file_path = raw_chunk:match("diff %-%-git a/(.-) b/")
+            end
+
+            if file_path then
+                local parsed = diff_parser.parse(raw_chunk)
+                local raw_lines = diff_parser.get_render_lines(parsed)
+
+                local render_line_count = 0
+                for _, line in ipairs(raw_lines) do
+                    if line.type ~= "header" then
+                        render_line_count = render_line_count + 1
+                    end
+                end
+
+                local max_preview_lines = 1000
+
+                local top_border = string.rep("▁", win_width)
+                local bottom_border = string.rep("▔", win_width)
+
+                table.insert(all_display_lines, top_border)
+                table.insert(all_render_lines, { type = "file_divider_border_top", content = top_border })
+
+                local label = "  " .. file_path
+                table.insert(all_display_lines, label)
+                table.insert(all_render_lines, { type = "file_divider", content = label })
+
+                table.insert(all_display_lines, bottom_border)
+                table.insert(all_render_lines, { type = "file_divider_border_bottom", content = bottom_border })
+
+                local section_start = #all_display_lines + 1
+
+                if render_line_count > max_preview_lines then
+                    local placeholder = "  (diff too large — " .. render_line_count .. " lines)"
+                    table.insert(all_display_lines, placeholder)
+                    table.insert(all_render_lines, { type = "context", content = placeholder })
+                else
+                    local is_new_file = parsed.file_old == "/dev/null"
+                    local is_deleted_file = parsed.file_new == "/dev/null"
+
+                    for _, line in ipairs(raw_lines) do
+                        if line.type ~= "header" then
+                            local content = line.content or ""
+                            table.insert(all_display_lines, content)
+                            table.insert(all_render_lines, line)
+                        end
+                    end
+
+                    table.insert(file_sections, {
+                        file = file_path,
+                        start_line = section_start,
+                        end_line = #all_display_lines,
+                        is_new_file = is_new_file,
+                        is_deleted_file = is_deleted_file,
+                    })
+                end
+            end
         end
     end
 
@@ -1586,19 +1615,6 @@ function M.create_commit_preview(layout_component, base, base_end, preview_callb
     vim.bo[bufnr].readonly = true
 
     vim.api.nvim_buf_clear_namespace(bufnr, ns_syntax, 0, -1)
-    for _, section in ipairs(file_sections) do
-        local section_render = { unpack(all_render_lines, section.start_line, section.end_line) }
-        local section_display = { unpack(all_display_lines, section.start_line, section.end_line) }
-        apply_treesitter_highlights(
-            bufnr,
-            section_render,
-            section_display,
-            section.file,
-            section.start_line - 1,
-            base,
-            base_end
-        )
-    end
 
     local line_pairs = find_line_pairs(all_render_lines)
 
@@ -1674,6 +1690,30 @@ function M.create_commit_preview(layout_component, base, base_end, preview_callb
                     vim.api.nvim_buf_add_highlight(bufnr, ns_diff, inline_hl, line_index - 1, range[1], range[2])
                 end
             end
+        end
+    end
+
+    local total_diff_lines = #all_display_lines
+    local max_treesitter_lines = 500
+
+    if total_diff_lines <= max_treesitter_lines then
+        for _, section in ipairs(file_sections) do
+            local section_render_lines = {}
+            local section_display_lines = {}
+            for line_index = section.start_line, section.end_line do
+                table.insert(section_render_lines, all_render_lines[line_index])
+                table.insert(section_display_lines, all_display_lines[line_index])
+            end
+
+            apply_treesitter_highlights(
+                bufnr,
+                section_render_lines,
+                section_display_lines,
+                section.file,
+                section.start_line - 1,
+                base,
+                base_end
+            )
         end
     end
 

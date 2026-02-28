@@ -112,7 +112,7 @@ function M.create()
     vim.api.nvim_win_set_buf(0, commit_list_buf)
     local commit_list_win = vim.api.nvim_get_current_win()
 
-    local commit_list_height = 8
+    local commit_list_height = 15
     vim.api.nvim_win_set_height(commit_list_win, commit_list_height)
 
     -- Apply window options (same as tree)
@@ -229,7 +229,7 @@ function M.show_file_tree()
         vim.api.nvim_win_set_buf(0, commit_list.bufnr)
         local commit_list_win = vim.api.nvim_get_current_win()
 
-        local commit_list_height = 7
+        local commit_list_height = 15
         vim.api.nvim_win_set_height(commit_list_win, commit_list_height)
 
         apply_tree_win_options(commit_list_win)
