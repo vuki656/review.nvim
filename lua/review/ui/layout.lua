@@ -28,7 +28,11 @@ local function apply_tree_win_options(winid)
     vim.api.nvim_win_set_option(winid, "cursorline", true)
     vim.api.nvim_win_set_option(winid, "signcolumn", "no")
     vim.api.nvim_win_set_option(winid, "wrap", false)
-    vim.api.nvim_win_set_option(winid, "winhighlight", "Normal:Normal,CursorLine:ReviewSelected")
+    vim.api.nvim_win_set_option(
+        winid,
+        "winhighlight",
+        "Normal:Normal,CursorLine:ReviewSelected,WinBar:ReviewWinBar,WinBarNC:ReviewWinBar"
+    )
     vim.api.nvim_win_set_option(winid, "winfixwidth", true)
 end
 
@@ -107,8 +111,7 @@ function M.create()
     vim.api.nvim_win_set_buf(0, commit_list_buf)
     local commit_list_win = vim.api.nvim_get_current_win()
 
-    -- Set commit list window height (5 commits + HEAD + separator = ~7 lines)
-    local commit_list_height = 7
+    local commit_list_height = 8
     vim.api.nvim_win_set_height(commit_list_win, commit_list_height)
 
     -- Apply window options (same as tree)
@@ -128,6 +131,10 @@ function M.create()
     apply_tree_win_options(branch_list_win)
 
     vim.o.equalalways = saved_ea
+
+    vim.wo[tree_win].winbar = "%#ReviewWinBar#  Files%*"
+    vim.wo[commit_list_win].winbar = "%#ReviewWinBar#  Commits%*"
+    vim.wo[branch_list_win].winbar = "%#ReviewWinBar#  Branches%*"
 
     M.current = {
         file_tree = { bufnr = tree_buf, winid = tree_win },
@@ -211,6 +218,7 @@ function M.show_file_tree()
 
     -- Disable spell check
     vim.wo[new_win].spell = false
+    vim.wo[new_win].winbar = "%#ReviewWinBar#  Files%*"
 
     -- Re-open commit list below tree
     local commit_list = M.current.commit_list
@@ -224,6 +232,7 @@ function M.show_file_tree()
         vim.api.nvim_win_set_height(commit_list_win, commit_list_height)
 
         apply_tree_win_options(commit_list_win)
+        vim.wo[commit_list_win].winbar = "%#ReviewWinBar#  Commits%*"
         M.current.commit_list.winid = commit_list_win
 
         -- Re-open branch list below commit list
@@ -238,6 +247,7 @@ function M.show_file_tree()
             vim.api.nvim_win_set_height(branch_list_win, branch_list_height)
 
             apply_tree_win_options(branch_list_win)
+            vim.wo[branch_list_win].winbar = "%#ReviewWinBar#  Branches%*"
             M.current.branch_list.winid = branch_list_win
         end
     end

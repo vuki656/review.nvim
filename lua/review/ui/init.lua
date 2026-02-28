@@ -357,14 +357,9 @@ end
 ---Select a branch (from branch list panel)
 ---@param entry BranchEntry
 function M.select_branch(entry)
-    if entry.is_working_changes then
-        state.state.base = "HEAD"
-        state.state.base_end = nil
-    else
-        local main_branch = git.get_main_branch()
-        state.state.base = main_branch
-        state.state.base_end = entry.name
-    end
+    local main_branch = git.get_main_branch()
+    state.state.base = main_branch
+    state.state.base_end = entry.name
 
     file_tree.refresh()
     branch_list.set_selected(entry)

@@ -6,7 +6,6 @@ local M = {}
 ---@class BranchEntry
 ---@field name string
 ---@field is_current boolean
----@field is_working_changes boolean
 
 ---@class BranchListComponent
 ---@field bufnr number
@@ -24,6 +23,8 @@ local active_timers = {
     scroll_timer = nil,
 }
 
+local row_hl_ns = vim.api.nvim_create_namespace("review_branch_row_hl")
+
 ---Determine which branch entry is currently active based on state
 ---@param branches BranchEntry[]
 ---@return number
@@ -35,7 +36,7 @@ local function find_active_index(branches)
     end
 
     for index, entry in ipairs(branches) do
-        if not entry.is_working_changes and entry.name == base_end then
+        if entry.name == base_end then
             return index
         end
     end
@@ -61,77 +62,82 @@ local function render(bufnr, branches, selected_index, winid)
 
     for index, entry in ipairs(branches) do
         local is_active = index == selected_index
-        local marker = is_active and "* " or "  "
-        local current_indicator = entry.is_current and " ●" or ""
+        local marker = is_active and "▎ " or "  "
+        local icon = entry.is_current and "✱ " or "  "
+        local head_suffix = entry.is_current and " HEAD" or ""
 
-        local line = "  " .. marker .. entry.name .. current_indicator
+        local line = "  " .. marker .. icon .. entry.name .. head_suffix
         table.insert(lines, line)
 
         local offset = 2
         local marker_start = offset
         local marker_end = offset + #marker
-        local name_start = marker_end
+        local icon_start = marker_end
+        local icon_end = icon_start + #icon
+        local name_start = icon_end
         local name_end = name_start + #entry.name
-        local indicator_start = name_end
-        local indicator_end = #line
+        local head_label_start = name_end
+        local head_label_end = #line
 
         table.insert(highlight_ranges, {
             line_index = index - 1,
             marker = { marker_start, marker_end },
+            icon = { icon_start, icon_end },
             name = { name_start, name_end },
-            indicator = current_indicator ~= "" and { indicator_start, indicator_end } or nil,
+            head_label = entry.is_current and { head_label_start, head_label_end } or nil,
             is_active = is_active,
             is_current = entry.is_current,
-            is_working_changes = entry.is_working_changes,
         })
-
-        if entry.is_working_changes then
-            local separator_width = 30
-            if winid and vim.api.nvim_win_is_valid(winid) then
-                separator_width = vim.api.nvim_win_get_width(winid) - 4
-            end
-            table.insert(lines, "  " .. string.rep("─", separator_width))
-            table.insert(highlight_ranges, { line_index = #lines - 1, is_separator = true })
-        end
     end
 
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+    vim.api.nvim_buf_clear_namespace(bufnr, row_hl_ns, 0, -1)
 
     for _, range in ipairs(highlight_ranges) do
-        if range.is_separator then
-            vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewBranchSeparator", range.line_index, 0, -1)
+        if range.is_active then
+            vim.api.nvim_buf_add_highlight(
+                bufnr,
+                -1,
+                "ReviewBranchActive",
+                range.line_index,
+                range.marker[1],
+                range.marker[2]
+            )
+            vim.api.nvim_buf_set_extmark(bufnr, row_hl_ns, range.line_index, 0, {
+                line_hl_group = "ReviewActiveRow",
+            })
+        end
+
+        if range.is_current then
+            vim.api.nvim_buf_add_highlight(
+                bufnr,
+                -1,
+                "ReviewBranchCurrent",
+                range.line_index,
+                range.icon[1],
+                range.icon[2]
+            )
+        end
+
+        local name_highlight
+        if range.is_active then
+            name_highlight = "ReviewBranchActive"
+        elseif range.is_current then
+            name_highlight = "ReviewBranchCurrent"
         else
-            if range.is_active then
-                vim.api.nvim_buf_add_highlight(
-                    bufnr,
-                    -1,
-                    "ReviewBranchActive",
-                    range.line_index,
-                    range.marker[1],
-                    range.marker[2]
-                )
-            end
+            name_highlight = "ReviewBranchName"
+        end
+        vim.api.nvim_buf_add_highlight(bufnr, -1, name_highlight, range.line_index, range.name[1], range.name[2])
 
-            local name_highlight
-            if range.is_active then
-                name_highlight = "ReviewBranchActive"
-            elseif range.is_working_changes then
-                name_highlight = "ReviewBranchHead"
-            else
-                name_highlight = "ReviewBranchName"
-            end
-            vim.api.nvim_buf_add_highlight(bufnr, -1, name_highlight, range.line_index, range.name[1], range.name[2])
-
-            if range.indicator then
-                vim.api.nvim_buf_add_highlight(
-                    bufnr,
-                    -1,
-                    "ReviewBranchCurrent",
-                    range.line_index,
-                    range.indicator[1],
-                    range.indicator[2]
-                )
-            end
+        if range.head_label then
+            vim.api.nvim_buf_add_highlight(
+                bufnr,
+                -1,
+                "ReviewHeadLabel",
+                range.line_index,
+                range.head_label[1],
+                range.head_label[2]
+            )
         end
     end
 
@@ -147,32 +153,18 @@ local function line_to_branch_index(line)
         return nil
     end
 
-    if line <= 1 then
-        return 1
-    end
-
-    local has_separator = M.current.branches[1] and M.current.branches[1].is_working_changes
-    if has_separator and line == 2 then
+    if line < 1 or line > #M.current.branches then
         return nil
     end
 
-    local branch_index = has_separator and line - 1 or line
-    if branch_index > #M.current.branches then
-        return nil
-    end
-
-    return branch_index
+    return line
 end
 
 ---Convert a branch index to a buffer line number (1-indexed)
 ---@param index number
 ---@return number
 local function branch_index_to_line(index)
-    if index <= 1 then
-        return 1
-    end
-    local has_separator = M.current and M.current.branches[1] and M.current.branches[1].is_working_changes
-    return has_separator and index + 1 or index
+    return math.max(1, index)
 end
 
 ---Setup keymaps for the branch list buffer
@@ -362,20 +354,13 @@ function M.fetch_and_render()
                 return
             end
 
-            local entries = {
-                {
-                    name = "Working changes",
-                    is_current = false,
-                    is_working_changes = true,
-                },
-            }
+            local entries = {}
 
             for _, branch_name in ipairs(branch_names) do
                 if branch_name ~= main_branch then
                     table.insert(entries, {
                         name = branch_name,
                         is_current = branch_name == current_branch,
-                        is_working_changes = false,
                     })
                 end
             end
@@ -401,10 +386,7 @@ function M.set_selected(entry)
     end
 
     for index, branch in ipairs(M.current.branches) do
-        if entry.is_working_changes and branch.is_working_changes then
-            M.current.selected_index = index
-            break
-        elseif not entry.is_working_changes and not branch.is_working_changes and entry.name == branch.name then
+        if entry.name == branch.name then
             M.current.selected_index = index
             break
         end

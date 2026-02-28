@@ -28,7 +28,68 @@ local active_timers = {
     scroll_timer = nil,
 }
 
-local COMMIT_COUNT = 5
+local COMMIT_COUNT = 6
+
+local date_extmark_ns = vim.api.nvim_create_namespace("review_commit_dates")
+local row_hl_ns = vim.api.nvim_create_namespace("review_commit_row_hl")
+
+---Shorten a git relative date string
+---@param date string
+---@return string
+local function shorten_date(date)
+    local number, unit = date:match("^(%d+) (%a+) ago$")
+    if not number then
+        return date
+    end
+
+    local short_units = {
+        second = "s",
+        seconds = "s",
+        minute = "m",
+        minutes = "m",
+        hour = "h",
+        hours = "h",
+        day = "d",
+        days = "d",
+        week = "w",
+        weeks = "w",
+        month = "mo",
+        months = "mo",
+        year = "y",
+        years = "y",
+    }
+
+    local short = short_units[unit]
+    if short then
+        return number .. short
+    end
+
+    return date
+end
+
+---Extract author initials from a name (e.g. "John Doe" → "JD", "vuki" → "VU")
+---@param author string|nil
+---@return string
+local function author_initials(author)
+    if not author or author == "" then
+        return ""
+    end
+
+    local words = {}
+    for word in author:gmatch("%S+") do
+        table.insert(words, word)
+    end
+
+    if #words == 0 then
+        return ""
+    end
+
+    if #words == 1 then
+        return words[1]:sub(1, 2):upper()
+    end
+
+    return (words[1]:sub(1, 1) .. words[2]:sub(1, 1)):upper()
+end
 
 ---Build the list of commit entries (HEAD + recent commits)
 ---@return CommitEntry[]
@@ -94,97 +155,90 @@ local function render(bufnr, commits, selected_index, winid)
 
     local lines = {}
     local highlight_ranges = {}
+    local date_entries = {}
 
+    local render_index = 0
     for index, entry in ipairs(commits) do
-        local is_active = index == selected_index
-        local marker = is_active and "* " or "  "
-
-        if entry.is_head then
-            local line = "  " .. marker .. entry.short_hash .. "  " .. entry.subject
+        if not entry.is_head then
+            local is_active = index == selected_index
+            local marker = is_active and "▎ " or "  "
+            local node = is_active and "● " or "○ "
+            local initials = author_initials(entry.author)
+            local initials_segment = initials ~= "" and (initials .. " ") or ""
+            local line = "  " .. marker .. node .. entry.short_hash .. " " .. initials_segment .. " " .. entry.subject
             table.insert(lines, line)
 
+            local line_index = render_index
+            render_index = render_index + 1
             local offset = 2
-            local marker_start = offset
             local marker_end = offset + #marker
-            local hash_start = marker_end
+            local node_start = marker_end
+            local node_end = node_start + #node
+            local hash_start = node_end
             local hash_end = hash_start + #entry.short_hash
-            local subject_start = hash_end + 2
-            local subject_end = #line
+            local initials_start = hash_end + 1
+            local initials_end = initials_start + #initials
+            local subject_start = initials_end + 1 + 1
 
             table.insert(highlight_ranges, {
-                line = index,
-                marker = { marker_start, marker_end },
+                line_index = line_index,
+                marker = { offset, marker_end },
+                node = { node_start, node_end },
                 hash = { hash_start, hash_end },
-                subject = { subject_start, subject_end },
+                initials = initials ~= "" and { initials_start, initials_end } or nil,
+                subject = { subject_start, #line },
                 is_active = is_active,
             })
-        else
-            local date_part = entry.date and ("  " .. entry.date) or ""
-            local line = "  " .. marker .. entry.short_hash .. "  " .. entry.subject .. date_part
-            table.insert(lines, line)
 
-            local offset = 2
-            local marker_start = offset
-            local marker_end = offset + #marker
-            local hash_start = marker_end
-            local hash_end = hash_start + #entry.short_hash
-            local subject_start = hash_end + 2
-            local subject_end = subject_start + #entry.subject
-            local date_start = subject_end
-            local date_end = #line
-
-            table.insert(highlight_ranges, {
-                line = index,
-                marker = { marker_start, marker_end },
-                hash = { hash_start, hash_end },
-                subject = { subject_start, subject_end },
-                date = { date_start, date_end },
-                is_active = is_active,
-            })
-        end
-
-        if entry.is_head then
-            local separator_width = 30
-            if winid and vim.api.nvim_win_is_valid(winid) then
-                separator_width = vim.api.nvim_win_get_width(winid) - 4
+            if entry.date then
+                table.insert(date_entries, { line_index = line_index, date = shorten_date(entry.date) })
             end
-            table.insert(lines, "  " .. string.rep("─", separator_width))
-            table.insert(highlight_ranges, { line = index + 0.5, is_separator = true })
         end
     end
 
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+    vim.api.nvim_buf_clear_namespace(bufnr, date_extmark_ns, 0, -1)
+    vim.api.nvim_buf_clear_namespace(bufnr, row_hl_ns, 0, -1)
 
-    local line_offset = 0
     for _, range in ipairs(highlight_ranges) do
-        if range.is_separator then
-            vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewCommitSeparator", line_offset, 0, -1)
-            line_offset = line_offset + 1
-        else
-            local line_index = line_offset
-
-            if range.is_active then
-                vim.api.nvim_buf_add_highlight(
-                    bufnr,
-                    -1,
-                    "ReviewCommitActive",
-                    line_index,
-                    range.marker[1],
-                    range.marker[2]
-                )
-            end
-
-            vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewCommitHash", line_index, range.hash[1], range.hash[2])
-
-            local subject_highlight = range.is_active and "ReviewCommitActive" or "ReviewFilePath"
-            vim.api.nvim_buf_add_highlight(bufnr, -1, subject_highlight, line_index, range.subject[1], range.subject[2])
-
-            if range.date then
-                vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewCommitDate", line_index, range.date[1], range.date[2])
-            end
-
-            line_offset = line_offset + 1
+        if range.is_active then
+            vim.api.nvim_buf_add_highlight(
+                bufnr,
+                -1,
+                "ReviewCommitActive",
+                range.line_index,
+                range.marker[1],
+                range.marker[2]
+            )
+            vim.api.nvim_buf_set_extmark(bufnr, row_hl_ns, range.line_index, 0, {
+                line_hl_group = "ReviewActiveRow",
+            })
         end
+
+        local node_hl = range.is_active and "ReviewCommitGraphActive" or "ReviewCommitGraph"
+        vim.api.nvim_buf_add_highlight(bufnr, -1, node_hl, range.line_index, range.node[1], range.node[2])
+        vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewCommitHash", range.line_index, range.hash[1], range.hash[2])
+
+        if range.initials then
+            vim.api.nvim_buf_add_highlight(
+                bufnr,
+                -1,
+                "ReviewCommitAuthor",
+                range.line_index,
+                range.initials[1],
+                range.initials[2]
+            )
+        end
+
+        local subject_hl = range.is_active and "ReviewCommitActive" or "ReviewFilePath"
+        vim.api.nvim_buf_add_highlight(bufnr, -1, subject_hl, range.line_index, range.subject[1], range.subject[2])
+    end
+
+    for _, date_entry in ipairs(date_entries) do
+        vim.api.nvim_buf_set_extmark(bufnr, date_extmark_ns, date_entry.line_index, 0, {
+            virt_text = { { date_entry.date, "ReviewCommitDate" } },
+            virt_text_pos = "right_align",
+        })
     end
 
     vim.bo[bufnr].modifiable = false
@@ -192,6 +246,7 @@ local function render(bufnr, commits, selected_index, winid)
 end
 
 ---Convert a commit list line number (1-indexed) to a commit index
+---Line N maps to commit index N+1 (index 1 is hidden HEAD)
 ---@param line number
 ---@return number|nil
 local function line_to_commit_index(line)
@@ -199,15 +254,7 @@ local function line_to_commit_index(line)
         return nil
     end
 
-    if line <= 1 then
-        return 1
-    end
-
-    if line == 2 then
-        return nil
-    end
-
-    local commit_index = line - 1
+    local commit_index = line + 1
     if commit_index > #M.current.commits then
         return nil
     end
@@ -216,13 +263,11 @@ local function line_to_commit_index(line)
 end
 
 ---Convert a commit index to a buffer line number (1-indexed)
+---Index 1 is hidden HEAD, index 2+ maps to line index-1
 ---@param index number
 ---@return number
 local function commit_index_to_line(index)
-    if index <= 1 then
-        return 1
-    end
-    return index + 1
+    return math.max(1, index - 1)
 end
 
 ---Trigger a debounced commit preview for the entry at the current cursor line

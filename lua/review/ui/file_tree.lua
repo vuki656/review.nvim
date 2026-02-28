@@ -595,6 +595,16 @@ local function create_tree_nodes(files, base, base_end)
     return nodes
 end
 
+---Update the file tree winbar with file count
+---@param winid number
+---@param file_count number
+local function update_winbar(winid, file_count)
+    if not vim.api.nvim_win_is_valid(winid) then
+        return
+    end
+    vim.wo[winid].winbar = "%#ReviewWinBar#  Files%* %#ReviewWinBarCount#(" .. file_count .. ")%*"
+end
+
 ---Render the file tree to buffer
 ---@param bufnr number
 ---@param nodes FileNode[]
@@ -1425,6 +1435,7 @@ function M.create(layout_component, callbacks)
 
     -- Render
     render_to_buffer(bufnr, nodes, layout_component.winid)
+    update_winbar(layout_component.winid, #files)
 
     -- Setup keymaps
     setup_keymaps(bufnr, callbacks)
@@ -1474,6 +1485,7 @@ function M.refresh()
         M.current.nodes = create_nodes(M.current.files, state.state.base, state.state.base_end)
     end
     render_to_buffer(M.current.bufnr, M.current.nodes, M.current.winid)
+    update_winbar(M.current.winid, #M.current.files)
 
     -- Refresh unpushed count
     update_footer()

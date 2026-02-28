@@ -71,6 +71,8 @@ function M.setup()
         -- UI elements
         ReviewBorder = { fg = "#3e4452" },
         ReviewTitle = { fg = "#61afef", bold = true },
+        ReviewWinBar = { fg = "#848b98", bold = true, bg = "NONE" },
+        ReviewWinBarCount = { fg = "#4b5263", bg = "NONE" },
         ReviewSelected = { bg = "#3e4452" },
         ReviewHelpGroup = { fg = "#abb2bf", bg = "#2c313a", bold = true },
         ReviewHelpKey = { fg = "#e5c07b" },
@@ -97,11 +99,17 @@ function M.setup()
         ReviewTemplateBorder = { fg = "#5c6370" },
         ReviewTemplateTitle = { fg = "#61afef", bold = true },
 
+        -- Active row background (shared by commit + branch lists)
+        ReviewActiveRow = { bg = "#2a2d35" },
+
         -- Commit list
-        ReviewCommitHash = { fg = "#61afef" },
+        ReviewCommitHash = { fg = "#e5c07b" },
+        ReviewCommitAuthor = { fg = "#61afef" },
         ReviewCommitDate = { fg = "#4b5263" },
         ReviewCommitActive = { fg = "#89ca78", bold = true },
         ReviewCommitSeparator = { fg = "#3e4452" },
+        ReviewCommitGraph = { fg = "#c678dd" },
+        ReviewCommitGraphActive = { fg = "#89ca78", bold = true },
 
         -- Branch list
         ReviewBranchName = { fg = "#abb2bf" },
@@ -109,6 +117,7 @@ function M.setup()
         ReviewBranchActive = { fg = "#89ca78", bold = true },
         ReviewBranchCurrent = { fg = "#c678dd" },
         ReviewBranchSeparator = { fg = "#3e4452" },
+        ReviewHeadLabel = { fg = "#e5c07b", bold = true },
     }
 
     for name, opts in pairs(highlights) do
