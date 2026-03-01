@@ -3,6 +3,9 @@ local state = require("review.state")
 
 local M = {}
 
+-- Tracks which directory paths are collapsed in tree view
+local collapsed_dirs = {}
+
 -- Optional devicons support
 local has_devicons, devicons = pcall(require, "nvim-web-devicons")
 
@@ -42,6 +45,7 @@ local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧",
 
 ---@class FileNode
 ---@field path string|nil
+---@field dir_path string|nil
 ---@field text string
 ---@field is_file boolean
 ---@field is_separator boolean
@@ -439,7 +443,7 @@ local function create_tree_nodes(files, base, base_end)
     local INDENT_MARKER_LAST = "└ " -- last item (no siblings after)
     local INDENT_MARKER_SPACE = "  " -- empty space
 
-    local function add_tree_entry(name, entry, depth, indent_stack, is_last)
+    local function add_tree_entry(name, entry, depth, indent_stack, is_last, parent_path)
         -- Build indent string with markers
         local indent_parts = {}
         local indent_ranges = {} -- Track positions for highlighting
@@ -498,14 +502,17 @@ local function create_tree_nodes(files, base, base_end)
                 filename_end = #text,
             })
         else
-            -- It's a directory (using nf-md-folder U+F024B)
-            local folder_icon = "󰉋"
+            -- It's a directory
+            local dir_path = parent_path and (parent_path .. "/" .. name) or name
+            local is_collapsed = collapsed_dirs[dir_path] or false
+            local folder_icon = is_collapsed and "󰉖" or "󰉋"
             local left_pad = " "
             local text = left_pad .. indent .. folder_icon .. " " .. name
 
             local offset = #left_pad + #indent
             table.insert(nodes, {
                 path = nil,
+                dir_path = dir_path,
                 text = text,
                 is_file = false,
                 is_separator = false,
@@ -523,40 +530,42 @@ local function create_tree_nodes(files, base, base_end)
                 dirname_end = #text,
             })
 
-            -- Sort entries: directories first, then files
-            local dirs, files_list = {}, {}
-            for k, v in pairs(entry) do
-                if v.__file then
-                    table.insert(files_list, { name = k, entry = v })
-                else
-                    table.insert(dirs, { name = k, entry = v })
+            if not is_collapsed then
+                -- Sort entries: directories first, then files
+                local dirs, files_list = {}, {}
+                for k, v in pairs(entry) do
+                    if v.__file then
+                        table.insert(files_list, { name = k, entry = v })
+                    else
+                        table.insert(dirs, { name = k, entry = v })
+                    end
                 end
-            end
-            table.sort(dirs, function(a, b)
-                return a.name < b.name
-            end)
-            table.sort(files_list, function(a, b)
-                return a.name < b.name
-            end)
+                table.sort(dirs, function(a, b)
+                    return a.name < b.name
+                end)
+                table.sort(files_list, function(a, b)
+                    return a.name < b.name
+                end)
 
-            -- Build new indent stack for children
-            local child_indent_stack = { unpack(indent_stack) }
-            if depth > 0 then
-                -- Add continuation marker or space depending on whether parent has more siblings
-                table.insert(child_indent_stack, is_last and INDENT_MARKER_SPACE or INDENT_MARKER_PIPE)
-            end
+                -- Build new indent stack for children
+                local child_indent_stack = { unpack(indent_stack) }
+                if depth > 0 then
+                    -- Add continuation marker or space depending on whether parent has more siblings
+                    table.insert(child_indent_stack, is_last and INDENT_MARKER_SPACE or INDENT_MARKER_PIPE)
+                end
 
-            local all_children = {}
-            for _, d in ipairs(dirs) do
-                table.insert(all_children, { name = d.name, entry = d.entry })
-            end
-            for _, f in ipairs(files_list) do
-                table.insert(all_children, { name = f.name, entry = f.entry })
-            end
+                local all_children = {}
+                for _, d in ipairs(dirs) do
+                    table.insert(all_children, { name = d.name, entry = d.entry })
+                end
+                for _, f in ipairs(files_list) do
+                    table.insert(all_children, { name = f.name, entry = f.entry })
+                end
 
-            for i, child in ipairs(all_children) do
-                local child_is_last = (i == #all_children)
-                add_tree_entry(child.name, child.entry, depth + 1, child_indent_stack, child_is_last)
+                for i, child in ipairs(all_children) do
+                    local child_is_last = (i == #all_children)
+                    add_tree_entry(child.name, child.entry, depth + 1, child_indent_stack, child_is_last, dir_path)
+                end
             end
         end
     end
@@ -587,7 +596,7 @@ local function create_tree_nodes(files, base, base_end)
 
     for i, item in ipairs(all_root) do
         local is_last = (i == #all_root)
-        add_tree_entry(item.name, item.entry, 0, {}, is_last)
+        add_tree_entry(item.name, item.entry, 0, {}, is_last, nil)
     end
 
     return nodes
@@ -1127,11 +1136,32 @@ local function setup_keymaps(bufnr, callbacks)
         end
     end, { nowait = true, desc = "Previous file", group = "Navigation" })
 
-    -- Select file and focus diff view
+    -- Select file and focus diff view, or toggle directory collapse
     map("<CR>", function()
         local line = vim.api.nvim_win_get_cursor(0)[1]
         local node = M.get_node_at_line(line)
-        if node and node.is_file and callbacks.on_file_select then
+        if not node then
+            return
+        end
+
+        if node.is_directory and node.dir_path then
+            local target_dir_path = node.dir_path
+            if collapsed_dirs[target_dir_path] then
+                collapsed_dirs[target_dir_path] = nil
+            else
+                collapsed_dirs[target_dir_path] = true
+            end
+            M.refresh()
+            -- Restore cursor to the same directory node
+            if M.current and M.current.nodes then
+                for index, refreshed_node in ipairs(M.current.nodes) do
+                    if refreshed_node.dir_path == target_dir_path then
+                        vim.api.nvim_win_set_cursor(0, { index, 0 })
+                        break
+                    end
+                end
+            end
+        elseif node.is_file and callbacks.on_file_select then
             callbacks.on_file_select(node.path)
             -- Focus the diff view
             local layout = require("review.ui.layout")
@@ -1516,6 +1546,7 @@ function M.destroy()
     end
     -- Reset footer state
     footer_state = { unpushed_count = nil, spinner_frame = 0 }
+    collapsed_dirs = {}
     M.current = nil
 end
 
