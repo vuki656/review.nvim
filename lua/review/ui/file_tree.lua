@@ -441,6 +441,26 @@ local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
         end
     end
 
+    local function count_dir_files(entry)
+        local total = 0
+        local staged = 0
+        for key, value in pairs(entry) do
+            if key ~= "__file" then
+                if value.__file then
+                    total = total + 1
+                    if not is_history_mode and state.is_reviewed(value.__file) then
+                        staged = staged + 1
+                    end
+                else
+                    local child_total, child_staged = count_dir_files(value)
+                    total = total + child_total
+                    staged = staged + child_staged
+                end
+            end
+        end
+        return total, staged
+    end
+
     -- Flatten tree into nodes with indentation
     local nodes = {}
 
@@ -513,8 +533,12 @@ local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
             local dir_path = parent_path and (parent_path .. "/" .. name) or name
             local is_collapsed = collapsed_dirs[dir_path] or false
             local folder_icon = is_collapsed and "󰉖" or "󰉋"
+            local dir_total, dir_staged = count_dir_files(entry)
+            local dir_all_staged = dir_total > 0 and dir_staged == dir_total
+            local dir_checkbox = is_history_mode and ""
+                or (dir_all_staged and "[x] " or (dir_staged > 0 and "[-] " or "[ ] "))
             local left_pad = " "
-            local text = left_pad .. indent .. folder_icon .. " " .. name
+            local text = left_pad .. indent .. folder_icon .. " " .. dir_checkbox .. name
 
             local offset = #left_pad + #indent
             table.insert(nodes, {
@@ -525,7 +549,8 @@ local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
                 is_separator = false,
                 is_directory = true,
                 is_tree_view = true,
-                reviewed = false,
+                reviewed = dir_all_staged,
+                dir_partially_staged = dir_staged > 0 and not dir_all_staged,
                 in_reviewed_section = false,
                 in_deleted_section = false,
                 git_status_hl = "ReviewTreeDirectory",
@@ -533,7 +558,9 @@ local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
                 indent_ranges = indent_ranges,
                 dir_icon_start = offset,
                 dir_icon_end = offset + #folder_icon,
-                dirname_start = offset + #folder_icon + 1,
+                checkbox_start = offset + #folder_icon + 1,
+                checkbox_end = offset + #folder_icon + 1 + #dir_checkbox,
+                dirname_start = offset + #folder_icon + 1 + #dir_checkbox,
                 dirname_end = #text,
             })
 
@@ -710,6 +737,18 @@ local function render_to_buffer(bufnr, nodes, winid)
                     i - 1,
                     node.dir_icon_start,
                     node.dir_icon_end
+                )
+            end
+            -- Checkbox
+            if node.checkbox_start and node.checkbox_end and node.checkbox_end > node.checkbox_start then
+                local dir_checkbox_hl = node.reviewed and "ReviewFileReviewed" or "ReviewFileModified"
+                vim.api.nvim_buf_add_highlight(
+                    bufnr,
+                    -1,
+                    dir_checkbox_hl,
+                    i - 1,
+                    node.checkbox_start,
+                    node.checkbox_end
                 )
             end
             if node.dirname_start then
@@ -1001,24 +1040,25 @@ local function setup_keymaps(bufnr, callbacks)
 
     local map = ui_util.create_buffer_mapper(bufnr, registered_keymaps)
 
-    -- Toggle stage with space
-    local function toggle_stage()
-        if state.is_history_mode() then
-            vim.notify("Cannot stage in history mode", vim.log.levels.WARN)
-            return
+    local function get_child_files_of_directory(dir_path)
+        if not M.current or not M.current.nodes then
+            return {}
         end
-
-        local line = vim.api.nvim_win_get_cursor(0)[1]
-        local node = M.get_node_at_line(line)
-        if not node or not node.is_file then
-            return
+        local prefix = dir_path .. "/"
+        local child_files = {}
+        for _, file_node in ipairs(M.current.nodes) do
+            if file_node.is_file and file_node.path and file_node.path:sub(1, #prefix) == prefix then
+                table.insert(child_files, file_node)
+            end
         end
+        return child_files
+    end
 
+    local function stage_single_file(node, line)
         local staged_file = node.path
         local was_staged = node.reviewed
 
         if node.reviewed then
-            -- Unstage
             if git.unstage_file(node.path) then
                 state.set_reviewed(node.path, false)
                 M.refresh()
@@ -1027,7 +1067,6 @@ local function setup_keymaps(bufnr, callbacks)
                 end
             end
         else
-            -- Stage
             if git.stage_file(node.path) then
                 state.set_reviewed(node.path, true)
                 M.refresh()
@@ -1037,31 +1076,80 @@ local function setup_keymaps(bufnr, callbacks)
             end
         end
 
-        -- After staging (not unstaging), cursor stays on same line but file moved to bottom
-        -- Find and select the next available file at cursor position or nearby
         if not was_staged and M.current and M.current.nodes then
             local current_node = M.get_node_at_line(line)
-            -- If cursor is now on a different file, select it
             if current_node and current_node.is_file and current_node.path ~= staged_file then
                 if callbacks.on_file_select then
                     callbacks.on_file_select(current_node.path)
                 end
-            -- If cursor is on a separator/header, find next file
             elseif not current_node or not current_node.is_file then
                 local line_count = vim.api.nvim_buf_line_count(M.current.bufnr)
-                for i = line, line_count do
-                    local n = M.get_node_at_line(i)
-                    if n and n.is_file and n.path ~= staged_file then
+                for index = line, line_count do
+                    local found_node = M.get_node_at_line(index)
+                    if found_node and found_node.is_file and found_node.path ~= staged_file then
                         if vim.api.nvim_win_is_valid(M.current.winid) then
-                            vim.api.nvim_win_set_cursor(M.current.winid, { i, 0 })
+                            vim.api.nvim_win_set_cursor(M.current.winid, { index, 0 })
                         end
                         if callbacks.on_file_select then
-                            callbacks.on_file_select(n.path)
+                            callbacks.on_file_select(found_node.path)
                         end
                         break
                     end
                 end
             end
+        end
+    end
+
+    local function stage_directory(dir_path)
+        local child_files = get_child_files_of_directory(dir_path)
+        if #child_files == 0 then
+            return
+        end
+
+        local all_staged = true
+        for _, file_node in ipairs(child_files) do
+            if not file_node.reviewed then
+                all_staged = false
+                break
+            end
+        end
+
+        local should_stage = not all_staged
+        for _, file_node in ipairs(child_files) do
+            if should_stage and not file_node.reviewed then
+                if git.stage_file(file_node.path) then
+                    state.set_reviewed(file_node.path, true)
+                end
+            elseif not should_stage and file_node.reviewed then
+                if git.unstage_file(file_node.path) then
+                    state.set_reviewed(file_node.path, false)
+                end
+            end
+        end
+
+        M.refresh()
+        if callbacks.on_refresh then
+            callbacks.on_refresh()
+        end
+    end
+
+    -- Toggle stage with space
+    local function toggle_stage()
+        if state.is_history_mode() then
+            vim.notify("Cannot stage in history mode", vim.log.levels.WARN)
+            return
+        end
+
+        local line = vim.api.nvim_win_get_cursor(0)[1]
+        local node = M.get_node_at_line(line)
+        if not node then
+            return
+        end
+
+        if node.is_directory and node.dir_path then
+            stage_directory(node.dir_path)
+        elseif node.is_file then
+            stage_single_file(node, line)
         end
     end
 
