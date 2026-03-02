@@ -1081,10 +1081,7 @@ local function commit_flow(callbacks)
 
             if success then
                 vim.notify("Committed: " .. subject, vim.log.levels.INFO)
-                M.refresh()
-                if callbacks.on_refresh then
-                    callbacks.on_refresh()
-                end
+                refresh_and_sync()
             else
                 vim.notify("Commit failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
             end
@@ -1212,48 +1209,36 @@ local function setup_keymaps(bufnr, callbacks)
         return child_files
     end
 
-    local function stage_single_file(node, line)
-        local staged_file = node.path
-        local was_staged = node.reviewed
+    local function sync_diff_to_cursor()
+        if not M.current or not M.current.winid or not vim.api.nvim_win_is_valid(M.current.winid) then
+            return
+        end
+        local line = vim.api.nvim_win_get_cursor(M.current.winid)[1]
+        local node = M.get_node_at_line(line)
+        if node and node.is_file and callbacks.on_file_select then
+            callbacks.on_file_select(node.path)
+        end
+    end
 
+    local function refresh_and_sync()
+        M.refresh(function()
+            if callbacks.on_refresh then
+                callbacks.on_refresh()
+            end
+            sync_diff_to_cursor()
+        end)
+    end
+
+    local function stage_single_file(node)
         if node.reviewed then
             if git.unstage_file(node.path) then
                 state.set_reviewed(node.path, false)
-                M.refresh()
-                if callbacks.on_refresh then
-                    callbacks.on_refresh()
-                end
+                refresh_and_sync()
             end
         else
             if git.stage_file(node.path) then
                 state.set_reviewed(node.path, true)
-                M.refresh()
-                if callbacks.on_refresh then
-                    callbacks.on_refresh()
-                end
-            end
-        end
-
-        if not was_staged and M.current and M.current.nodes then
-            local current_node = M.get_node_at_line(line)
-            if current_node and current_node.is_file and current_node.path ~= staged_file then
-                if callbacks.on_file_select then
-                    callbacks.on_file_select(current_node.path)
-                end
-            elseif not current_node or not current_node.is_file then
-                local line_count = vim.api.nvim_buf_line_count(M.current.bufnr)
-                for index = line, line_count do
-                    local found_node = M.get_node_at_line(index)
-                    if found_node and found_node.is_file and found_node.path ~= staged_file then
-                        if vim.api.nvim_win_is_valid(M.current.winid) then
-                            vim.api.nvim_win_set_cursor(M.current.winid, { index, 0 })
-                        end
-                        if callbacks.on_file_select then
-                            callbacks.on_file_select(found_node.path)
-                        end
-                        break
-                    end
-                end
+                refresh_and_sync()
             end
         end
     end
@@ -1285,10 +1270,7 @@ local function setup_keymaps(bufnr, callbacks)
             end
         end
 
-        M.refresh()
-        if callbacks.on_refresh then
-            callbacks.on_refresh()
-        end
+        refresh_and_sync()
     end
 
     -- Toggle stage with space
@@ -1307,7 +1289,7 @@ local function setup_keymaps(bufnr, callbacks)
         if node.is_directory and node.dir_path then
             stage_directory(node.dir_path)
         elseif node.is_file then
-            stage_single_file(node, line)
+            stage_single_file(node)
         end
     end
 
@@ -1400,16 +1382,17 @@ local function setup_keymaps(bufnr, callbacks)
             else
                 collapsed_dirs[target_dir_path] = true
             end
-            M.refresh()
-            -- Restore cursor to the same directory node
-            if M.current and M.current.nodes then
-                for index, refreshed_node in ipairs(M.current.nodes) do
-                    if refreshed_node.dir_path == target_dir_path then
-                        vim.api.nvim_win_set_cursor(0, { index, 0 })
-                        break
+            M.refresh(function()
+                if M.current and M.current.nodes then
+                    for index, refreshed_node in ipairs(M.current.nodes) do
+                        if refreshed_node.dir_path == target_dir_path then
+                            vim.api.nvim_win_set_cursor(0, { index, 0 })
+                            break
+                        end
                     end
                 end
-            end
+                sync_diff_to_cursor()
+            end)
         elseif node.is_file and callbacks.on_file_select then
             callbacks.on_file_select(node.path)
             -- Focus the diff view
@@ -1452,10 +1435,7 @@ local function setup_keymaps(bufnr, callbacks)
 
     -- Refresh
     map("R", function()
-        M.refresh()
-        if callbacks.on_refresh then
-            callbacks.on_refresh()
-        end
+        refresh_and_sync()
     end, { desc = "Refresh file list", group = "Review" })
 
     -- Show full path
@@ -1520,10 +1500,7 @@ local function setup_keymaps(bufnr, callbacks)
 
                 if success then
                     vim.notify("Amended all changes to last commit", vim.log.levels.INFO)
-                    M.refresh()
-                    if callbacks.on_refresh then
-                        callbacks.on_refresh()
-                    end
+                    refresh_and_sync()
                 else
                     vim.notify("Amend failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
                 end
@@ -1539,7 +1516,7 @@ local function setup_keymaps(bufnr, callbacks)
     -- Toggle list/tree view
     map("`", function()
         M.view_mode = M.view_mode == "list" and "tree" or "list"
-        M.refresh()
+        refresh_and_sync()
     end, { desc = "Toggle list/tree view", group = "View" })
 
     -- Toggle file tree
@@ -1648,10 +1625,7 @@ local function setup_keymaps(bufnr, callbacks)
 
             if git.restore_file(node.path) then
                 state.set_reviewed(node.path, false)
-                M.refresh()
-                if callbacks.on_refresh then
-                    callbacks.on_refresh()
-                end
+                refresh_and_sync()
                 vim.notify("Reverted " .. node.path, vim.log.levels.INFO)
             else
                 vim.notify("Failed to revert " .. node.path, vim.log.levels.ERROR)
@@ -1766,11 +1740,14 @@ function M.create(layout_component, callbacks)
         render_to_buffer(bufnr, nodes, layout_component.winid)
         update_winbar(layout_component.winid, #files)
 
-        -- Position cursor on first file
+        -- Position cursor on first file and load its diff
         if vim.api.nvim_win_is_valid(layout_component.winid) then
             for node_index, node in ipairs(nodes) do
                 if node.is_file then
                     vim.api.nvim_win_set_cursor(layout_component.winid, { node_index, 0 })
+                    if callbacks.on_file_select then
+                        callbacks.on_file_select(node.path)
+                    end
                     break
                 end
             end
@@ -1783,7 +1760,8 @@ function M.create(layout_component, callbacks)
 end
 
 ---Refresh the file list
-function M.refresh()
+---@param on_complete? fun() Called after async refresh finishes
+function M.refresh(on_complete)
     if not M.current then
         return
     end
@@ -1859,6 +1837,10 @@ function M.refresh()
         update_winbar(winid, #files)
 
         update_footer()
+
+        if on_complete then
+            on_complete()
+        end
     end)
 end
 

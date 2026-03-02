@@ -106,8 +106,6 @@ function M.open()
         vim.api.nvim_set_current_win(l.file_tree.winid)
     end
 
-    focus_first_file()
-
     -- Start file watcher for auto-refresh
     local git_root = git.get_root()
     if git_root then
@@ -333,9 +331,10 @@ function M.select_commit(entry)
         state.state.base_end = entry.hash
     end
 
-    file_tree.refresh()
+    file_tree.refresh(function()
+        focus_first_file(true)
+    end)
     commit_list.set_selected(entry)
-    focus_first_file(true)
 end
 
 ---Select a branch (from branch list panel)
@@ -350,10 +349,11 @@ function M.select_branch(entry)
         state.state.base_end = entry.name
     end
 
-    file_tree.refresh()
+    file_tree.refresh(function()
+        focus_first_file(true)
+    end)
     branch_list.set_selected(entry)
     commit_list.refresh()
-    focus_first_file(true)
 end
 
 ---Preview a commit's diff without updating state or file tree
