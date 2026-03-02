@@ -1499,7 +1499,7 @@ local function setup_keymaps(bufnr, callbacks)
         end
 
         vim.ui.select({ { label = "Yes" }, { label = "No" } }, {
-            prompt = "Stage all changes and amend to the last commit?",
+            prompt = "Amend last commit?",
             format_item = function(item)
                 return item.label
             end,
