@@ -1280,7 +1280,7 @@ local function setup_keymaps(bufnr, callbacks)
     end, { desc = "Next pane", group = "View" })
 
     -- Commit staged changes
-    map("C", function()
+    map("c", function()
         commit_flow(callbacks)
     end, { desc = "Commit staged changes", group = "Git" })
 
