@@ -1,7 +1,11 @@
+local async = require("review.core.async")
 local git = require("review.core.git")
 local state = require("review.state")
 
 local M = {}
+
+-- Generation counter for discarding stale async results
+local generation = 0
 
 -- Tracks which directory paths are collapsed in tree view
 local collapsed_dirs = {}
@@ -294,14 +298,15 @@ end
 ---@param files string[]
 ---@param base string|nil Base commit for comparison
 ---@param base_end string|nil End of commit range
+---@param cached_unstaged_set table<string, boolean>|nil Pre-fetched unstaged set (avoids duplicate call)
 ---@return FileNode[]
-local function create_nodes(files, base, base_end)
+local function create_nodes(files, base, base_end, cached_unstaged_set)
     local is_history_mode = base ~= nil and base ~= "HEAD"
 
     -- Batch fetch all git statuses in one call (major perf win)
     local status_map, rename_map = git.get_all_file_statuses(files, base, base_end)
-    -- Batch fetch unstaged files set
-    local unstaged_set = not is_history_mode and git.get_unstaged_files() or {}
+    -- Use cached unstaged set or fetch if not provided
+    local unstaged_set = cached_unstaged_set or (not is_history_mode and git.get_unstaged_files() or {})
 
     -- Categorize files by git status and staged status
     local unstaged_modified = {} -- modified, not staged
@@ -406,8 +411,9 @@ end
 ---@param files string[]
 ---@param base string|nil Base commit for comparison
 ---@param base_end string|nil End of commit range
+---@param _cached_unstaged_set table<string, boolean>|nil Pre-fetched unstaged set (unused in tree view, kept for API consistency)
 ---@return FileNode[]
-local function create_tree_nodes(files, base, base_end)
+local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
     local is_history_mode = base ~= nil and base ~= "HEAD"
 
     -- Batch fetch all git statuses in one call (major perf win)
@@ -605,11 +611,12 @@ end
 ---Update the file tree winbar with file count
 ---@param winid number
 ---@param file_count number
-local function update_winbar(winid, file_count)
+local function update_winbar(winid, file_count, is_refreshing)
     if not vim.api.nvim_win_is_valid(winid) then
         return
     end
-    vim.wo[winid].winbar = "%#ReviewWinBar#  Files%* %#ReviewWinBarCount#(" .. file_count .. ")%*"
+    local suffix = is_refreshing and " %#ReviewWinBarCount#[refreshing...]%*" or ""
+    vim.wo[winid].winbar = "%#ReviewWinBar#  Files%* %#ReviewWinBarCount#(" .. file_count .. ")%*" .. suffix
 end
 
 ---Render the file tree to buffer
@@ -1441,55 +1448,96 @@ end
 function M.create(layout_component, callbacks)
     local bufnr = layout_component.bufnr
 
-    -- Get changed files
-    local files = git.get_changed_files(state.state.base, state.state.base_end)
-
-    -- Initialize file states
-    -- A file is only considered "reviewed/staged" if it's staged AND has no additional unstaged changes
-    if not state.state.base_end then
-        local unstaged_set = git.get_unstaged_files()
-        for _, file in ipairs(files) do
-            local is_staged = git.is_staged(file)
-            local has_unstaged = unstaged_set[file] or false
-            state.set_reviewed(file, is_staged and not has_unstaged)
-        end
-    end
-
-    -- Create nodes based on view mode
-    local nodes
-    if M.view_mode == "tree" then
-        nodes = create_tree_nodes(files, state.state.base, state.state.base_end)
-    else
-        nodes = create_nodes(files, state.state.base, state.state.base_end)
-    end
-
+    -- Initialize M.current immediately so keymaps and UI work
     M.current = {
         bufnr = bufnr,
         winid = layout_component.winid,
-        files = files,
-        nodes = nodes,
+        files = {},
+        nodes = {},
     }
 
-    -- Render
-    render_to_buffer(bufnr, nodes, layout_component.winid)
-    update_winbar(layout_component.winid, #files)
-
-    -- Setup keymaps
+    -- Setup keymaps right away
     setup_keymaps(bufnr, callbacks)
 
     -- Disable spell check on file tree
     vim.wo[layout_component.winid].spell = false
 
-    -- Position cursor on first file
-    for i, node in ipairs(nodes) do
-        if node.is_file then
-            vim.api.nvim_win_set_cursor(layout_component.winid, { i, 0 })
-            break
-        end
-    end
+    -- Show loading state
+    update_winbar(layout_component.winid, 0, true)
 
-    -- Fetch and render unpushed count
-    update_footer()
+    generation = generation + 1
+    local current_generation = generation
+
+    async.run(function()
+        local files = git.get_changed_files_async(state.state.base, state.state.base_end)
+
+        -- Fetch staged + unstaged sets concurrently
+        local unstaged_set = {}
+        local staged_set = {}
+        if not state.state.base_end then
+            local batch_results = async.all({
+                function()
+                    return git.get_unstaged_files_async()
+                end,
+                function()
+                    return git.get_staged_files_async()
+                end,
+            })
+            unstaged_set = batch_results[1]
+            staged_set = batch_results[2]
+        end
+
+        -- Discard stale results
+        if current_generation ~= generation then
+            return
+        end
+        if not state.state.is_open or not vim.api.nvim_buf_is_valid(bufnr) then
+            return
+        end
+
+        -- Initialize reviewed state from staged/unstaged sets
+        if not state.state.base_end then
+            for _, file in ipairs(files) do
+                local is_staged = staged_set[file] or false
+                local has_unstaged = unstaged_set[file] or false
+                state.set_reviewed(file, is_staged and not has_unstaged)
+            end
+        end
+
+        -- Create nodes (sync — just CPU, no I/O)
+        local nodes
+        if M.view_mode == "tree" then
+            nodes = create_tree_nodes(files, state.state.base, state.state.base_end, unstaged_set)
+        else
+            nodes = create_nodes(files, state.state.base, state.state.base_end, unstaged_set)
+        end
+
+        -- Final staleness check before rendering
+        if current_generation ~= generation then
+            return
+        end
+        if not state.state.is_open or not vim.api.nvim_buf_is_valid(bufnr) then
+            return
+        end
+
+        M.current.files = files
+        M.current.nodes = nodes
+
+        render_to_buffer(bufnr, nodes, layout_component.winid)
+        update_winbar(layout_component.winid, #files)
+
+        -- Position cursor on first file
+        if vim.api.nvim_win_is_valid(layout_component.winid) then
+            for node_index, node in ipairs(nodes) do
+                if node.is_file then
+                    vim.api.nvim_win_set_cursor(layout_component.winid, { node_index, 0 })
+                    break
+                end
+            end
+        end
+
+        update_footer()
+    end)
 
     return M.current
 end
@@ -1500,32 +1548,78 @@ function M.refresh()
         return
     end
 
-    -- Get updated file list
-    M.current.files = git.get_changed_files(state.state.base, state.state.base_end)
+    local bufnr = M.current.bufnr
+    local winid = M.current.winid
 
-    -- Update reviewed states (only in normal mode, not in history/range mode)
-    -- A file is only considered "reviewed/staged" if it's staged AND has no additional unstaged changes
-    local is_history_mode = state.state.base ~= nil and state.state.base ~= "HEAD"
-    if not is_history_mode and not state.state.base_end then
-        local unstaged_set = git.get_unstaged_files()
-        for _, file in ipairs(M.current.files) do
-            local is_staged = git.is_staged(file)
-            local has_unstaged = unstaged_set[file] or false
-            state.set_reviewed(file, is_staged and not has_unstaged)
+    -- Show refreshing indicator while keeping stale content visible
+    update_winbar(winid, #M.current.files, true)
+
+    generation = generation + 1
+    local current_generation = generation
+
+    async.run(function()
+        local files = git.get_changed_files_async(state.state.base, state.state.base_end)
+
+        local is_history_mode = state.state.base ~= nil and state.state.base ~= "HEAD"
+        local unstaged_set = {}
+        if not is_history_mode and not state.state.base_end then
+            local batch_results = async.all({
+                function()
+                    return git.get_unstaged_files_async()
+                end,
+                function()
+                    return git.get_staged_files_async()
+                end,
+            })
+            unstaged_set = batch_results[1]
+            local staged_set = batch_results[2]
+
+            -- Discard stale results before mutating state
+            if current_generation ~= generation then
+                return
+            end
+            if not state.state.is_open or not vim.api.nvim_buf_is_valid(bufnr) then
+                return
+            end
+
+            for _, file in ipairs(files) do
+                local is_staged = staged_set[file] or false
+                local has_unstaged = unstaged_set[file] or false
+                state.set_reviewed(file, is_staged and not has_unstaged)
+            end
+        else
+            if current_generation ~= generation then
+                return
+            end
+            if not state.state.is_open or not vim.api.nvim_buf_is_valid(bufnr) then
+                return
+            end
         end
-    end
 
-    -- Recreate nodes and render based on view mode
-    if M.view_mode == "tree" then
-        M.current.nodes = create_tree_nodes(M.current.files, state.state.base, state.state.base_end)
-    else
-        M.current.nodes = create_nodes(M.current.files, state.state.base, state.state.base_end)
-    end
-    render_to_buffer(M.current.bufnr, M.current.nodes, M.current.winid)
-    update_winbar(M.current.winid, #M.current.files)
+        -- Create nodes (sync — just CPU, no I/O)
+        local nodes
+        if M.view_mode == "tree" then
+            nodes = create_tree_nodes(files, state.state.base, state.state.base_end, unstaged_set)
+        else
+            nodes = create_nodes(files, state.state.base, state.state.base_end, unstaged_set)
+        end
 
-    -- Refresh unpushed count
-    update_footer()
+        -- Final staleness check
+        if current_generation ~= generation then
+            return
+        end
+        if not state.state.is_open or not vim.api.nvim_buf_is_valid(bufnr) then
+            return
+        end
+
+        M.current.files = files
+        M.current.nodes = nodes
+
+        render_to_buffer(bufnr, nodes, winid)
+        update_winbar(winid, #files)
+
+        update_footer()
+    end)
 end
 
 ---Get the current component
@@ -1536,6 +1630,8 @@ end
 
 ---Destroy the component
 function M.destroy()
+    -- Bump generation to discard any in-flight async results
+    generation = generation + 1
     -- Clean up any active timers
     for name, timer in pairs(active_timers) do
         if timer then

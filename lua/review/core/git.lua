@@ -128,12 +128,16 @@ function M.is_untracked(file)
     return result.code == 0 and vim.trim(result.stdout) ~= ""
 end
 
+---@class GetDiffOpts
+---@field file_status "untracked"|"staged_only"|"unstaged"|nil Pre-resolved file status to skip subprocess calls
+
 ---Get diff for a specific file
 ---@param file string File path relative to git root
 ---@param base string|nil Base commit to compare against
 ---@param base_end string|nil End of commit range (when set, uses base..base_end)
+---@param opts GetDiffOpts|nil Optional parameters
 ---@return GitDiffResult
-function M.get_diff(file, base, base_end)
+function M.get_diff(file, base, base_end, opts)
     base = base or "HEAD"
     local git_root = M.get_root()
     if not git_root then
@@ -152,16 +156,17 @@ function M.get_diff(file, base, base_end)
         return { success = true, output = result.stdout, error = nil }
     end
 
+    local file_status = opts and opts.file_status or nil
+
     -- Check if file is untracked (new file)
-    if M.is_untracked(file) then
-        -- For untracked files, read the file and generate a diff showing all as additions
+    local is_untracked = file_status == "untracked" or (not file_status and M.is_untracked(file))
+    if is_untracked then
         local full_path = git_root .. "/" .. file
         local content = vim.fn.readfile(full_path)
         if not content or #content == 0 then
             return { success = true, output = "", error = nil }
         end
 
-        -- Generate diff-like output for new file
         local diff_lines = {
             "--- /dev/null",
             "+++ b/" .. file,
@@ -174,23 +179,26 @@ function M.get_diff(file, base, base_end)
         return { success = true, output = table.concat(diff_lines, "\n"), error = nil }
     end
 
-    -- Check if file is staged (use cached diff)
-    local is_staged_only = false
-    local unstaged_result = vim.system({ "git", "diff", "--name-only", "--", file }, { text = true, cwd = git_root })
-        :wait()
-
-    if unstaged_result.code == 0 and vim.trim(unstaged_result.stdout) == "" then
-        -- No unstaged changes, check if staged
-        local staged_result = vim.system(
-            { "git", "diff", "--cached", "--name-only", "--", file },
+    -- Determine if file has only staged changes (no unstaged)
+    local is_staged_only = file_status == "staged_only"
+    if not file_status then
+        local unstaged_result = vim.system(
+            { "git", "diff", "--name-only", "--", file },
             { text = true, cwd = git_root }
-        ):wait()
-        if staged_result.code == 0 and vim.trim(staged_result.stdout) ~= "" then
-            is_staged_only = true
+        )
+            :wait()
+
+        if unstaged_result.code == 0 and vim.trim(unstaged_result.stdout) == "" then
+            local staged_result = vim.system(
+                { "git", "diff", "--cached", "--name-only", "--", file },
+                { text = true, cwd = git_root }
+            ):wait()
+            if staged_result.code == 0 and vim.trim(staged_result.stdout) ~= "" then
+                is_staged_only = true
+            end
         end
     end
 
-    -- Get the appropriate diff
     local context_flag = "-U" .. (require("review.state").state.diff_context or 3)
     local cmd
     if is_staged_only then
@@ -335,6 +343,30 @@ function M.has_unstaged_changes(file)
     end
 
     return vim.trim(result.stdout) ~= ""
+end
+
+---Get set of staged files (batch operation — avoids N+1 is_staged calls)
+---@return table<string, boolean> Set of staged file paths
+function M.get_staged_files()
+    local git_root = M.get_root()
+    if not git_root then
+        return {}
+    end
+
+    local result = vim.system({ "git", "diff", "--cached", "--name-only" }, { text = true, cwd = git_root }):wait()
+
+    if result.code ~= 0 then
+        return {}
+    end
+
+    local staged = {}
+    for line in result.stdout:gmatch("[^\r\n]+") do
+        if line ~= "" then
+            staged[line] = true
+        end
+    end
+
+    return staged
 end
 
 ---Get set of files with unstaged changes (batch operation)
@@ -785,6 +817,355 @@ function M.push(callback)
             end
         end)
     end)
+end
+
+-- ============================================================================
+-- Async variants (must be called inside async.run())
+-- ============================================================================
+
+local async = require("review.core.async")
+
+---Parse output lines into a set
+---@param stdout string
+---@return table<string, boolean>
+local function parse_name_set(stdout)
+    local result = {}
+    for line in stdout:gmatch("[^\r\n]+") do
+        if line ~= "" then
+            result[line] = true
+        end
+    end
+    return result
+end
+
+---Async: get set of staged files
+---@return table<string, boolean>
+function M.get_staged_files_async()
+    local git_root = M.get_root()
+    if not git_root then
+        return {}
+    end
+
+    local result = async.system({ "git", "diff", "--cached", "--name-only" }, { text = true, cwd = git_root })
+    if result.code ~= 0 then
+        return {}
+    end
+
+    return parse_name_set(result.stdout)
+end
+
+---Async: get set of files with unstaged changes
+---@return table<string, boolean>
+function M.get_unstaged_files_async()
+    local git_root = M.get_root()
+    if not git_root then
+        return {}
+    end
+
+    local result = async.system({ "git", "diff", "--name-only" }, { text = true, cwd = git_root })
+    if result.code ~= 0 then
+        return {}
+    end
+
+    return parse_name_set(result.stdout)
+end
+
+---Async: get changed files (unstaged, staged, and untracked) — runs 3 git calls concurrently
+---@param base string|nil Base commit to compare against (default: HEAD)
+---@param base_end string|nil End of commit range
+---@return string[]
+function M.get_changed_files_async(base, base_end)
+    base = base or "HEAD"
+    local git_root = M.get_root()
+    if not git_root then
+        return {}
+    end
+
+    if base_end then
+        local range_result = async.system(
+            { "git", "diff", "-M", "--name-only", base .. "..." .. base_end },
+            { text = true, cwd = git_root }
+        )
+
+        local files = {}
+        local seen = {}
+        if range_result.code == 0 then
+            for line in range_result.stdout:gmatch("[^\r\n]+") do
+                if line ~= "" and not seen[line] then
+                    seen[line] = true
+                    table.insert(files, line)
+                end
+            end
+        end
+        return files
+    end
+
+    local results = async.all({
+        function()
+            return async.system({ "git", "diff", "-M", "--name-only", base }, { text = true, cwd = git_root })
+        end,
+        function()
+            return async.system({ "git", "diff", "-M", "--cached", "--name-only" }, { text = true, cwd = git_root })
+        end,
+        function()
+            return async.system(
+                { "git", "ls-files", "--others", "--exclude-standard" },
+                { text = true, cwd = git_root }
+            )
+        end,
+    })
+
+    local files = {}
+    local seen = {}
+    for _, result in ipairs(results) do
+        if result.code == 0 then
+            for line in result.stdout:gmatch("[^\r\n]+") do
+                if line ~= "" and not seen[line] then
+                    seen[line] = true
+                    table.insert(files, line)
+                end
+            end
+        end
+    end
+
+    return files
+end
+
+---Async: get all file statuses — runs concurrent git calls
+---@param files string[] List of file paths relative to git root
+---@param base string|nil Base commit to compare against (default: HEAD)
+---@param base_end string|nil End of commit range
+---@return table<string, GitFileStatus> statuses
+---@return table<string, string> rename_map
+function M.get_all_file_statuses_async(files, base, base_end)
+    base = base or "HEAD"
+    local git_root = M.get_root()
+    if not git_root then
+        local result = {}
+        for _, file in ipairs(files) do
+            result[file] = "modified"
+        end
+        return result, {}
+    end
+
+    if base_end then
+        local range_result = async.system(
+            { "git", "diff", "-M", "--name-status", base .. "..." .. base_end },
+            { text = true, cwd = git_root }
+        )
+
+        local statuses = {}
+        local rename_map = {}
+
+        if range_result.code == 0 then
+            for line in range_result.stdout:gmatch("[^\r\n]+") do
+                local rename_status, old_path, new_path = line:match("^(R%d*)%s+(.+)%s+(.+)$")
+                if rename_status and old_path and new_path then
+                    statuses[new_path] = "renamed"
+                    rename_map[new_path] = old_path
+                else
+                    local status_char, file_path = line:match("^(%S+)%s+(.+)$")
+                    if status_char and file_path then
+                        if status_char == "D" then
+                            statuses[file_path] = "deleted"
+                        elseif status_char == "A" then
+                            statuses[file_path] = "added"
+                        else
+                            statuses[file_path] = "modified"
+                        end
+                    end
+                end
+            end
+        end
+
+        local result_map = {}
+        local result_rename_map = {}
+        for _, file in ipairs(files) do
+            result_map[file] = statuses[file] or "modified"
+            if rename_map[file] then
+                result_rename_map[file] = rename_map[file]
+            end
+        end
+
+        return result_map, result_rename_map
+    end
+
+    -- HEAD mode: run all 3 git calls concurrently
+    local concurrent_results = async.all({
+        function()
+            return async.system(
+                { "git", "ls-files", "--others", "--exclude-standard" },
+                { text = true, cwd = git_root }
+            )
+        end,
+        function()
+            return async.system({ "git", "diff", "-M", "--name-status", base }, { text = true, cwd = git_root })
+        end,
+        function()
+            return async.system({ "git", "diff", "-M", "--cached", "--name-status" }, { text = true, cwd = git_root })
+        end,
+    })
+
+    local untracked_result = concurrent_results[1]
+    local diff_result = concurrent_results[2]
+    local staged_result = concurrent_results[3]
+
+    local untracked_set = {}
+    if base == "HEAD" and untracked_result.code == 0 then
+        untracked_set = parse_name_set(untracked_result.stdout)
+    end
+
+    local statuses = {}
+    local rename_map = {}
+
+    local function parse_name_status(stdout)
+        for line in stdout:gmatch("[^\r\n]+") do
+            local rs, old_path, new_path = line:match("^(R%d*)%s+(.+)%s+(.+)$")
+            if rs and old_path and new_path then
+                if not statuses[new_path] then
+                    statuses[new_path] = "renamed"
+                    rename_map[new_path] = old_path
+                end
+            else
+                local status_char, file_path = line:match("^(%S+)%s+(.+)$")
+                if status_char and file_path and not statuses[file_path] then
+                    if status_char == "D" then
+                        statuses[file_path] = "deleted"
+                    elseif status_char == "A" then
+                        statuses[file_path] = "added"
+                    else
+                        statuses[file_path] = "modified"
+                    end
+                end
+            end
+        end
+    end
+
+    if diff_result.code == 0 then
+        parse_name_status(diff_result.stdout)
+    end
+    if base == "HEAD" and staged_result.code == 0 then
+        parse_name_status(staged_result.stdout)
+    end
+
+    local result_map = {}
+    local result_rename_map = {}
+    for _, file in ipairs(files) do
+        if base == "HEAD" and untracked_set[file] then
+            result_map[file] = "added"
+        elseif statuses[file] then
+            result_map[file] = statuses[file]
+            if rename_map[file] then
+                result_rename_map[file] = rename_map[file]
+            end
+        else
+            result_map[file] = "modified"
+        end
+    end
+
+    return result_map, result_rename_map
+end
+
+---Async: get diff for a specific file
+---@param file string File path relative to git root
+---@param base string|nil Base commit to compare against
+---@param base_end string|nil End of commit range
+---@param opts GetDiffOpts|nil Optional parameters
+---@return GitDiffResult
+function M.get_diff_async(file, base, base_end, opts)
+    base = base or "HEAD"
+    local git_root = M.get_root()
+    if not git_root then
+        return { success = false, output = "", error = "Not in a git repository" }
+    end
+
+    if base_end then
+        local context_flag = "-U" .. (require("review.state").state.diff_context or 3)
+        local cmd = { "git", "diff", "-M", context_flag, base .. "..." .. base_end, "--", file }
+        local result = async.system(cmd, { text = true, cwd = git_root })
+
+        if result.code ~= 0 then
+            return { success = false, output = "", error = result.stderr }
+        end
+
+        return { success = true, output = result.stdout, error = nil }
+    end
+
+    local file_status = opts and opts.file_status or nil
+
+    local is_untracked = file_status == "untracked" or (not file_status and M.is_untracked(file))
+    if is_untracked then
+        local full_path = git_root .. "/" .. file
+        local content = vim.fn.readfile(full_path)
+        if not content or #content == 0 then
+            return { success = true, output = "", error = nil }
+        end
+
+        local diff_lines = {
+            "--- /dev/null",
+            "+++ b/" .. file,
+            "@@ -0,0 +1," .. #content .. " @@",
+        }
+        for _, line in ipairs(content) do
+            table.insert(diff_lines, "+" .. line)
+        end
+
+        return { success = true, output = table.concat(diff_lines, "\n"), error = nil }
+    end
+
+    local is_staged_only = file_status == "staged_only"
+    if not file_status then
+        local unstaged_result = async.system(
+            { "git", "diff", "--name-only", "--", file },
+            { text = true, cwd = git_root }
+        )
+
+        if unstaged_result.code == 0 and vim.trim(unstaged_result.stdout) == "" then
+            local staged_result = async.system(
+                { "git", "diff", "--cached", "--name-only", "--", file },
+                { text = true, cwd = git_root }
+            )
+            if staged_result.code == 0 and vim.trim(staged_result.stdout) ~= "" then
+                is_staged_only = true
+            end
+        end
+    end
+
+    local context_flag = "-U" .. (require("review.state").state.diff_context or 3)
+    local cmd
+    if is_staged_only then
+        cmd = { "git", "diff", "-M", context_flag, "--cached", "--", file }
+    else
+        cmd = { "git", "diff", "-M", context_flag, base, "--", file }
+    end
+
+    local result = async.system(cmd, { text = true, cwd = git_root })
+
+    if result.code ~= 0 then
+        return { success = false, output = "", error = result.stderr }
+    end
+
+    return { success = true, output = result.stdout, error = nil }
+end
+
+---Async: get file content at a specific revision
+---@param file string File path relative to git root
+---@param rev string|nil Git revision (default: HEAD)
+---@return string|nil content, string|nil error
+function M.get_file_at_rev_async(file, rev)
+    rev = rev or "HEAD"
+    local git_root = M.get_root()
+    if not git_root then
+        return nil, "Not in a git repository"
+    end
+
+    local result = async.system({ "git", "show", rev .. ":" .. file }, { text = true, cwd = git_root })
+
+    if result.code ~= 0 then
+        return nil, result.stderr
+    end
+
+    return result.stdout, nil
 end
 
 return M

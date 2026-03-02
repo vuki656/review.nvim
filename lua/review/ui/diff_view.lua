@@ -1,9 +1,13 @@
+local async = require("review.core.async")
 local diff_parser = require("review.core.diff")
 local git = require("review.core.git")
 local layout = require("review.ui.layout")
 local state = require("review.state")
 
 local M = {}
+
+-- Generation counter for discarding stale async diff results
+local diff_generation = 0
 
 ---@class DiffViewComponent
 ---@field bufnr number
@@ -165,6 +169,155 @@ local function apply_treesitter_highlights(
                                     priority = 50,
                                 }
                             )
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    highlight_from_full_source(old_content, old_source_line_to_display)
+    highlight_from_full_source(new_content, new_source_line_to_display)
+end
+
+---Apply treesitter highlights asynchronously (Stage 2 of two-stage rendering)
+---Must be called inside async.run(). Fetches file content via async git calls.
+---@param bufnr number
+---@param render_lines table[]
+---@param display_lines string[]
+---@param file string
+---@param expected_generation number Generation counter to check for staleness
+local function apply_treesitter_highlights_async(bufnr, render_lines, display_lines, file, expected_generation)
+    vim.api.nvim_buf_clear_namespace(bufnr, ns_syntax, 0, -1)
+
+    local lang = vim.filetype.match({ filename = file })
+    if not lang or lang == "" then
+        return
+    end
+
+    local ok_lang, ts_lang = pcall(vim.treesitter.language.get_lang, lang)
+    if ok_lang and ts_lang then
+        lang = ts_lang
+    end
+
+    local ok_query, query = pcall(vim.treesitter.query.get, lang, "highlights")
+    if not ok_query or not query then
+        return
+    end
+
+    local base = state.state.base
+    local base_end = state.state.base_end
+
+    local old_source_line_to_display = {}
+    local new_source_line_to_display = {}
+    local has_old_lines = false
+    local has_new_lines = false
+
+    for index, line in ipairs(render_lines) do
+        if line.source_line then
+            if
+                line.type == "delete" or (line.type == "context" and not new_source_line_to_display[line.source_line])
+            then
+                old_source_line_to_display[line.source_line] = index
+                has_old_lines = true
+            end
+            if line.type == "add" or line.type == "context" then
+                new_source_line_to_display[line.source_line] = index
+                has_new_lines = true
+            end
+        elseif line.old_line or line.new_line then
+            if line.old_line and (line.type == "delete" or line.type == "context") then
+                old_source_line_to_display[line.old_line] = index
+                has_old_lines = true
+            end
+            if line.new_line and (line.type == "add" or line.type == "context") then
+                new_source_line_to_display[line.new_line] = index
+                has_new_lines = true
+            end
+        end
+    end
+
+    -- Async fetch file contents concurrently
+    local old_content = nil
+    local new_content = nil
+
+    local fetch_functions = {}
+    if has_old_lines then
+        table.insert(fetch_functions, function()
+            return git.get_file_at_rev_async(file, base)
+        end)
+    end
+    if has_new_lines then
+        table.insert(fetch_functions, function()
+            if base_end then
+                return git.get_file_at_rev_async(file, base_end)
+            else
+                return git.get_working_tree_file(file)
+            end
+        end)
+    end
+
+    if #fetch_functions > 0 then
+        local fetch_results = async.all(fetch_functions)
+        local fetch_index = 1
+        if has_old_lines then
+            old_content = fetch_results[fetch_index]
+            fetch_index = fetch_index + 1
+        end
+        if has_new_lines then
+            new_content = fetch_results[fetch_index]
+        end
+    end
+
+    -- Check for staleness after async I/O
+    if expected_generation ~= diff_generation then
+        return
+    end
+    if not vim.api.nvim_buf_is_valid(bufnr) or not state.state.is_open then
+        return
+    end
+
+    local function highlight_from_full_source(source_content, source_line_to_display)
+        if not source_content then
+            return
+        end
+
+        local ok_parser, parser = pcall(vim.treesitter.get_string_parser, source_content, lang)
+        if not ok_parser then
+            return
+        end
+
+        local ok_parse, trees = pcall(parser.parse, parser)
+        if not ok_parse or not trees then
+            return
+        end
+
+        for _, tree in ipairs(trees) do
+            for capture_id, node in query:iter_captures(tree:root(), source_content) do
+                local start_row, start_col, end_row, end_col = node:range()
+                local capture_name = query.captures[capture_id]
+                local hl_group = "@" .. capture_name .. "." .. lang
+
+                if start_row == end_row then
+                    local buf_line = source_line_to_display[start_row + 1]
+                    if buf_line then
+                        pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1, start_col, {
+                            end_col = end_col,
+                            hl_group = hl_group,
+                            priority = 50,
+                        })
+                    end
+                else
+                    for row = start_row, end_row do
+                        local buf_line = source_line_to_display[row + 1]
+                        if buf_line then
+                            local col_start = row == start_row and start_col or 0
+                            local col_end = row == end_row and end_col or #(display_lines[buf_line] or "")
+                            pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1, col_start, {
+                                end_col = col_end,
+                                hl_group = hl_group,
+                                priority = 50,
+                            })
                         end
                     end
                 end
@@ -537,6 +690,154 @@ local function render_diff(bufnr, file)
     end
 
     state.get_file_state(file).render_lines = render_lines
+
+    return render_lines
+end
+
+---Async two-stage diff rendering: Stage 1 renders diff + highlights immediately,
+---Stage 2 applies treesitter syntax highlights asynchronously after fetching file content.
+---Must be called inside async.run().
+---@param bufnr number
+---@param file string
+---@param expected_generation number
+---@return table[]|nil render_lines
+local function render_diff_async(bufnr, file, expected_generation)
+    if is_lock_file(file) then
+        vim.bo[bufnr].readonly = false
+        vim.bo[bufnr].modifiable = true
+        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+            "",
+            "  Lock file diff not shown.",
+        })
+        vim.bo[bufnr].modifiable = false
+        vim.bo[bufnr].readonly = true
+        return nil
+    end
+
+    -- Stage 1: async git diff fetch
+    local result = git.get_diff_async(file, state.state.base, state.state.base_end)
+
+    -- Check staleness after async I/O
+    if expected_generation ~= diff_generation then
+        return nil
+    end
+    if not vim.api.nvim_buf_is_valid(bufnr) or not state.state.is_open then
+        return nil
+    end
+
+    if not result.success then
+        vim.bo[bufnr].readonly = false
+        vim.bo[bufnr].modifiable = true
+        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+            "",
+            "  Error getting diff:",
+            "  " .. (result.error or "Unknown error"),
+        })
+        vim.bo[bufnr].modifiable = false
+        vim.bo[bufnr].readonly = true
+        return nil
+    end
+
+    if result.output == "" then
+        vim.bo[bufnr].readonly = false
+        vim.bo[bufnr].modifiable = true
+        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+            "",
+            "  No changes in this file.",
+        })
+        vim.bo[bufnr].modifiable = false
+        vim.bo[bufnr].readonly = true
+        return nil
+    end
+
+    -- Parse diff (sync — pure CPU)
+    local parsed = diff_parser.parse(result.output)
+    local raw_lines = diff_parser.get_render_lines(parsed)
+
+    local display_lines = { file, "" }
+    local render_lines = {
+        { type = "filepath", content = file },
+        { type = "filepath", content = "" },
+    }
+
+    for _, line in ipairs(raw_lines) do
+        if line.type ~= "header" then
+            local content = line.content or ""
+            table.insert(display_lines, content)
+            table.insert(render_lines, line)
+        end
+    end
+
+    -- Set buffer content
+    vim.bo[bufnr].readonly = false
+    vim.bo[bufnr].modifiable = true
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, display_lines)
+    vim.bo[bufnr].modifiable = false
+    vim.bo[bufnr].readonly = true
+
+    -- Stage 1: apply diff highlights immediately (no I/O)
+    local line_pairs = find_line_pairs(render_lines)
+    local is_new_file = parsed.file_old == "/dev/null"
+    local is_deleted_file = parsed.file_new == "/dev/null"
+
+    vim.api.nvim_buf_clear_namespace(bufnr, ns_diff, 0, -1)
+
+    for line_index, line in ipairs(render_lines) do
+        local sign_hl = nil
+        local sign_text = "▌"
+        local inline_hl = nil
+        local line_hl = nil
+
+        if line.type == "filepath" then
+            local line_text = display_lines[line_index] or ""
+            if #line_text > 0 then
+                vim.api.nvim_buf_set_extmark(bufnr, ns_diff, line_index - 1, 0, {
+                    end_col = #line_text,
+                    hl_group = "ReviewDiffFilePath",
+                    priority = 10000,
+                })
+            end
+        elseif line.type == "add" then
+            line_hl = "ReviewDiffAdd"
+            sign_hl = "ReviewDiffSignAdd"
+            inline_hl = "ReviewDiffAddInline"
+        elseif line.type == "delete" then
+            line_hl = "ReviewDiffDelete"
+            sign_hl = "ReviewDiffSignDelete"
+            inline_hl = "ReviewDiffDeleteInline"
+        elseif line.type == "context" then
+            sign_hl = "ReviewDiffSignContext"
+            sign_text = " "
+        end
+
+        if sign_hl then
+            local extmark_opts = {
+                sign_text = sign_text,
+                sign_hl_group = sign_hl,
+            }
+            if line_hl and not is_new_file and not is_deleted_file then
+                extmark_opts.line_hl_group = line_hl
+            end
+            vim.api.nvim_buf_set_extmark(bufnr, ns_diff, line_index - 1, 0, extmark_opts)
+        end
+
+        if inline_hl and line_pairs[line_index] then
+            local old_content = line_pairs[line_index]
+            local new_content = line.content or ""
+            local inline_ranges = compute_inline_diff(old_content, new_content)
+
+            for _, range in ipairs(inline_ranges) do
+                if range[1] < range[2] then
+                    vim.api.nvim_buf_add_highlight(bufnr, ns_diff, inline_hl, line_index - 1, range[1], range[2])
+                end
+            end
+        end
+    end
+
+    state.get_file_state(file).render_lines = render_lines
+
+    -- Stage 2: async treesitter highlights (fetches file content in background)
+    apply_treesitter_highlights_async(bufnr, render_lines, display_lines, file, expected_generation)
 
     return render_lines
 end
@@ -1383,23 +1684,40 @@ function M.create(layout_component, file, callbacks)
     end
     M.split_state = nil
 
-    local render_lines = render_diff(bufnr, file)
-
+    -- Set up component immediately for keymaps and UI
     M.current = {
         bufnr = bufnr,
         winid = layout_component.winid,
         file = file,
-        render_lines = render_lines,
+        render_lines = nil,
         ns_id = ns_diff,
     }
 
-    render_comments(bufnr, file)
-
     setup_keymaps(bufnr, callbacks)
-
     pcall(vim.api.nvim_buf_set_name, bufnr, "Review: " .. file)
-
     apply_diff_view_win_options(layout_component.winid, bufnr)
+
+    -- Bump generation and start async two-stage rendering
+    diff_generation = diff_generation + 1
+    local current_generation = diff_generation
+
+    async.run(function()
+        local render_lines = render_diff_async(bufnr, file, current_generation)
+
+        -- Check staleness
+        if current_generation ~= diff_generation then
+            return
+        end
+        if not vim.api.nvim_buf_is_valid(bufnr) or not state.state.is_open then
+            return
+        end
+
+        if M.current and M.current.bufnr == bufnr then
+            M.current.render_lines = render_lines
+        end
+
+        render_comments(bufnr, file)
+    end)
 
     return M.current
 end
@@ -1453,6 +1771,7 @@ function M.render()
     end
 
     if M.split_state then
+        -- Split mode stays sync (less common path)
         local old_lines, new_lines = render_split_diff(M.split_state.old_bufnr, M.split_state.new_bufnr, M.current.file)
         if old_lines then
             M.split_state.old_lines = old_lines
@@ -1461,8 +1780,28 @@ function M.render()
         end
         render_comments(M.split_state.new_bufnr, M.current.file)
     else
-        M.current.render_lines = render_diff(M.current.bufnr, M.current.file)
-        render_comments(M.current.bufnr, M.current.file)
+        local bufnr = M.current.bufnr
+        local file = M.current.file
+
+        diff_generation = diff_generation + 1
+        local current_generation = diff_generation
+
+        async.run(function()
+            local render_lines = render_diff_async(bufnr, file, current_generation)
+
+            if current_generation ~= diff_generation then
+                return
+            end
+            if not vim.api.nvim_buf_is_valid(bufnr) or not state.state.is_open then
+                return
+            end
+
+            if M.current and M.current.bufnr == bufnr then
+                M.current.render_lines = render_lines
+            end
+
+            render_comments(bufnr, file)
+        end)
     end
 end
 
@@ -1753,6 +2092,7 @@ end
 
 ---Destroy the component
 function M.destroy()
+    diff_generation = diff_generation + 1
     M.current = nil
     M.split_state = nil
 end
