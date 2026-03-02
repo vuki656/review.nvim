@@ -720,16 +720,23 @@ function M.get_current_branch(callback)
 end
 
 ---Commit staged changes asynchronously
----@param message string Commit message
+---@param message string Commit message subject line
 ---@param callback fun(success: boolean, error: string|nil)
-function M.commit(message, callback)
+---@param description? string Optional commit body/description
+function M.commit(message, callback, description)
     local git_root = M.get_root()
     if not git_root then
         callback(false, "Not a git repository")
         return
     end
 
-    vim.system({ "git", "commit", "-m", message }, { text = true, cwd = git_root }, function(result)
+    local cmd = { "git", "commit", "-m", message }
+    if description and description ~= "" then
+        table.insert(cmd, "-m")
+        table.insert(cmd, description)
+    end
+
+    vim.system(cmd, { text = true, cwd = git_root }, function(result)
         vim.schedule(function()
             if result.code == 0 then
                 callback(true, nil)

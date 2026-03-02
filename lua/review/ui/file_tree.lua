@@ -948,7 +948,7 @@ local function create_spinner(title, message, width)
     }
 end
 
----Commit staged changes with input prompt and spinner
+---Open a floating commit popup with subject line and description area
 ---@param callbacks table
 local function commit_flow(callbacks)
     if state.is_history_mode() then
@@ -956,18 +956,131 @@ local function commit_flow(callbacks)
         return
     end
 
-    vim.ui.input({ prompt = "Commit message: " }, function(message)
-        if not message or message == "" then
+    local popup_width = 72
+    local popup_height = 12
+    local separator = string.rep("─", popup_width)
+
+    local commit_buf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(commit_buf, 0, -1, false, { "", separator, "" })
+    vim.bo[commit_buf].buftype = "acwrite"
+    vim.bo[commit_buf].filetype = "gitcommit"
+
+    local commit_win = vim.api.nvim_open_win(commit_buf, true, {
+        relative = "editor",
+        row = math.floor((vim.o.lines - popup_height) / 2),
+        col = math.floor((vim.o.columns - popup_width) / 2),
+        width = popup_width,
+        height = popup_height,
+        style = "minimal",
+        border = "rounded",
+        title = " Commit ",
+        title_pos = "center",
+        footer = " <CR> confirm │ <Tab> switch │ q/Esc cancel ",
+        footer_pos = "center",
+    })
+    vim.wo[commit_win].cursorline = false
+    vim.wo[commit_win].wrap = true
+
+    local ns = vim.api.nvim_create_namespace("review_commit_popup")
+
+    local function render_separator_highlight()
+        vim.api.nvim_buf_clear_namespace(commit_buf, ns, 0, -1)
+        local lines = vim.api.nvim_buf_get_lines(commit_buf, 0, -1, false)
+        for index, line in ipairs(lines) do
+            if line == separator then
+                vim.api.nvim_buf_add_highlight(commit_buf, ns, "ReviewBorder", index - 1, 0, -1)
+            end
+        end
+    end
+
+    render_separator_highlight()
+
+    local function make_separator_readonly()
+        vim.api.nvim_buf_attach(commit_buf, false, {
+            on_lines = function()
+                vim.schedule(function()
+                    if not vim.api.nvim_buf_is_valid(commit_buf) then
+                        return
+                    end
+                    local lines = vim.api.nvim_buf_get_lines(commit_buf, 0, -1, false)
+                    local has_separator = false
+                    for _, line in ipairs(lines) do
+                        if line == separator then
+                            has_separator = true
+                            break
+                        end
+                    end
+                    if not has_separator then
+                        local subject = lines[1] or ""
+                        local description_lines = {}
+                        for index = 2, #lines do
+                            table.insert(description_lines, lines[index])
+                        end
+                        local restored = { subject, separator }
+                        vim.list_extend(restored, description_lines)
+                        vim.api.nvim_buf_set_lines(commit_buf, 0, -1, false, restored)
+                    end
+                    render_separator_highlight()
+                end)
+            end,
+        })
+    end
+
+    make_separator_readonly()
+
+    vim.cmd("startinsert")
+
+    local closed = false
+
+    local function close_popup()
+        if closed then
+            return
+        end
+        closed = true
+        if vim.api.nvim_win_is_valid(commit_win) then
+            vim.api.nvim_win_close(commit_win, true)
+        end
+        if vim.api.nvim_buf_is_valid(commit_buf) then
+            vim.api.nvim_buf_delete(commit_buf, { force = true })
+        end
+    end
+
+    local function confirm_commit()
+        if closed then
+            return
+        end
+        local lines = vim.api.nvim_buf_get_lines(commit_buf, 0, -1, false)
+        local subject = vim.trim(lines[1] or "")
+
+        if subject == "" then
+            vim.notify("Commit message cannot be empty", vim.log.levels.WARN)
             return
         end
 
-        local spinner = create_spinner("Committing", "Committing...", #message + 16)
+        local description_lines = {}
+        local past_separator = false
+        for index = 2, #lines do
+            if lines[index] == separator then
+                past_separator = true
+            elseif past_separator then
+                table.insert(description_lines, lines[index])
+            end
+        end
 
-        git.commit(message, function(success, err)
+        while #description_lines > 0 and vim.trim(description_lines[#description_lines]) == "" do
+            table.remove(description_lines)
+        end
+        local description = table.concat(description_lines, "\n")
+
+        close_popup()
+
+        local spinner = create_spinner("Committing", "Committing...", #subject + 16)
+
+        git.commit(subject, function(success, err)
             spinner.stop()
 
             if success then
-                vim.notify("Committed: " .. message, vim.log.levels.INFO)
+                vim.notify("Committed: " .. subject, vim.log.levels.INFO)
                 M.refresh()
                 if callbacks.on_refresh then
                     callbacks.on_refresh()
@@ -975,8 +1088,53 @@ local function commit_flow(callbacks)
             else
                 vim.notify("Commit failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
             end
-        end)
-    end)
+        end, description)
+    end
+
+    local function toggle_section()
+        local cursor_row = vim.api.nvim_win_get_cursor(commit_win)[1]
+        local lines = vim.api.nvim_buf_get_lines(commit_buf, 0, -1, false)
+        local separator_row = nil
+        for index, line in ipairs(lines) do
+            if line == separator then
+                separator_row = index
+                break
+            end
+        end
+        if not separator_row then
+            return
+        end
+        if cursor_row <= separator_row then
+            local target_row = separator_row + 1
+            if target_row > #lines then
+                vim.api.nvim_buf_set_lines(commit_buf, #lines, #lines, false, { "" })
+            end
+            vim.api.nvim_win_set_cursor(commit_win, { separator_row + 1, 0 })
+        else
+            vim.api.nvim_win_set_cursor(commit_win, { 1, 0 })
+        end
+        vim.cmd("startinsert!")
+    end
+
+    local function confirm_if_in_title()
+        local cursor_row = vim.api.nvim_win_get_cursor(commit_win)[1]
+        if cursor_row == 1 then
+            confirm_commit()
+        else
+            vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, false, true), "n", false)
+        end
+    end
+
+    local keymap_options = { buffer = commit_buf, nowait = true }
+    vim.keymap.set("n", "q", close_popup, keymap_options)
+    vim.keymap.set("n", "<Esc>", close_popup, keymap_options)
+    vim.keymap.set("i", "<CR>", confirm_if_in_title, keymap_options)
+    vim.keymap.set({ "n", "i" }, "<Tab>", toggle_section, keymap_options)
+
+    vim.api.nvim_create_autocmd("BufWriteCmd", {
+        buffer = commit_buf,
+        callback = confirm_commit,
+    })
 end
 
 ---Push to remote with spinner animation in footer
