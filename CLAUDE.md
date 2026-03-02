@@ -9,38 +9,70 @@ review.nvim is a Neovim plugin for reviewing AI-generated code changes. It provi
 ## Commands
 
 ```bash
-# Format code
-stylua lua/
-
-# Check syntax
-luac -p lua/review/*.lua lua/review/**/*.lua
-
-# Lint (if luacheck is installed)
+# Lint
 luacheck lua/
 
-# Test in Neovim (run from plugin directory)
-nvim --cmd "set rtp+=." -c "lua require('review').setup()"
+# Run all tests
+make test
+
+# Run a single test file
+make test-file FILE=tests/test_diff.lua
+
+# Format code
+stylua lua/
 ```
+
+## Workflow
+
+After every code change, run `luacheck lua/` and `make test`. Fix any failures before considering the task done. When adding new logic to pure modules (non-UI, non-git-shelling), add corresponding tests in `tests/`.
+
+## Testing
+
+Uses **mini.test** (from mini.nvim). Dependencies are auto-cloned into `.deps/` (gitignored) by the Makefile.
+
+Test files live in `tests/` and follow the naming convention `test_<module>.lua`. Each test file requires only the modules it needs — the plugin is not loaded globally.
+
+Shared fixtures and factories are in `tests/helpers.lua`.
+
+Tested modules: `comment_types`, `core/diff`, `config`, `state`, `quick_comments/state`, `core/json_persistence`, `export/markdown`, `quick_comments/markdown`.
+
+Not tested (integration-heavy): `core/git`, `core/async`, `core/watcher`, `ui/*`, `commands`.
 
 ## Architecture
 
 ```
 lua/review/
-├── init.lua          # Public API: setup(), toggle(), open(), close(), export()
-├── config.lua        # Default config merged with user options
-├── state.lua         # Centralized state: comments, files, review status
-├── commands.lua      # :Review command routing
+├── init.lua                    # Public API: setup(), toggle(), open(), close(), export()
+├── config.lua                  # Default config merged with user options
+├── state.lua                   # Centralized state: comments, files, review status
+├── comment_types.lua           # Static comment type definitions (note, fix, question)
+├── commands.lua                # :Review command routing
 ├── core/
-│   ├── git.lua       # Git operations (diffs, status, staging)
-│   └── diff.lua      # Unified diff parsing into structured hunks
+│   ├── git.lua                 # Git operations (diffs, status, staging)
+│   ├── diff.lua                # Unified diff parsing into structured hunks
+│   ├── async.lua               # Coroutine-based async utilities
+│   ├── json_persistence.lua    # JSON file read/write
+│   ├── persistence.lua         # Session persistence (wraps json_persistence + state)
+│   └── watcher.lua             # File system watcher for auto-refresh
 ├── ui/
-│   ├── init.lua      # UI orchestration (open/close/toggle)
-│   ├── layout.lua    # Two-pane tab layout (file tree + diff view)
-│   ├── file_tree.lua # Left pane: file list with status icons
-│   ├── diff_view.lua # Right pane: diff with inline comments
-│   └── highlights.lua # 30+ highlight groups for UI theming
+│   ├── init.lua                # UI orchestration (open/close/toggle)
+│   ├── layout.lua              # Two-pane tab layout (file tree + diff view)
+│   ├── file_tree.lua           # Left pane: file list with status icons
+│   ├── diff_view.lua           # Right pane: diff with inline comments
+│   ├── highlights.lua          # Highlight groups for UI theming
+│   ├── help.lua                # Help overlay
+│   ├── commit_list.lua         # Commit picker UI
+│   ├── branch_list.lua         # Branch picker UI
+│   └── util.lua                # UI utilities
+├── quick_comments/
+│   ├── init.lua                # Quick comments public API
+│   ├── state.lua               # Quick comments state management
+│   ├── panel.lua               # Side panel UI for quick comments
+│   ├── markdown.lua            # Quick comments markdown export
+│   ├── persistence.lua         # Quick comments persistence
+│   └── signs.lua               # Gutter signs for quick comments
 └── export/
-    └── markdown.lua  # Export comments to clipboard/file/tmux
+    └── markdown.lua            # Export comments to clipboard/file/tmux
 ```
 
 ### Data Flow
