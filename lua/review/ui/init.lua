@@ -56,6 +56,7 @@ function M.open()
             if state.state.current_file then
                 M.show_diff(state.state.current_file)
             end
+            commit_list.refresh()
         end,
     })
 
