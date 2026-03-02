@@ -15,6 +15,24 @@ local M = {}
 -- Store original tabline setting
 local saved_showtabline = nil
 
+---Focus the first file in the file tree and show its diff, or show welcome
+---@param set_cursor? boolean Whether to set cursor on the file tree (default false)
+local function focus_first_file(set_cursor)
+    local file_tree_component = file_tree.get()
+    if file_tree_component and file_tree_component.nodes then
+        for index, node in ipairs(file_tree_component.nodes) do
+            if node.is_file then
+                if set_cursor and vim.api.nvim_win_is_valid(file_tree_component.winid) then
+                    vim.api.nvim_win_set_cursor(file_tree_component.winid, { index, 0 })
+                end
+                M.show_diff(node.path)
+                return
+            end
+        end
+    end
+    M.show_welcome()
+end
+
 ---Initialize the UI
 function M.setup()
     highlights.setup()
@@ -88,23 +106,7 @@ function M.open()
         vim.api.nvim_set_current_win(l.file_tree.winid)
     end
 
-    -- Auto-select first file if exists (use nodes to respect section ordering)
-    local ft = file_tree.get()
-    local found_file = false
-    if ft and #ft.nodes > 0 then
-        -- Find first file node (respects section ordering: unstaged first, then staged)
-        for _, node in ipairs(ft.nodes) do
-            if node.is_file then
-                M.show_diff(node.path)
-                found_file = true
-                break
-            end
-        end
-    end
-
-    if not found_file then
-        M.show_welcome()
-    end
+    focus_first_file()
 
     -- Start file watcher for auto-refresh
     local git_root = git.get_root()
@@ -317,7 +319,7 @@ end
 ---Check if we're in history mode (comparing against a commit other than HEAD)
 ---@return boolean
 function M.is_history_mode()
-    return state.state.base ~= nil and state.state.base ~= "HEAD"
+    return state.is_history_mode()
 end
 
 ---Select a commit in-place (from commit list panel)
@@ -333,26 +335,7 @@ function M.select_commit(entry)
 
     file_tree.refresh()
     commit_list.set_selected(entry)
-
-    local file_tree_component = file_tree.get()
-    if file_tree_component and file_tree_component.nodes then
-        local first_file = nil
-        for index, node in ipairs(file_tree_component.nodes) do
-            if node.is_file then
-                first_file = node.path
-                if vim.api.nvim_win_is_valid(file_tree_component.winid) then
-                    vim.api.nvim_win_set_cursor(file_tree_component.winid, { index, 0 })
-                end
-                break
-            end
-        end
-
-        if first_file then
-            M.show_diff(first_file)
-        else
-            M.show_welcome()
-        end
-    end
+    focus_first_file(true)
 end
 
 ---Select a branch (from branch list panel)
@@ -370,26 +353,7 @@ function M.select_branch(entry)
     file_tree.refresh()
     branch_list.set_selected(entry)
     commit_list.refresh()
-
-    local file_tree_component = file_tree.get()
-    if file_tree_component and file_tree_component.nodes then
-        local first_file = nil
-        for index, node in ipairs(file_tree_component.nodes) do
-            if node.is_file then
-                first_file = node.path
-                if vim.api.nvim_win_is_valid(file_tree_component.winid) then
-                    vim.api.nvim_win_set_cursor(file_tree_component.winid, { index, 0 })
-                end
-                break
-            end
-        end
-
-        if first_file then
-            M.show_diff(first_file)
-        else
-            M.show_welcome()
-        end
-    end
+    focus_first_file(true)
 end
 
 ---Preview a commit's diff without updating state or file tree

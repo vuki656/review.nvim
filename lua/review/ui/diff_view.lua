@@ -1,8 +1,13 @@
 local async = require("review.core.async")
+local comment_types_module = require("review.comment_types")
 local diff_parser = require("review.core.diff")
 local git = require("review.core.git")
 local layout = require("review.ui.layout")
 local state = require("review.state")
+local ui_util = require("review.ui.util")
+
+local comment_types = comment_types_module.TYPES
+local comment_type_order = comment_types_module.ORDER
 
 local M = {}
 
@@ -37,6 +42,117 @@ local ns_comments = vim.api.nvim_create_namespace("review_comments")
 ---Namespace for treesitter syntax highlights
 local ns_syntax = vim.api.nvim_create_namespace("review_syntax")
 
+---Detect treesitter language and highlights query for a file
+---@param file string
+---@return string|nil lang
+---@return vim.treesitter.Query|nil query
+local function detect_language(file)
+    local lang = vim.filetype.match({ filename = file })
+    if not lang or lang == "" then
+        return nil, nil
+    end
+
+    local ok_lang, ts_lang = pcall(vim.treesitter.language.get_lang, lang)
+    if ok_lang and ts_lang then
+        lang = ts_lang
+    end
+
+    local ok_query, query = pcall(vim.treesitter.query.get, lang, "highlights")
+    if not ok_query or not query then
+        return nil, nil
+    end
+
+    return lang, query
+end
+
+---Build source-line-to-display-line maps from render_lines
+---@param render_lines table[]
+---@return table old_map, table new_map, boolean has_old, boolean has_new
+local function build_line_maps(render_lines)
+    local old_source_line_to_display = {}
+    local new_source_line_to_display = {}
+    local has_old_lines = false
+    local has_new_lines = false
+
+    for index, line in ipairs(render_lines) do
+        if line.source_line then
+            if
+                line.type == "delete" or (line.type == "context" and not new_source_line_to_display[line.source_line])
+            then
+                old_source_line_to_display[line.source_line] = index
+                has_old_lines = true
+            end
+            if line.type == "add" or line.type == "context" then
+                new_source_line_to_display[line.source_line] = index
+                has_new_lines = true
+            end
+        elseif line.old_line or line.new_line then
+            if line.old_line and (line.type == "delete" or line.type == "context") then
+                old_source_line_to_display[line.old_line] = index
+                has_old_lines = true
+            end
+            if line.new_line and (line.type == "add" or line.type == "context") then
+                new_source_line_to_display[line.new_line] = index
+                has_new_lines = true
+            end
+        end
+    end
+
+    return old_source_line_to_display, new_source_line_to_display, has_old_lines, has_new_lines
+end
+
+---Apply treesitter highlights from parsed source content to display buffer
+---@param bufnr number
+---@param lang string
+---@param query vim.treesitter.Query
+---@param source_content string
+---@param source_line_to_display table
+---@param display_lines string[]
+---@param line_offset number
+local function apply_highlights_from_source(bufnr, lang, query, source_content, source_line_to_display, display_lines, line_offset)
+    local ok_parser, parser = pcall(vim.treesitter.get_string_parser, source_content, lang)
+    if not ok_parser then
+        return
+    end
+
+    local ok_parse, trees = pcall(parser.parse, parser)
+    if not ok_parse or not trees then
+        return
+    end
+
+    for _, tree in ipairs(trees) do
+        for capture_id, node in query:iter_captures(tree:root(), source_content) do
+            local start_row, start_col, end_row, end_col = node:range()
+            local capture_name = query.captures[capture_id]
+            local hl_group = "@" .. capture_name .. "." .. lang
+
+            if start_row == end_row then
+                local buf_line = source_line_to_display[start_row + 1]
+                if buf_line then
+                    pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1 + line_offset, start_col, {
+                        end_col = end_col,
+                        hl_group = hl_group,
+                        priority = 50,
+                    })
+                end
+            else
+                for row = start_row, end_row do
+                    local buf_line = source_line_to_display[row + 1]
+                    if buf_line then
+                        local col_start = row == start_row and start_col or 0
+                        local col_end = row == end_row and end_col or #(display_lines[buf_line] or "")
+                        pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1 + line_offset, col_start, {
+                            end_col = col_end,
+                            hl_group = hl_group,
+                            priority = 50,
+                        })
+                    end
+                end
+            end
+        end
+    end
+end
+
 ---Apply treesitter highlights to a diff buffer using full file contents from git
 ---@param bufnr number
 ---@param render_lines table[]
@@ -60,60 +176,23 @@ local function apply_treesitter_highlights(
         vim.api.nvim_buf_clear_namespace(bufnr, ns_syntax, 0, -1)
     end
 
-    local lang = vim.filetype.match({ filename = file })
-    if not lang or lang == "" then
-        return
-    end
-
-    local ok_lang, ts_lang = pcall(vim.treesitter.language.get_lang, lang)
-    if ok_lang and ts_lang then
-        lang = ts_lang
-    end
-
-    local ok_query, query = pcall(vim.treesitter.query.get, lang, "highlights")
-    if not ok_query or not query then
+    local lang, query = detect_language(file)
+    if not lang or not query then
         return
     end
 
     local base = base_override or state.state.base
     local base_end = base_end_override or state.state.base_end
 
-    local old_source_line_to_display = {}
-    local new_source_line_to_display = {}
-    local has_old_lines = false
-    local has_new_lines = false
-
-    for index, line in ipairs(render_lines) do
-        if line.source_line then
-            if
-                line.type == "delete" or (line.type == "context" and not new_source_line_to_display[line.source_line])
-            then
-                old_source_line_to_display[line.source_line] = index
-                has_old_lines = true
-            end
-            if line.type == "add" or line.type == "context" then
-                new_source_line_to_display[line.source_line] = index
-                has_new_lines = true
-            end
-        elseif line.old_line or line.new_line then
-            if line.old_line and (line.type == "delete" or line.type == "context") then
-                old_source_line_to_display[line.old_line] = index
-                has_old_lines = true
-            end
-            if line.new_line and (line.type == "add" or line.type == "context") then
-                new_source_line_to_display[line.new_line] = index
-                has_new_lines = true
-            end
-        end
-    end
+    local old_map, new_map, has_old, has_new = build_line_maps(render_lines)
 
     local old_content = nil
-    if has_old_lines then
+    if has_old then
         old_content = git.get_file_at_rev(file, base)
     end
 
     local new_content = nil
-    if has_new_lines then
+    if has_new then
         if base_end then
             new_content = git.get_file_at_rev(file, base_end)
         else
@@ -121,63 +200,12 @@ local function apply_treesitter_highlights(
         end
     end
 
-    local function highlight_from_full_source(source_content, source_line_to_display)
-        if not source_content then
-            return
-        end
-
-        local ok_parser, parser = pcall(vim.treesitter.get_string_parser, source_content, lang)
-        if not ok_parser then
-            return
-        end
-
-        local ok_parse, trees = pcall(parser.parse, parser)
-        if not ok_parse or not trees then
-            return
-        end
-
-        for _, tree in ipairs(trees) do
-            for capture_id, node in query:iter_captures(tree:root(), source_content) do
-                local start_row, start_col, end_row, end_col = node:range()
-                local capture_name = query.captures[capture_id]
-                local hl_group = "@" .. capture_name .. "." .. lang
-
-                if start_row == end_row then
-                    local buf_line = source_line_to_display[start_row + 1]
-                    if buf_line then
-                        pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1 + line_offset, start_col, {
-                            end_col = end_col,
-                            hl_group = hl_group,
-                            priority = 50,
-                        })
-                    end
-                else
-                    for row = start_row, end_row do
-                        local buf_line = source_line_to_display[row + 1]
-                        if buf_line then
-                            local col_start = row == start_row and start_col or 0
-                            local col_end = row == end_row and end_col or #(display_lines[buf_line] or "")
-                            pcall(
-                                vim.api.nvim_buf_set_extmark,
-                                bufnr,
-                                ns_syntax,
-                                buf_line - 1 + line_offset,
-                                col_start,
-                                {
-                                    end_col = col_end,
-                                    hl_group = hl_group,
-                                    priority = 50,
-                                }
-                            )
-                        end
-                    end
-                end
-            end
-        end
+    if old_content then
+        apply_highlights_from_source(bufnr, lang, query, old_content, old_map, display_lines, line_offset)
     end
-
-    highlight_from_full_source(old_content, old_source_line_to_display)
-    highlight_from_full_source(new_content, new_source_line_to_display)
+    if new_content then
+        apply_highlights_from_source(bufnr, lang, query, new_content, new_map, display_lines, line_offset)
+    end
 end
 
 ---Apply treesitter highlights asynchronously (Stage 2 of two-stage rendering)
@@ -190,64 +218,26 @@ end
 local function apply_treesitter_highlights_async(bufnr, render_lines, display_lines, file, expected_generation)
     vim.api.nvim_buf_clear_namespace(bufnr, ns_syntax, 0, -1)
 
-    local lang = vim.filetype.match({ filename = file })
-    if not lang or lang == "" then
-        return
-    end
-
-    local ok_lang, ts_lang = pcall(vim.treesitter.language.get_lang, lang)
-    if ok_lang and ts_lang then
-        lang = ts_lang
-    end
-
-    local ok_query, query = pcall(vim.treesitter.query.get, lang, "highlights")
-    if not ok_query or not query then
+    local lang, query = detect_language(file)
+    if not lang or not query then
         return
     end
 
     local base = state.state.base
     local base_end = state.state.base_end
 
-    local old_source_line_to_display = {}
-    local new_source_line_to_display = {}
-    local has_old_lines = false
-    local has_new_lines = false
+    local old_map, new_map, has_old, has_new = build_line_maps(render_lines)
 
-    for index, line in ipairs(render_lines) do
-        if line.source_line then
-            if
-                line.type == "delete" or (line.type == "context" and not new_source_line_to_display[line.source_line])
-            then
-                old_source_line_to_display[line.source_line] = index
-                has_old_lines = true
-            end
-            if line.type == "add" or line.type == "context" then
-                new_source_line_to_display[line.source_line] = index
-                has_new_lines = true
-            end
-        elseif line.old_line or line.new_line then
-            if line.old_line and (line.type == "delete" or line.type == "context") then
-                old_source_line_to_display[line.old_line] = index
-                has_old_lines = true
-            end
-            if line.new_line and (line.type == "add" or line.type == "context") then
-                new_source_line_to_display[line.new_line] = index
-                has_new_lines = true
-            end
-        end
-    end
-
-    -- Async fetch file contents concurrently
     local old_content = nil
     local new_content = nil
 
     local fetch_functions = {}
-    if has_old_lines then
+    if has_old then
         table.insert(fetch_functions, function()
             return git.get_file_at_rev_async(file, base)
         end)
     end
-    if has_new_lines then
+    if has_new then
         table.insert(fetch_functions, function()
             if base_end then
                 return git.get_file_at_rev_async(file, base_end)
@@ -260,16 +250,15 @@ local function apply_treesitter_highlights_async(bufnr, render_lines, display_li
     if #fetch_functions > 0 then
         local fetch_results = async.all(fetch_functions)
         local fetch_index = 1
-        if has_old_lines then
+        if has_old then
             old_content = fetch_results[fetch_index]
             fetch_index = fetch_index + 1
         end
-        if has_new_lines then
+        if has_new then
             new_content = fetch_results[fetch_index]
         end
     end
 
-    -- Check for staleness after async I/O
     if expected_generation ~= diff_generation then
         return
     end
@@ -277,56 +266,12 @@ local function apply_treesitter_highlights_async(bufnr, render_lines, display_li
         return
     end
 
-    local function highlight_from_full_source(source_content, source_line_to_display)
-        if not source_content then
-            return
-        end
-
-        local ok_parser, parser = pcall(vim.treesitter.get_string_parser, source_content, lang)
-        if not ok_parser then
-            return
-        end
-
-        local ok_parse, trees = pcall(parser.parse, parser)
-        if not ok_parse or not trees then
-            return
-        end
-
-        for _, tree in ipairs(trees) do
-            for capture_id, node in query:iter_captures(tree:root(), source_content) do
-                local start_row, start_col, end_row, end_col = node:range()
-                local capture_name = query.captures[capture_id]
-                local hl_group = "@" .. capture_name .. "." .. lang
-
-                if start_row == end_row then
-                    local buf_line = source_line_to_display[start_row + 1]
-                    if buf_line then
-                        pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1, start_col, {
-                            end_col = end_col,
-                            hl_group = hl_group,
-                            priority = 50,
-                        })
-                    end
-                else
-                    for row = start_row, end_row do
-                        local buf_line = source_line_to_display[row + 1]
-                        if buf_line then
-                            local col_start = row == start_row and start_col or 0
-                            local col_end = row == end_row and end_col or #(display_lines[buf_line] or "")
-                            pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1, col_start, {
-                                end_col = col_end,
-                                hl_group = hl_group,
-                                priority = 50,
-                            })
-                        end
-                    end
-                end
-            end
-        end
+    if old_content then
+        apply_highlights_from_source(bufnr, lang, query, old_content, old_map, display_lines, 0)
     end
-
-    highlight_from_full_source(old_content, old_source_line_to_display)
-    highlight_from_full_source(new_content, new_source_line_to_display)
+    if new_content then
+        apply_highlights_from_source(bufnr, lang, query, new_content, new_map, display_lines, 0)
+    end
 end
 
 ---Split string into tokens (words, punctuation, whitespace)
@@ -503,31 +448,6 @@ local function wrap_text(text, max_width)
 
     return #lines > 0 and lines or { text }
 end
-
----Comment type info
-local comment_types = {
-    note = {
-        label = "Note",
-        highlight = "ReviewCommentNote",
-        icon = "󰍩",
-        border_hl = "ReviewInputBorderNote",
-        title_hl = "ReviewInputTitleNote",
-    },
-    fix = {
-        label = "Fix",
-        highlight = "ReviewCommentFix",
-        icon = "󰁨",
-        border_hl = "ReviewInputBorderFix",
-        title_hl = "ReviewInputTitleFix",
-    },
-    question = {
-        label = "Question",
-        highlight = "ReviewCommentQuestion",
-        icon = "󰋗",
-        border_hl = "ReviewInputBorderQuestion",
-        title_hl = "ReviewInputTitleQuestion",
-    },
-}
 
 local LOCK_FILE_NAMES = {
     ["package-lock.json"] = true,
@@ -1262,9 +1182,6 @@ local function goto_prev_file()
     ui.show_diff(files[prev_idx])
 end
 
----Comment type order for cycling
-local comment_type_order = { "fix", "note", "question" }
-
 ---Add comment with inline input (Tab to cycle type)
 local function add_comment()
     if not M.current then
@@ -1306,22 +1223,10 @@ local function add_comment()
         end
     end
 
-    -- Current type index (default to note)
-    local type_idx = 1
-    local current_type = comment_type_order[type_idx]
-
-    local type_info = comment_types[current_type]
-
     -- Create floating input window
-    local input_buf = vim.api.nvim_create_buf(false, true)
-    vim.bo[input_buf].buftype = "nofile"
-    vim.bo[input_buf].filetype = "markdown"
-    vim.bo[input_buf].completefunc = ""
-    vim.bo[input_buf].omnifunc = ""
+    local type_info = comment_types[comment_type_order[1]]
+    local input_buf = ui_util.create_comment_input_buffer()
 
-    vim.b[input_buf].copilot_enabled = false
-
-    -- Calculate window position (below current line, at the start of the line)
     local win_width = 60
     local win_opts = {
         relative = "cursor",
@@ -1337,13 +1242,8 @@ local function add_comment()
 
     local input_win = vim.api.nvim_open_win(input_buf, true, win_opts)
 
-    -- Disable cmp after entering the input buffer (cmp.setup.buffer targets current buffer)
-    local ok_cmp, cmp = pcall(require, "cmp")
-    if ok_cmp then
-        cmp.setup.buffer({ enabled = false })
-    end
+    ui_util.disable_cmp_for_buffer()
 
-    -- Set window options
     vim.api.nvim_set_option_value(
         "winhighlight",
         "FloatBorder:" .. type_info.border_hl .. ",FloatTitle:" .. type_info.title_hl,
@@ -1352,7 +1252,9 @@ local function add_comment()
     vim.wo[input_win].wrap = true
     vim.wo[input_win].linebreak = true
 
-    -- Function to close the input window and restore state
+    local get_current_type =
+        ui_util.setup_comment_type_cycling(input_buf, input_win, comment_types, comment_type_order)
+
     local function close_input()
         if vim.api.nvim_win_is_valid(input_win) then
             vim.api.nvim_win_close(input_win, true)
@@ -1375,24 +1277,9 @@ local function add_comment()
         end
     end
 
-    -- Function to update the window title and colors with current type
-    local function update_title()
-        local info = comment_types[current_type]
-        vim.api.nvim_win_set_config(input_win, {
-            title = " " .. info.icon .. " " .. info.label .. " ",
-        })
-        vim.api.nvim_set_option_value(
-            "winhighlight",
-            "FloatBorder:" .. info.border_hl .. ",FloatTitle:" .. info.title_hl,
-            { win = input_win }
-        )
-    end
-
-    -- Function to submit the comment
     local function submit()
         local lines = vim.api.nvim_buf_get_lines(input_buf, 0, -1, false)
 
-        -- Trim trailing empty lines
         while #lines > 0 and lines[#lines]:match("^%s*$") do
             table.remove(lines)
         end
@@ -1402,38 +1289,16 @@ local function add_comment()
 
         local text = table.concat(lines, "\n")
         if text ~= "" then
-            state.add_comment(file, line_num, current_type, text, original_line)
+            state.add_comment(file, line_num, get_current_type(), text, original_line)
             render_comments(bufnr, file)
         end
     end
 
-    -- Enter to submit (insert + normal mode)
     vim.keymap.set("i", "<CR>", submit, { buffer = input_buf, nowait = true })
     vim.keymap.set("n", "<CR>", submit, { buffer = input_buf, nowait = true })
-
-    -- Escape and Ctrl-C to submit from insert mode
     vim.keymap.set("i", "<Esc>", submit, { buffer = input_buf, nowait = true })
     vim.keymap.set("i", "<C-c>", submit, { buffer = input_buf, nowait = true })
-
-    -- Shift-Enter to insert a new line
     vim.keymap.set("i", "<S-CR>", "<CR>", { buffer = input_buf, nowait = true })
-
-    -- Tab to cycle type
-    vim.keymap.set("i", "<Tab>", function()
-        type_idx = (type_idx % #comment_type_order) + 1
-        current_type = comment_type_order[type_idx]
-        update_title()
-    end, { buffer = input_buf, nowait = true })
-
-    -- Shift-Tab to cycle backwards
-    vim.keymap.set("i", "<S-Tab>", function()
-        type_idx = type_idx - 1
-        if type_idx < 1 then
-            type_idx = #comment_type_order
-        end
-        current_type = comment_type_order[type_idx]
-        update_title()
-    end, { buffer = input_buf, nowait = true })
 
     -- Template picker with Ctrl-T
     vim.keymap.set("i", "<C-t>", function()
@@ -1554,22 +1419,7 @@ end
 local function setup_keymaps(bufnr, callbacks, old_bufnr)
     registered_keymaps = {}
 
-    ---Helper to register a keymap for help display and set it on one or more buffers
-    ---@param lhs string
-    ---@param rhs string|function
-    ---@param opts table opts.group is used for help grouping (not passed to vim.keymap.set)
-    ---@param target_bufnrs number[]
-    local function map(lhs, rhs, opts, target_bufnrs)
-        local group = opts.group
-        opts.group = nil
-        if opts.desc and group then
-            table.insert(registered_keymaps, { lhs = lhs, desc = opts.desc, group = group })
-        end
-        for _, target_bufnr in ipairs(target_bufnrs) do
-            local keymap_opts = vim.tbl_extend("force", opts, { buffer = target_bufnr })
-            vim.keymap.set("n", lhs, rhs, keymap_opts)
-        end
-    end
+    local map = ui_util.create_buffer_mapper(bufnr, registered_keymaps)
 
     local function close_review()
         if callbacks.on_close then

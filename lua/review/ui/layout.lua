@@ -37,6 +37,19 @@ local function apply_tree_win_options(winid)
     vim.wo[winid].fillchars = "horiz:─,horizup:┴,horizdown:┬,vert:│,vertleft:┤,vertright:├,verthoriz:┼"
 end
 
+---Create a scratch buffer with the given filetype
+---@param filetype string
+---@return number bufnr
+local function create_panel_buffer(filetype)
+    local bufnr = vim.api.nvim_create_buf(false, true)
+    vim.bo[bufnr].buftype = "nofile"
+    vim.bo[bufnr].swapfile = false
+    vim.bo[bufnr].filetype = filetype
+    vim.bo[bufnr].modifiable = true
+    vim.bo[bufnr].readonly = false
+    return bufnr
+end
+
 ---Create the main layout with file tree and diff view in a new tab
 ---@return ReviewLayout
 function M.create()
@@ -50,38 +63,10 @@ function M.create()
     vim.cmd("tabnew")
 
     -- Create buffers for file tree, commit list, branch list, and diff view
-    local tree_buf = vim.api.nvim_create_buf(false, true)
-    local commit_list_buf = vim.api.nvim_create_buf(false, true)
-    local branch_list_buf = vim.api.nvim_create_buf(false, true)
-    local diff_buf = vim.api.nvim_create_buf(false, true)
-
-    -- Set buffer options for file tree
-    vim.bo[tree_buf].buftype = "nofile"
-    vim.bo[tree_buf].swapfile = false
-    vim.bo[tree_buf].filetype = "review-tree"
-    vim.bo[tree_buf].modifiable = true
-    vim.bo[tree_buf].readonly = false
-
-    -- Set buffer options for commit list
-    vim.bo[commit_list_buf].buftype = "nofile"
-    vim.bo[commit_list_buf].swapfile = false
-    vim.bo[commit_list_buf].filetype = "review-commits"
-    vim.bo[commit_list_buf].modifiable = true
-    vim.bo[commit_list_buf].readonly = false
-
-    -- Set buffer options for branch list
-    vim.bo[branch_list_buf].buftype = "nofile"
-    vim.bo[branch_list_buf].swapfile = false
-    vim.bo[branch_list_buf].filetype = "review-branches"
-    vim.bo[branch_list_buf].modifiable = true
-    vim.bo[branch_list_buf].readonly = false
-
-    -- Set buffer options for diff view
-    vim.bo[diff_buf].buftype = "nofile"
-    vim.bo[diff_buf].swapfile = false
-    vim.bo[diff_buf].filetype = "review-diff"
-    vim.bo[diff_buf].modifiable = true
-    vim.bo[diff_buf].readonly = false
+    local tree_buf = create_panel_buffer("review-tree")
+    local commit_list_buf = create_panel_buffer("review-commits")
+    local branch_list_buf = create_panel_buffer("review-branches")
+    local diff_buf = create_panel_buffer("review-diff")
 
     -- Current window becomes diff view
     vim.api.nvim_win_set_buf(0, diff_buf)

@@ -1,35 +1,16 @@
+local comment_types_module = require("review.comment_types")
 local config = require("review.config")
+local markdown = require("review.quick_comments.markdown")
 local panel = require("review.quick_comments.panel")
 local persistence = require("review.quick_comments.persistence")
 local qc_state = require("review.quick_comments.state")
 local signs = require("review.quick_comments.signs")
+local ui_util = require("review.ui.util")
 
 local M = {}
 
----Comment type info for input window
-local comment_types = {
-    note = {
-        label = "Note",
-        icon = "󰍩",
-        border_hl = "ReviewInputBorderNote",
-        title_hl = "ReviewInputTitleNote",
-    },
-    fix = {
-        label = "Fix",
-        icon = "󰁨",
-        border_hl = "ReviewInputBorderFix",
-        title_hl = "ReviewInputTitleFix",
-    },
-    question = {
-        label = "Question",
-        icon = "󰋗",
-        border_hl = "ReviewInputBorderQuestion",
-        title_hl = "ReviewInputTitleQuestion",
-    },
-}
-
----Comment type order for cycling
-local comment_type_order = { "fix", "note", "question" }
+local comment_types = comment_types_module.TYPES
+local comment_type_order = comment_types_module.ORDER
 
 ---Add a quick comment at the current cursor position
 function M.add()
@@ -48,20 +29,10 @@ function M.add()
     local lines = vim.api.nvim_buf_get_lines(bufnr, line_num - 1, line_num, false)
     local context = lines[1] or ""
 
-    -- Current type index (default to fix)
-    local type_idx = 1
-    local current_type = comment_type_order[type_idx]
-    local type_info = comment_types[current_type]
-
     -- Create floating input window
-    local input_buf = vim.api.nvim_create_buf(false, true)
-    vim.bo[input_buf].buftype = "nofile"
-    vim.bo[input_buf].filetype = "markdown"
-    vim.bo[input_buf].completefunc = ""
-    vim.bo[input_buf].omnifunc = ""
-    vim.b[input_buf].copilot_enabled = false
+    local type_info = comment_types[comment_type_order[1]]
+    local input_buf = ui_util.create_comment_input_buffer()
 
-    -- Calculate window position
     local win_width = 60
     local win_row = vim.fn.winline()
     local win_opts = {
@@ -79,13 +50,8 @@ function M.add()
 
     local input_win = vim.api.nvim_open_win(input_buf, true, win_opts)
 
-    -- Disable cmp if present
-    local ok_cmp, cmp = pcall(require, "cmp")
-    if ok_cmp then
-        cmp.setup.buffer({ enabled = false })
-    end
+    ui_util.disable_cmp_for_buffer()
 
-    -- Set window options
     vim.api.nvim_set_option_value(
         "winhighlight",
         "FloatBorder:" .. type_info.border_hl .. ",FloatTitle:" .. type_info.title_hl,
@@ -94,7 +60,9 @@ function M.add()
     vim.wo[input_win].wrap = true
     vim.wo[input_win].linebreak = true
 
-    -- Close input window
+    local get_current_type =
+        ui_util.setup_comment_type_cycling(input_buf, input_win, comment_types, comment_type_order)
+
     local function close_input()
         if vim.api.nvim_win_is_valid(input_win) then
             vim.api.nvim_win_close(input_win, true)
@@ -104,24 +72,9 @@ function M.add()
         end
     end
 
-    -- Update window title with current type
-    local function update_title()
-        local info = comment_types[current_type]
-        vim.api.nvim_win_set_config(input_win, {
-            title = " " .. info.icon .. " " .. info.label .. " ",
-        })
-        vim.api.nvim_set_option_value(
-            "winhighlight",
-            "FloatBorder:" .. info.border_hl .. ",FloatTitle:" .. info.title_hl,
-            { win = input_win }
-        )
-    end
-
-    -- Submit the comment
     local function submit()
         local input_lines = vim.api.nvim_buf_get_lines(input_buf, 0, -1, false)
 
-        -- Trim trailing empty lines
         while #input_lines > 0 and input_lines[#input_lines]:match("^%s*$") do
             table.remove(input_lines)
         end
@@ -131,11 +84,10 @@ function M.add()
 
         local text = table.concat(input_lines, "\n")
         if text ~= "" then
-            qc_state.add(file, line_num, current_type, text, context)
+            qc_state.add(file, line_num, get_current_type(), text, context)
             persistence.save()
             signs.update(bufnr)
 
-            -- Open or refresh panel
             if panel.is_open() then
                 panel.render()
             else
@@ -144,35 +96,12 @@ function M.add()
         end
     end
 
-    -- Enter to submit
     vim.keymap.set("i", "<CR>", submit, { buffer = input_buf, nowait = true })
     vim.keymap.set("n", "<CR>", submit, { buffer = input_buf, nowait = true })
-
-    -- Escape and Ctrl-C to submit
     vim.keymap.set("i", "<Esc>", submit, { buffer = input_buf, nowait = true })
     vim.keymap.set("i", "<C-c>", submit, { buffer = input_buf, nowait = true })
-
-    -- Shift-Enter for new line
     vim.keymap.set("i", "<S-CR>", "<CR>", { buffer = input_buf, nowait = true })
 
-    -- Tab to cycle type forward
-    vim.keymap.set("i", "<Tab>", function()
-        type_idx = (type_idx % #comment_type_order) + 1
-        current_type = comment_type_order[type_idx]
-        update_title()
-    end, { buffer = input_buf, nowait = true })
-
-    -- Shift-Tab to cycle type backward
-    vim.keymap.set("i", "<S-Tab>", function()
-        type_idx = type_idx - 1
-        if type_idx < 1 then
-            type_idx = #comment_type_order
-        end
-        current_type = comment_type_order[type_idx]
-        update_title()
-    end, { buffer = input_buf, nowait = true })
-
-    -- Start in insert mode
     vim.cmd("startinsert")
 end
 
@@ -195,35 +124,8 @@ end
 ---@param comments QuickComment[]
 ---@return number comment_count
 local function copy_to_clipboard(comments)
-    local lines = { "# Quick Comments" }
-    local current_file = nil
-
-    for _, comment in ipairs(comments) do
-        if comment.file ~= current_file then
-            current_file = comment.file
-            local cwd = vim.fn.getcwd()
-            local rel_path = comment.file
-            if rel_path:sub(1, #cwd) == cwd then
-                rel_path = rel_path:sub(#cwd + 2)
-            end
-            table.insert(lines, "")
-            table.insert(lines, "## " .. rel_path)
-        end
-
-        local type_info = comment_types[comment.type]
-        table.insert(lines, "")
-        table.insert(lines, string.format("**Line %d** - %s %s", comment.line, type_info.icon, type_info.label))
-        if comment.context then
-            table.insert(lines, "```")
-            table.insert(lines, comment.context)
-            table.insert(lines, "```")
-        end
-        table.insert(lines, comment.text)
-    end
-
-    local content = table.concat(lines, "\n")
+    local content = markdown.build(comments)
     vim.fn.setreg("+", content)
-
     return #comments
 end
 

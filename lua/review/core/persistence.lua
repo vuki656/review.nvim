@@ -1,4 +1,4 @@
-local git = require("review.core.git")
+local json_persistence = require("review.core.json_persistence")
 local state = require("review.state")
 
 local M = {}
@@ -8,11 +8,7 @@ local FILENAME = "review-session.json"
 ---Get the path to the persistence file
 ---@return string|nil
 function M.get_path()
-    local git_root = git.get_root()
-    if not git_root then
-        return nil
-    end
-    return git_root .. "/.git/" .. FILENAME
+    return json_persistence.get_git_path(FILENAME)
 end
 
 ---Check if a saved session exists
@@ -39,22 +35,14 @@ function M.load()
         return false
     end
 
-    local file = io.open(path, "r")
-    if not file then
-        return true
-    end
-
-    local content = file:read("*all")
-    file:close()
-
-    if not content or content == "" then
-        return true
-    end
-
-    local ok, data = pcall(vim.json.decode, content)
-    if not ok or type(data) ~= "table" then
+    local ok, data = json_persistence.read_json_file(path)
+    if not ok then
         vim.notify("Failed to parse review session file", vim.log.levels.WARN)
         return false
+    end
+
+    if not data then
+        return true
     end
 
     if data.version ~= 1 then
@@ -132,20 +120,10 @@ function M.save()
         comment_id_counter = state.state.comment_id_counter,
     }
 
-    local encode_ok, json = pcall(vim.json.encode, data)
-    if not encode_ok then
-        vim.notify("Failed to encode review session", vim.log.levels.ERROR)
-        return false
-    end
-
-    local file = io.open(path, "w")
-    if not file then
+    if not json_persistence.write_json_file(path, data) then
         vim.notify("Failed to write review session file", vim.log.levels.ERROR)
         return false
     end
-
-    file:write(json)
-    file:close()
 
     return true
 end

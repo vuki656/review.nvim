@@ -1,4 +1,6 @@
+local comment_types_module = require("review.comment_types")
 local config = require("review.config")
+local markdown = require("review.quick_comments.markdown")
 local persistence = require("review.quick_comments.persistence")
 local qc_state = require("review.quick_comments.state")
 local signs = require("review.quick_comments.signs")
@@ -21,12 +23,7 @@ local panel = {
 
 local ns_panel = vim.api.nvim_create_namespace("review_qc_panel")
 
----Comment type info
-local comment_types = {
-    note = { label = "Note", icon = "󰍩", hl = "ReviewCommentNote" },
-    fix = { label = "Fix", icon = "󰁨", hl = "ReviewCommentFix" },
-    question = { label = "Question", icon = "󰋗", hl = "ReviewCommentQuestion" },
-}
+local comment_types = comment_types_module.TYPES
 
 ---Get relative path from cwd
 ---@param path string
@@ -45,7 +42,8 @@ function M.render()
         return
     end
 
-    vim.bo[panel.bufnr].modifiable = true
+    local ui_util = require("review.ui.util")
+    ui_util.with_modifiable(panel.bufnr, function()
     vim.api.nvim_buf_clear_namespace(panel.bufnr, ns_panel, 0, -1)
 
     local panel_width = 48
@@ -128,7 +126,7 @@ function M.render()
                     local subheader = "  " .. type_info.icon .. " " .. type_info.label
                     table.insert(lines, subheader)
                     line_idx = #lines - 1
-                    table.insert(highlights, { line = line_idx, col = 0, end_col = #subheader, hl = type_info.hl })
+                    table.insert(highlights, { line = line_idx, col = 0, end_col = #subheader, hl = type_info.highlight })
 
                     for _, comment in ipairs(group) do
                         local line_prefix = string.format("  L%-4d ", comment.line)
@@ -166,8 +164,7 @@ function M.render()
     for _, hl in ipairs(highlights) do
         vim.api.nvim_buf_add_highlight(panel.bufnr, ns_panel, hl.hl, hl.line, hl.col, hl.end_col)
     end
-
-    vim.bo[panel.bufnr].modifiable = false
+    end)
 end
 
 ---Create the panel buffer
@@ -233,7 +230,7 @@ local function setup_keymaps(bufnr)
         vim.api.nvim_buf_set_lines(popup_bufnr, 0, -1, false, popup_lines)
         vim.bo[popup_bufnr].modifiable = false
 
-        vim.api.nvim_buf_add_highlight(popup_bufnr, ns_panel, type_info.hl, 0, 0, -1)
+        vim.api.nvim_buf_add_highlight(popup_bufnr, ns_panel, type_info.highlight, 0, 0, -1)
         vim.api.nvim_buf_add_highlight(popup_bufnr, ns_panel, "ReviewBorder", 1, 0, -1)
 
         local popup_winid = vim.api.nvim_open_win(popup_bufnr, false, {
@@ -305,28 +302,7 @@ local function setup_keymaps(bufnr)
             return
         end
 
-        local lines = {}
-        local current_file = nil
-
-        for _, comment in ipairs(comments) do
-            if comment.file ~= current_file then
-                current_file = comment.file
-                table.insert(lines, "")
-                table.insert(lines, "## " .. get_relative_path(comment.file))
-            end
-
-            local type_info = comment_types[comment.type]
-            table.insert(lines, "")
-            table.insert(lines, string.format("**Line %d** - %s %s", comment.line, type_info.icon, type_info.label))
-            if comment.context then
-                table.insert(lines, "```")
-                table.insert(lines, comment.context)
-                table.insert(lines, "```")
-            end
-            table.insert(lines, comment.text)
-        end
-
-        local content = table.concat(lines, "\n")
+        local content = markdown.build(comments)
         vim.fn.setreg("+", content)
         vim.notify("Copied " .. #comments .. " comment(s) to clipboard", vim.log.levels.INFO)
     end, opts)

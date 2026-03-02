@@ -1,6 +1,7 @@
 local async = require("review.core.async")
 local git = require("review.core.git")
 local state = require("review.state")
+local ui_util = require("review.ui.util")
 
 local M = {}
 
@@ -858,10 +859,60 @@ local function show_help()
     help.show("File Tree", registered_keymaps)
 end
 
+---Create a centered spinner popup
+---@param title string Window title
+---@param message string Spinner text to display
+---@param width number Window width
+---@return { stop: fun() }
+local function create_spinner(title, message, width)
+    local frame = 0
+    local spinner_buf = vim.api.nvim_create_buf(false, true)
+    local spinner_win = vim.api.nvim_open_win(spinner_buf, false, {
+        relative = "editor",
+        row = math.floor(vim.o.lines / 2) - 1,
+        col = math.floor((vim.o.columns - width) / 2),
+        width = width,
+        height = 1,
+        style = "minimal",
+        border = "rounded",
+        title = " " .. title .. " ",
+        title_pos = "center",
+    })
+
+    local timer = vim.uv.new_timer()
+    timer:start(
+        0,
+        80,
+        vim.schedule_wrap(function()
+            if not vim.api.nvim_buf_is_valid(spinner_buf) then
+                timer:stop()
+                timer:close()
+                return
+            end
+            frame = (frame % #SPINNER_FRAMES) + 1
+            local text = " " .. SPINNER_FRAMES[frame] .. " " .. message
+            vim.api.nvim_buf_set_lines(spinner_buf, 0, -1, false, { text })
+        end)
+    )
+
+    return {
+        stop = function()
+            timer:stop()
+            timer:close()
+            if vim.api.nvim_win_is_valid(spinner_win) then
+                vim.api.nvim_win_close(spinner_win, true)
+            end
+            if vim.api.nvim_buf_is_valid(spinner_buf) then
+                vim.api.nvim_buf_delete(spinner_buf, { force = true })
+            end
+        end,
+    }
+end
+
 ---Commit staged changes with input prompt and spinner
 ---@param callbacks table
 local function commit_flow(callbacks)
-    if state.state.base ~= nil and state.state.base ~= "HEAD" then
+    if state.is_history_mode() then
         vim.notify("Cannot commit in history mode", vim.log.levels.WARN)
         return
     end
@@ -871,48 +922,10 @@ local function commit_flow(callbacks)
             return
         end
 
-        -- Spinner animation
-        local spinner_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
-        local frame = 0
-        local spinner_buf = vim.api.nvim_create_buf(false, true)
-        local width = #message + 16
-        local spinner_win = vim.api.nvim_open_win(spinner_buf, false, {
-            relative = "editor",
-            row = math.floor(vim.o.lines / 2) - 1,
-            col = math.floor((vim.o.columns - width) / 2),
-            width = width,
-            height = 1,
-            style = "minimal",
-            border = "rounded",
-            title = " Committing ",
-            title_pos = "center",
-        })
-
-        local timer = vim.uv.new_timer()
-        timer:start(
-            0,
-            80,
-            vim.schedule_wrap(function()
-                if not vim.api.nvim_buf_is_valid(spinner_buf) then
-                    timer:stop()
-                    timer:close()
-                    return
-                end
-                frame = (frame % #spinner_frames) + 1
-                local text = " " .. spinner_frames[frame] .. " Committing..."
-                vim.api.nvim_buf_set_lines(spinner_buf, 0, -1, false, { text })
-            end)
-        )
+        local spinner = create_spinner("Committing", "Committing...", #message + 16)
 
         git.commit(message, function(success, err)
-            timer:stop()
-            timer:close()
-            if vim.api.nvim_win_is_valid(spinner_win) then
-                vim.api.nvim_win_close(spinner_win, true)
-            end
-            if vim.api.nvim_buf_is_valid(spinner_buf) then
-                vim.api.nvim_buf_delete(spinner_buf, { force = true })
-            end
+            spinner.stop()
 
             if success then
                 vim.notify("Committed: " .. message, vim.log.levels.INFO)
@@ -934,7 +947,7 @@ local function push_flow()
         return
     end
 
-    if state.state.base ~= nil and state.state.base ~= "HEAD" then
+    if state.is_history_mode() then
         vim.notify("Cannot push in history mode", vim.log.levels.WARN)
         return
     end
@@ -986,28 +999,11 @@ end
 local function setup_keymaps(bufnr, callbacks)
     registered_keymaps = {}
 
-    ---Helper to set a keymap and register it for help display
-    ---@param lhs string
-    ---@param rhs string|function
-    ---@param opts table opts.group is used for help grouping (not passed to vim.keymap.set)
-    local function map(lhs, rhs, opts)
-        local group = opts.group
-        opts.group = nil
-        opts.buffer = bufnr
-        if opts.desc and group then
-            table.insert(registered_keymaps, { lhs = lhs, desc = opts.desc, group = group })
-        end
-        vim.keymap.set("n", lhs, rhs, opts)
-    end
-
-    -- Check if we're in history mode (can't stage)
-    local function is_history_mode()
-        return state.state.base ~= nil and state.state.base ~= "HEAD"
-    end
+    local map = ui_util.create_buffer_mapper(bufnr, registered_keymaps)
 
     -- Toggle stage with space
     local function toggle_stage()
-        if is_history_mode() then
+        if state.is_history_mode() then
             vim.notify("Cannot stage in history mode", vim.log.levels.WARN)
             return
         end
@@ -1179,55 +1175,14 @@ local function setup_keymaps(bufnr, callbacks)
         end
     end, { nowait = true, desc = "Focus diff view", group = "Navigation" })
 
-    -- Smooth scroll diff view with J/K (uses module-level timer for cleanup)
-    local function smooth_scroll(direction)
-        -- Cancel any existing scroll
-        if active_timers.scroll_timer then
-            active_timers.scroll_timer:stop()
-            active_timers.scroll_timer:close()
-            active_timers.scroll_timer = nil
-        end
-
-        local layout = require("review.ui.layout")
-        local dv = layout.get_diff_view()
-        if not dv or not dv.winid or not vim.api.nvim_win_is_valid(dv.winid) then
-            return
-        end
-
-        local lines = 15
-        local delay = 2 -- ms between each line (fast)
-        local cmd = direction == "down" and "normal! \x05" or "normal! \x19"
-
-        local i = 0
-        active_timers.scroll_timer = vim.loop.new_timer()
-        active_timers.scroll_timer:start(
-            0,
-            delay,
-            vim.schedule_wrap(function()
-                if i >= lines then
-                    if active_timers.scroll_timer then
-                        active_timers.scroll_timer:stop()
-                        active_timers.scroll_timer:close()
-                        active_timers.scroll_timer = nil
-                    end
-                    return
-                end
-                if vim.api.nvim_win_is_valid(dv.winid) then
-                    vim.api.nvim_win_call(dv.winid, function()
-                        vim.cmd(cmd)
-                    end)
-                end
-                i = i + 1
-            end)
-        )
-    end
+    local ui_util = require("review.ui.util")
 
     map("J", function()
-        smooth_scroll("down")
+        ui_util.smooth_scroll(active_timers, "down")
     end, { nowait = true, desc = "Scroll diff down", group = "Navigation" })
 
     map("K", function()
-        smooth_scroll("up")
+        ui_util.smooth_scroll(active_timers, "up")
     end, { nowait = true, desc = "Scroll diff up", group = "Navigation" })
 
     -- Panel navigation (file_tree is topmost, so h is nop)
@@ -1292,7 +1247,7 @@ local function setup_keymaps(bufnr, callbacks)
     end, { desc = "Commit staged changes", group = "Git" })
 
     map("A", function()
-        if state.state.base ~= nil and state.state.base ~= "HEAD" then
+        if state.is_history_mode() then
             vim.notify("Cannot amend in history mode", vim.log.levels.WARN)
             return
         end
@@ -1312,47 +1267,10 @@ local function setup_keymaps(bufnr, callbacks)
                 return
             end
 
-            local spinner_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
-            local frame = 0
-            local spinner_buf = vim.api.nvim_create_buf(false, true)
-            local width = 30
-            local spinner_win = vim.api.nvim_open_win(spinner_buf, false, {
-                relative = "editor",
-                row = math.floor(vim.o.lines / 2) - 1,
-                col = math.floor((vim.o.columns - width) / 2),
-                width = width,
-                height = 1,
-                style = "minimal",
-                border = "rounded",
-                title = " Amending ",
-                title_pos = "center",
-            })
-
-            local timer = vim.uv.new_timer()
-            timer:start(
-                0,
-                80,
-                vim.schedule_wrap(function()
-                    if not vim.api.nvim_buf_is_valid(spinner_buf) then
-                        timer:stop()
-                        timer:close()
-                        return
-                    end
-                    frame = (frame % #spinner_frames) + 1
-                    local text = " " .. spinner_frames[frame] .. " Amending..."
-                    vim.api.nvim_buf_set_lines(spinner_buf, 0, -1, false, { text })
-                end)
-            )
+            local spinner = create_spinner("Amending", "Amending...", 30)
 
             git.amend_no_edit(function(success, err)
-                timer:stop()
-                timer:close()
-                if vim.api.nvim_win_is_valid(spinner_win) then
-                    vim.api.nvim_win_close(spinner_win, true)
-                end
-                if vim.api.nvim_buf_is_valid(spinner_buf) then
-                    vim.api.nvim_buf_delete(spinner_buf, { force = true })
-                end
+                spinner.stop()
 
                 if success then
                     vim.notify("Amended all changes to last commit", vim.log.levels.INFO)
@@ -1636,9 +1554,9 @@ function M.refresh()
     async.run(function()
         local files = git.get_changed_files_async(state.state.base, state.state.base_end)
 
-        local is_history_mode = state.state.base ~= nil and state.state.base ~= "HEAD"
+        local history_mode = state.is_history_mode()
         local unstaged_set = {}
-        if not is_history_mode and not state.state.base_end then
+        if not history_mode and not state.state.base_end then
             local batch_results = async.all({
                 function()
                     return git.get_unstaged_files_async()

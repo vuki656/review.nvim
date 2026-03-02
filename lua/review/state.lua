@@ -25,8 +25,7 @@
 
 local M = {}
 
----@type ReviewState
-M.state = {
+local DEFAULT_STATE = {
     is_open = false,
     files = {},
     current_file = nil,
@@ -38,18 +37,16 @@ M.state = {
     diff_context = 3,
 }
 
+---@type ReviewState
+M.state = vim.deepcopy(DEFAULT_STATE)
+
 function M.reset()
-    M.state = {
-        is_open = false,
-        files = {},
-        current_file = nil,
-        diff_mode = "unified",
-        base = "HEAD",
-        base_end = nil,
-        comment_id_counter = 0,
-        is_pushing = false,
-        diff_context = 3,
-    }
+    M.state = vim.deepcopy(DEFAULT_STATE)
+end
+
+---@return boolean
+function M.is_history_mode()
+    return M.state.base ~= nil and M.state.base ~= "HEAD"
 end
 
 ---@param file string

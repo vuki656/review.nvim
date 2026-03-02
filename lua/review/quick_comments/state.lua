@@ -14,12 +14,14 @@
 
 local M = {}
 
----@type QuickCommentsState
-M.state = {
+local DEFAULT_STATE = {
     comments = {},
     comment_id_counter = 0,
     panel_open = false,
 }
+
+---@type QuickCommentsState
+M.state = vim.deepcopy(DEFAULT_STATE)
 
 ---Generate a unique comment ID
 ---@return string
@@ -205,11 +207,7 @@ end
 
 ---Reset state (for testing)
 function M.reset()
-    M.state = {
-        comments = {},
-        comment_id_counter = 0,
-        panel_open = false,
-    }
+    M.state = vim.deepcopy(DEFAULT_STATE)
 end
 
 ---Load state from persistence data

@@ -1,5 +1,6 @@
 local git = require("review.core.git")
 local state = require("review.state")
+local ui_util = require("review.ui.util")
 
 local M = {}
 
@@ -150,9 +151,7 @@ local function render(bufnr, commits, selected_index, winid)
         return
     end
 
-    vim.bo[bufnr].readonly = false
-    vim.bo[bufnr].modifiable = true
-
+    ui_util.with_modifiable(bufnr, function()
     local lines = {}
     local highlight_ranges = {}
     local date_entries = {}
@@ -241,8 +240,7 @@ local function render(bufnr, commits, selected_index, winid)
         })
     end
 
-    vim.bo[bufnr].modifiable = false
-    vim.bo[bufnr].readonly = true
+    end)
 end
 
 ---Convert a commit list line number (1-indexed) to a commit index
@@ -305,10 +303,7 @@ end
 ---Setup keymaps for the commit list buffer
 ---@param bufnr number
 local function setup_keymaps(bufnr)
-    local function map(lhs, rhs, opts)
-        opts.buffer = bufnr
-        vim.keymap.set("n", lhs, rhs, opts)
-    end
+    local map = ui_util.create_buffer_mapper(bufnr)
 
     map("j", function()
         if not M.current then
@@ -376,52 +371,14 @@ local function setup_keymaps(bufnr)
         end
     end, { nowait = true, desc = "Select commit" })
 
-    local function smooth_scroll(direction)
-        if active_timers.scroll_timer then
-            active_timers.scroll_timer:stop()
-            active_timers.scroll_timer:close()
-            active_timers.scroll_timer = nil
-        end
-
-        local diff_split = require("review.ui.layout").get_diff_view()
-        if not diff_split or not diff_split.winid or not vim.api.nvim_win_is_valid(diff_split.winid) then
-            return
-        end
-
-        local lines = 15
-        local delay = 2
-        local cmd = direction == "down" and "normal! \x05" or "normal! \x19"
-
-        local iteration = 0
-        active_timers.scroll_timer = vim.loop.new_timer()
-        active_timers.scroll_timer:start(
-            0,
-            delay,
-            vim.schedule_wrap(function()
-                if iteration >= lines then
-                    if active_timers.scroll_timer then
-                        active_timers.scroll_timer:stop()
-                        active_timers.scroll_timer:close()
-                        active_timers.scroll_timer = nil
-                    end
-                    return
-                end
-                if vim.api.nvim_win_is_valid(diff_split.winid) then
-                    vim.api.nvim_win_call(diff_split.winid, function()
-                        vim.cmd(cmd)
-                    end)
-                end
-                iteration = iteration + 1
-            end)
-        )
-    end
+    local ui_util = require("review.ui.util")
 
     map("<C-d>", function()
-        smooth_scroll("down")
+        ui_util.smooth_scroll(active_timers, "down")
     end, { nowait = true, desc = "Scroll diff down" })
 
     map("<C-u>", function()
-        smooth_scroll("up")
+        ui_util.smooth_scroll(active_timers, "up")
     end, { nowait = true, desc = "Scroll diff up" })
 
     local function close_review()
