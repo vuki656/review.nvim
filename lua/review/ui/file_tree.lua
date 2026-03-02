@@ -1291,6 +1291,82 @@ local function setup_keymaps(bufnr, callbacks)
         commit_flow(callbacks)
     end, { desc = "Commit staged changes", group = "Git" })
 
+    map("A", function()
+        if state.state.base ~= nil and state.state.base ~= "HEAD" then
+            vim.notify("Cannot amend in history mode", vim.log.levels.WARN)
+            return
+        end
+
+        vim.ui.select({ { label = "Yes" }, { label = "No" } }, {
+            prompt = "Stage all changes and amend to the last commit?",
+            format_item = function(item)
+                return item.label
+            end,
+        }, function(choice)
+            if not choice or choice.label ~= "Yes" then
+                return
+            end
+
+            if not git.stage_all() then
+                vim.notify("Failed to stage changes", vim.log.levels.ERROR)
+                return
+            end
+
+            local spinner_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+            local frame = 0
+            local spinner_buf = vim.api.nvim_create_buf(false, true)
+            local width = 30
+            local spinner_win = vim.api.nvim_open_win(spinner_buf, false, {
+                relative = "editor",
+                row = math.floor(vim.o.lines / 2) - 1,
+                col = math.floor((vim.o.columns - width) / 2),
+                width = width,
+                height = 1,
+                style = "minimal",
+                border = "rounded",
+                title = " Amending ",
+                title_pos = "center",
+            })
+
+            local timer = vim.uv.new_timer()
+            timer:start(
+                0,
+                80,
+                vim.schedule_wrap(function()
+                    if not vim.api.nvim_buf_is_valid(spinner_buf) then
+                        timer:stop()
+                        timer:close()
+                        return
+                    end
+                    frame = (frame % #spinner_frames) + 1
+                    local text = " " .. spinner_frames[frame] .. " Amending..."
+                    vim.api.nvim_buf_set_lines(spinner_buf, 0, -1, false, { text })
+                end)
+            )
+
+            git.amend_no_edit(function(success, err)
+                timer:stop()
+                timer:close()
+                if vim.api.nvim_win_is_valid(spinner_win) then
+                    vim.api.nvim_win_close(spinner_win, true)
+                end
+                if vim.api.nvim_buf_is_valid(spinner_buf) then
+                    vim.api.nvim_buf_delete(spinner_buf, { force = true })
+                end
+
+                if success then
+                    vim.notify("Amended all changes to last commit", vim.log.levels.INFO)
+                    M.refresh()
+                    if callbacks.on_refresh then
+                        callbacks.on_refresh()
+                    end
+                else
+                    vim.notify("Amend failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+                end
+            end)
+        end)
+    end, { desc = "Amend all changes to last commit", group = "Git" })
+
     -- Push to remote
     map("P", function()
         push_flow()

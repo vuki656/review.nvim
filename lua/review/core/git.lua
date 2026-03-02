@@ -740,6 +740,43 @@ function M.commit(message, callback)
     end)
 end
 
+---Stage all changes (tracked and untracked)
+---@return boolean success
+function M.stage_all()
+    local git_root = M.get_root()
+    if not git_root then
+        return false
+    end
+
+    local result = vim.system({ "git", "add", "-A" }, { text = true, cwd = git_root }):wait()
+
+    return result.code == 0
+end
+
+---Amend staged changes to the last commit (keep the same message)
+---@param callback fun(success: boolean, error: string|nil)
+function M.amend_no_edit(callback)
+    local git_root = M.get_root()
+    if not git_root then
+        callback(false, "Not a git repository")
+        return
+    end
+
+    vim.system(
+        { "git", "commit", "--amend", "--no-edit" },
+        { text = true, cwd = git_root },
+        function(result)
+            vim.schedule(function()
+                if result.code == 0 then
+                    callback(true, nil)
+                else
+                    callback(false, vim.trim(result.stderr))
+                end
+            end)
+        end
+    )
+end
+
 ---Get file content at a specific revision
 ---@param file string File path relative to git root
 ---@param rev string|nil Git revision (default: HEAD)
