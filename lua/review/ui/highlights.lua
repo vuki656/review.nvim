@@ -75,7 +75,7 @@ function M.setup()
         ReviewTitle = { fg = "#61afef", bold = true },
         ReviewWinBar = { fg = "#848b98", bold = true, bg = "NONE" },
         ReviewWinBarCount = { fg = "#4b5263", bg = "NONE" },
-        ReviewSelected = { bg = "#3e4452" },
+        ReviewSelected = { bg = "#000000" },
         ReviewHelpGroup = { fg = "#abb2bf", bg = "#2c313a", bold = true },
         ReviewHelpKey = { fg = "#e5c07b" },
 
