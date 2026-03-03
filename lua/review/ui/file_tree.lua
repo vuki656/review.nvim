@@ -1141,7 +1141,9 @@ local function commit_flow(callbacks)
 
             if success then
                 vim.notify("Committed: " .. subject, vim.log.levels.INFO)
-                refresh_and_sync()
+                if callbacks.on_commit_complete then
+                    callbacks.on_commit_complete()
+                end
             else
                 vim.notify("Commit failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
             end
@@ -1529,7 +1531,10 @@ local function setup_keymaps(bufnr, callbacks)
 
     -- Commit staged changes
     map("c", function()
-        commit_flow(callbacks)
+        local commit_callbacks = vim.tbl_extend("force", callbacks, {
+            on_commit_complete = refresh_and_sync,
+        })
+        commit_flow(commit_callbacks)
     end, { desc = "Commit staged changes", group = "Git" })
 
     map("A", function()
