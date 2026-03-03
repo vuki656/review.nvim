@@ -75,10 +75,9 @@ function M.create()
     -- Set diff view window options
     vim.api.nvim_win_set_option(diff_win, "number", true)
     vim.api.nvim_win_set_option(diff_win, "relativenumber", false)
-    vim.api.nvim_win_set_option(diff_win, "cursorline", true)
+    vim.api.nvim_win_set_option(diff_win, "cursorline", false)
     vim.api.nvim_win_set_option(diff_win, "signcolumn", "yes")
     vim.api.nvim_win_set_option(diff_win, "wrap", false)
-    vim.api.nvim_win_set_option(diff_win, "winhighlight", "Normal:Normal,CursorLine:ReviewSelected")
 
     -- Create vertical split on left for file tree
     local width = math.floor(vim.o.columns * file_tree_width / 100)
@@ -255,10 +254,9 @@ end
 local function apply_diff_win_options(winid)
     vim.api.nvim_win_set_option(winid, "number", true)
     vim.api.nvim_win_set_option(winid, "relativenumber", false)
-    vim.api.nvim_win_set_option(winid, "cursorline", true)
+    vim.api.nvim_win_set_option(winid, "cursorline", false)
     vim.api.nvim_win_set_option(winid, "signcolumn", "yes")
     vim.api.nvim_win_set_option(winid, "wrap", false)
-    vim.api.nvim_win_set_option(winid, "winhighlight", "Normal:Normal,CursorLine:ReviewSelected")
 end
 
 ---Enter split (side-by-side) diff mode

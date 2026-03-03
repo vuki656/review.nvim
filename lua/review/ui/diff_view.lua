@@ -1454,6 +1454,36 @@ local function setup_keymaps(bufnr, callbacks, old_bufnr)
         local ui = require("review.ui")
         ui.show_diff(state.state.current_file)
     end, { desc = "Shrink diff context", group = "View" }, all_bufnrs)
+    for _, target_bufnr in ipairs(all_bufnrs) do
+        vim.api.nvim_create_autocmd("BufEnter", {
+            buffer = target_bufnr,
+            callback = function()
+                vim.api.nvim_create_autocmd("WinLeave", {
+                    buffer = target_bufnr,
+                    once = true,
+                    callback = function()
+                        vim.schedule(function()
+                            local current_win = vim.api.nvim_get_current_win()
+                            local file_tree_component = layout.get_file_tree()
+                            if not file_tree_component or not file_tree_component.winid then
+                                return
+                            end
+                            local diff_view_component = layout.get_diff_view()
+                            if current_win == (diff_view_component and diff_view_component.winid) then
+                                return
+                            end
+                            if current_win == file_tree_component.winid then
+                                return
+                            end
+                            if vim.api.nvim_win_is_valid(file_tree_component.winid) then
+                                vim.api.nvim_set_current_win(file_tree_component.winid)
+                            end
+                        end)
+                    end,
+                })
+            end,
+        })
+    end
     map("q", close_review, { nowait = true, desc = "Close review", group = "General" }, all_bufnrs)
     map("<Esc>", close_review, { nowait = true, desc = "Close review", group = "General" }, all_bufnrs)
     map("?", show_help, { desc = "Show help", group = "General" }, all_bufnrs)
