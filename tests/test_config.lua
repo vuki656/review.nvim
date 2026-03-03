@@ -14,7 +14,7 @@ local T = new_set({
 T["setup with no args uses defaults"] = function()
     config.setup()
     expect.equality(config.get().diff.base, "HEAD")
-    expect.equality(config.get().ui.file_tree_width, 25)
+    expect.equality(config.get().ui.file_tree_width, 33)
     expect.equality(config.get().tmux.auto_enter, false)
 end
 

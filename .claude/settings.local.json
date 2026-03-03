@@ -6,7 +6,8 @@
       "Bash(luacheck:*)",
       "Bash(stylua:*)",
       "Bash(~/.cargo/bin/stylua:*)",
-      "Bash(~/.local/share/nvim/mason/bin/luacheck lua/)"
+      "Bash(~/.local/share/nvim/mason/bin/luacheck lua/)",
+      "Bash(make test:*)"
     ]
   }
 }
