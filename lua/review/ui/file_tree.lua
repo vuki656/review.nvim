@@ -63,8 +63,6 @@ local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧",
 ---@field dot_end number
 ---@field file_icon_start number
 ---@field file_icon_end number
----@field checkbox_start number
----@field checkbox_end number
 ---@field filename_start number
 ---@field filename_end number
 
@@ -163,8 +161,6 @@ local function create_sub_separator_node()
         dot_end = 0,
         file_icon_start = 0,
         file_icon_end = 0,
-        checkbox_start = 0,
-        checkbox_end = 0,
         filename_start = 0,
         filename_end = 0,
     }
@@ -203,9 +199,6 @@ local function create_file_node(file, in_reviewed_section, in_deleted_section, b
     git_status = git_status or git.get_file_status(file, base)
     local git_status_hl = get_git_status_hl(git_status)
 
-    -- Checkbox for reviewed status (hidden in history mode)
-    local checkbox = reviewed and "[x]" or "[ ]"
-
     -- Get just the filename
     local filename = vim.fn.fnamemodify(file, ":t")
     -- Get the directory path (empty if file is in root)
@@ -220,9 +213,8 @@ local function create_file_node(file, in_reviewed_section, in_deleted_section, b
     local padding = "  "
     local dot_part = "● "
     local file_icon_part = file_icon .. " "
-    local checkbox_part = is_history_mode and "" or (checkbox .. " ")
     local filename_part = filename
-    local text = padding .. dot_part .. file_icon_part .. checkbox_part .. filename_part .. path_suffix
+    local text = padding .. dot_part .. file_icon_part .. filename_part .. path_suffix
 
     local offset = #padding
     return {
@@ -240,10 +232,8 @@ local function create_file_node(file, in_reviewed_section, in_deleted_section, b
         dot_end = offset + #dot_part,
         file_icon_start = offset + #dot_part,
         file_icon_end = offset + #dot_part + #file_icon_part,
-        checkbox_start = offset + #dot_part + #file_icon_part,
-        checkbox_end = offset + #dot_part + #file_icon_part + #checkbox_part,
-        filename_start = offset + #dot_part + #file_icon_part + #checkbox_part,
-        filename_end = offset + #dot_part + #file_icon_part + #checkbox_part + #filename_part,
+        filename_start = offset + #dot_part + #file_icon_part,
+        filename_end = offset + #dot_part + #file_icon_part + #filename_part,
     }
 end
 
@@ -288,8 +278,6 @@ local function create_header_node(icon, title, count, hl, char)
         dot_end = 0,
         file_icon_start = 0,
         file_icon_end = 0,
-        checkbox_start = 0,
-        checkbox_end = 0,
         filename_start = 0,
         filename_end = 0,
     }
@@ -500,10 +488,9 @@ local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
             local reviewed = not is_history_mode and state.is_reviewed(file)
             local file_icon, file_icon_hl = get_file_icon(file)
 
-            local checkbox = is_history_mode and "" or (reviewed and "[x] " or "[ ] ")
             local dot_part = "● "
             local left_pad = " "
-            local text = left_pad .. indent .. dot_part .. file_icon .. " " .. checkbox .. name
+            local text = left_pad .. indent .. dot_part .. file_icon .. " " .. name
 
             local offset = #left_pad + #indent
             table.insert(nodes, {
@@ -523,9 +510,7 @@ local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
                 dot_end = offset + #dot_part,
                 file_icon_start = offset + #dot_part,
                 file_icon_end = offset + #dot_part + #file_icon + 1,
-                checkbox_start = offset + #dot_part + #file_icon + 1,
-                checkbox_end = offset + #dot_part + #file_icon + 1 + #checkbox,
-                filename_start = offset + #dot_part + #file_icon + 1 + #checkbox,
+                filename_start = offset + #dot_part + #file_icon + 1,
                 filename_end = #text,
             })
         else
@@ -535,10 +520,8 @@ local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
             local folder_icon = is_collapsed and "󰉖" or "󰉋"
             local dir_total, dir_staged = count_dir_files(entry)
             local dir_all_staged = dir_total > 0 and dir_staged == dir_total
-            local dir_checkbox = is_history_mode and ""
-                or (dir_all_staged and "[x] " or (dir_staged > 0 and "[-] " or "[ ] "))
             local left_pad = " "
-            local text = left_pad .. indent .. folder_icon .. " " .. dir_checkbox .. name
+            local text = left_pad .. indent .. folder_icon .. " " .. name
 
             local offset = #left_pad + #indent
             table.insert(nodes, {
@@ -558,9 +541,7 @@ local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
                 indent_ranges = indent_ranges,
                 dir_icon_start = offset,
                 dir_icon_end = offset + #folder_icon,
-                checkbox_start = offset + #folder_icon + 1,
-                checkbox_end = offset + #folder_icon + 1 + #dir_checkbox,
-                dirname_start = offset + #folder_icon + 1 + #dir_checkbox,
+                dirname_start = offset + #folder_icon + 1,
                 dirname_end = #text,
             })
 
@@ -739,23 +720,13 @@ local function render_to_buffer(bufnr, nodes, winid)
                     node.dir_icon_end
                 )
             end
-            -- Checkbox
-            if node.checkbox_start and node.checkbox_end and node.checkbox_end > node.checkbox_start then
-                local dir_checkbox_hl = node.reviewed and "ReviewFileReviewed" or "ReviewFileModified"
-                vim.api.nvim_buf_add_highlight(
-                    bufnr,
-                    -1,
-                    dir_checkbox_hl,
-                    i - 1,
-                    node.checkbox_start,
-                    node.checkbox_end
-                )
-            end
             if node.dirname_start then
+                local dirname_hl = node.reviewed and "ReviewFileReviewed"
+                    or (node.dir_partially_staged and "ReviewFileModified" or "ReviewTreeDirectory")
                 vim.api.nvim_buf_add_highlight(
                     bufnr,
                     -1,
-                    "ReviewTreeDirectory",
+                    dirname_hl,
                     i - 1,
                     node.dirname_start,
                     node.dirname_end
@@ -785,12 +756,9 @@ local function render_to_buffer(bufnr, nodes, winid)
                 )
             end
 
-            -- Checkbox - green if reviewed, orange if not
-            local checkbox_hl = node.reviewed and "ReviewFileReviewed" or "ReviewFileModified"
-            vim.api.nvim_buf_add_highlight(bufnr, -1, checkbox_hl, i - 1, node.checkbox_start, node.checkbox_end)
-
-            -- Filename and path coloring
-            local filename_hl = node.is_non_important and "ReviewFileFaded" or "ReviewFilePath"
+            -- Filename and path coloring (green if reviewed)
+            local filename_hl = node.reviewed and "ReviewFileReviewed"
+                or (node.is_non_important and "ReviewFileFaded" or "ReviewFilePath")
             vim.api.nvim_buf_add_highlight(bufnr, -1, filename_hl, i - 1, node.filename_start, node.filename_end)
             vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewFilePathFaded", i - 1, node.filename_end, -1)
         end
