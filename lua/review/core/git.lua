@@ -863,6 +863,100 @@ function M.push(callback)
     end)
 end
 
+---Buffer raw chunks into complete lines, calling on_line for each
+---@param on_line fun(line: string)
+---@return fun(err: string|nil, data: string|nil)
+local function line_buffered_handler(on_line)
+    local buffer = ""
+    return function(_err, data)
+        if not data then
+            if buffer ~= "" then
+                vim.schedule(function()
+                    on_line(buffer)
+                end)
+                buffer = ""
+            end
+            return
+        end
+        buffer = buffer .. data
+        while true do
+            local newline_pos = buffer:find("\n")
+            if not newline_pos then
+                break
+            end
+            local line = buffer:sub(1, newline_pos - 1)
+            buffer = buffer:sub(newline_pos + 1)
+            vim.schedule(function()
+                on_line(line)
+            end)
+        end
+    end
+end
+
+---Commit staged changes with streaming output (for hook visibility)
+---@param message string Commit message subject line
+---@param on_output fun(line: string) Called per-line as hooks produce output
+---@param callback fun(success: boolean, error: string|nil)
+---@param description? string Optional commit body/description
+function M.commit_streaming(message, on_output, callback, description)
+    local git_root = M.get_root()
+    if not git_root then
+        callback(false, "Not a git repository")
+        return
+    end
+
+    local cmd = { "git", "commit", "-m", message }
+    if description and description ~= "" then
+        table.insert(cmd, "-m")
+        table.insert(cmd, description)
+    end
+
+    local handler = line_buffered_handler(on_output)
+
+    vim.system(cmd, {
+        cwd = git_root,
+        stdout = handler,
+        stderr = handler,
+    }, function(result)
+        vim.schedule(function()
+            if result.code == 0 then
+                callback(true, nil)
+            else
+                local error_output = vim.trim((result.stderr or "") .. (result.stdout or ""))
+                callback(false, error_output ~= "" and error_output or "Commit failed")
+            end
+        end)
+    end)
+end
+
+---Amend staged changes with streaming output (for hook visibility)
+---@param on_output fun(line: string) Called per-line as hooks produce output
+---@param callback fun(success: boolean, error: string|nil)
+function M.amend_no_edit_streaming(on_output, callback)
+    local git_root = M.get_root()
+    if not git_root then
+        callback(false, "Not a git repository")
+        return
+    end
+
+    local handler = line_buffered_handler(on_output)
+
+    vim.system({ "git", "commit", "--amend", "--no-edit" }, {
+        cwd = git_root,
+        stdout = handler,
+        stderr = handler,
+    }, function(result)
+        vim.schedule(function()
+            if result.code == 0 then
+                callback(true, nil)
+            else
+                local error_output = vim.trim((result.stderr or "") .. (result.stdout or ""))
+                callback(false, error_output ~= "" and error_output or "Amend failed")
+            end
+        end)
+    end)
+end
+
 -- ============================================================================
 -- Async variants (must be called inside async.run())
 -- ============================================================================

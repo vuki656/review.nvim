@@ -933,6 +933,81 @@ local function create_spinner(title, message, width)
     }
 end
 
+local PROGRESS_WIDTH = 72
+local PROGRESS_LOG_LINES = 12
+local PROGRESS_HEIGHT = 1 + 1 + PROGRESS_LOG_LINES
+
+local function create_commit_progress(title, message)
+    local frame = 0
+    local log_lines = {}
+    local progress_buf = vim.api.nvim_create_buf(false, true)
+    vim.bo[progress_buf].bufhidden = "wipe"
+
+    local separator = string.rep("─", PROGRESS_WIDTH)
+
+    local initial_lines = { " " .. SPINNER_FRAMES[1] .. " " .. message, separator }
+    for _ = 1, PROGRESS_LOG_LINES do
+        table.insert(initial_lines, "")
+    end
+    vim.api.nvim_buf_set_lines(progress_buf, 0, -1, false, initial_lines)
+
+    local progress_win = vim.api.nvim_open_win(progress_buf, false, {
+        relative = "editor",
+        row = math.floor((vim.o.lines - PROGRESS_HEIGHT) / 2) - 1,
+        col = math.floor((vim.o.columns - PROGRESS_WIDTH) / 2),
+        width = PROGRESS_WIDTH,
+        height = PROGRESS_HEIGHT,
+        style = "minimal",
+        border = "rounded",
+        title = " " .. title .. " ",
+        title_pos = "center",
+    })
+
+    local timer = vim.uv.new_timer()
+    timer:start(
+        0,
+        80,
+        vim.schedule_wrap(function()
+            if not vim.api.nvim_buf_is_valid(progress_buf) then
+                timer:stop()
+                timer:close()
+                return
+            end
+            frame = (frame % #SPINNER_FRAMES) + 1
+            local spinner_text = " " .. SPINNER_FRAMES[frame] .. " " .. message
+            vim.api.nvim_buf_set_lines(progress_buf, 0, 1, false, { spinner_text })
+        end)
+    )
+
+    return {
+        stop = function()
+            timer:stop()
+            timer:close()
+            if vim.api.nvim_win_is_valid(progress_win) then
+                vim.api.nvim_win_close(progress_win, true)
+            end
+            if vim.api.nvim_buf_is_valid(progress_buf) then
+                vim.api.nvim_buf_delete(progress_buf, { force = true })
+            end
+        end,
+        add_line = function(line)
+            if not vim.api.nvim_buf_is_valid(progress_buf) then
+                return
+            end
+            table.insert(log_lines, " " .. line)
+            local visible_lines = {}
+            local start_index = math.max(1, #log_lines - PROGRESS_LOG_LINES + 1)
+            for index = start_index, #log_lines do
+                table.insert(visible_lines, log_lines[index])
+            end
+            while #visible_lines < PROGRESS_LOG_LINES do
+                table.insert(visible_lines, "")
+            end
+            vim.api.nvim_buf_set_lines(progress_buf, 2, 2 + PROGRESS_LOG_LINES, false, visible_lines)
+        end,
+    }
+end
+
 ---Open a floating commit popup with subject line and description area
 ---@param callbacks table
 local function commit_flow(callbacks)
@@ -1059,10 +1134,10 @@ local function commit_flow(callbacks)
 
         close_popup()
 
-        local spinner = create_spinner("Committing", "Committing...", #subject + 16)
+        local progress = create_commit_progress("Committing", "Committing...")
 
-        git.commit(subject, function(success, err)
-            spinner.stop()
+        git.commit_streaming(subject, progress.add_line, function(success, err)
+            progress.stop()
 
             if success then
                 vim.notify("Committed: " .. subject, vim.log.levels.INFO)
@@ -1478,10 +1553,10 @@ local function setup_keymaps(bufnr, callbacks)
                 return
             end
 
-            local spinner = create_spinner("Amending", "Amending...", 30)
+            local progress = create_commit_progress("Amending", "Amending...")
 
-            git.amend_no_edit(function(success, err)
-                spinner.stop()
+            git.amend_no_edit_streaming(progress.add_line, function(success, err)
+                progress.stop()
 
                 if success then
                     vim.notify("Amended all changes to last commit", vim.log.levels.INFO)

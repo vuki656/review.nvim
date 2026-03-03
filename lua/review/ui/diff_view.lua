@@ -1479,6 +1479,10 @@ local function setup_keymaps(bufnr, callbacks, old_bufnr)
                     callback = function()
                         vim.schedule(function()
                             local current_win = vim.api.nvim_get_current_win()
+                            local win_config = vim.api.nvim_win_get_config(current_win)
+                            if win_config.relative and win_config.relative ~= "" then
+                                return
+                            end
                             local file_tree_component = layout.get_file_tree()
                             if not file_tree_component or not file_tree_component.winid then
                                 return
