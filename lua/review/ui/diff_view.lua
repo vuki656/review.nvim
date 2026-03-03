@@ -101,7 +101,46 @@ local function build_line_maps(render_lines)
     return old_source_line_to_display, new_source_line_to_display, has_old_lines, has_new_lines
 end
 
----Apply treesitter highlights from parsed source content to display buffer
+---Build contiguous ranges from a set of source line numbers with padding for treesitter context
+---@param source_line_to_display table source_line -> display_line mapping
+---@param total_lines number total number of lines in source file
+---@param padding number lines of context to include around each needed line
+---@return table[] ranges list of {start, stop} (1-indexed, inclusive)
+local function build_source_ranges(source_line_to_display, total_lines, padding)
+    local needed_lines = {}
+    for source_line, _ in pairs(source_line_to_display) do
+        table.insert(needed_lines, source_line)
+    end
+    table.sort(needed_lines)
+
+    if #needed_lines == 0 then
+        return {}
+    end
+
+    local ranges = {}
+    local range_start = math.max(1, needed_lines[1] - padding)
+    local range_stop = math.min(total_lines, needed_lines[1] + padding)
+
+    for index = 2, #needed_lines do
+        local padded_start = math.max(1, needed_lines[index] - padding)
+        local padded_stop = math.min(total_lines, needed_lines[index] + padding)
+
+        if padded_start <= range_stop + 1 then
+            range_stop = padded_stop
+        else
+            table.insert(ranges, { start = range_start, stop = range_stop })
+            range_start = padded_start
+            range_stop = padded_stop
+        end
+    end
+
+    table.insert(ranges, { start = range_start, stop = range_stop })
+    return ranges
+end
+
+---Apply treesitter highlights from parsed source content to display buffer.
+---Only parses the source lines that appear in the diff (with padding for context),
+---avoiding full-file treesitter parsing for large files.
 ---@param bufnr number
 ---@param lang string
 ---@param query vim.treesitter.Query
@@ -110,42 +149,58 @@ end
 ---@param display_lines string[]
 ---@param line_offset number
 local function apply_highlights_from_source(bufnr, lang, query, source_content, source_line_to_display, display_lines, line_offset)
-    local ok_parser, parser = pcall(vim.treesitter.get_string_parser, source_content, lang)
-    if not ok_parser then
-        return
-    end
+    local source_lines = vim.split(source_content, "\n", { plain = true })
+    local treesitter_padding = 20
+    local ranges = build_source_ranges(source_line_to_display, #source_lines, treesitter_padding)
 
-    local ok_parse, trees = pcall(parser.parse, parser)
-    if not ok_parse or not trees then
-        return
-    end
+    for _, range in ipairs(ranges) do
+        local snippet_lines = {}
+        for line_number = range.start, range.stop do
+            table.insert(snippet_lines, source_lines[line_number] or "")
+        end
+        local snippet = table.concat(snippet_lines, "\n")
 
-    for _, tree in ipairs(trees) do
-        for capture_id, node in query:iter_captures(tree:root(), source_content) do
-            local start_row, start_col, end_row, end_col = node:range()
-            local capture_name = query.captures[capture_id]
-            local hl_group = "@" .. capture_name .. "." .. lang
+        local ok_parser, parser = pcall(vim.treesitter.get_string_parser, snippet, lang)
+        if not ok_parser then
+            return
+        end
 
-            if start_row == end_row then
-                local buf_line = source_line_to_display[start_row + 1]
-                if buf_line then
-                    pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1 + line_offset, start_col, {
-                        end_col = end_col,
-                        hl_group = hl_group,
-                        priority = 50,
-                    })
-                end
-            else
-                for row = start_row, end_row do
-                    local buf_line = source_line_to_display[row + 1]
+        local ok_parse, trees = pcall(parser.parse, parser)
+        if not ok_parse or not trees then
+            return
+        end
+
+        local range_offset = range.start - 1
+
+        for _, tree in ipairs(trees) do
+            for capture_id, node in query:iter_captures(tree:root(), snippet) do
+                local start_row, start_col, end_row, end_col = node:range()
+                local capture_name = query.captures[capture_id]
+                local hl_group = "@" .. capture_name .. "." .. lang
+
+                if start_row == end_row then
+                    local source_line = start_row + 1 + range_offset
+                    local buf_line = source_line_to_display[source_line]
                     if buf_line then
-                        local col_start = row == start_row and start_col or 0
-                        local col_end = row == end_row and end_col or #(display_lines[buf_line] or "")
-                        pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1 + line_offset, col_start, {
-                            end_col = col_end,
+                        pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1 + line_offset, start_col, {
+                            end_col = end_col,
                             hl_group = hl_group,
                             priority = 50,
                         })
+                    end
+                else
+                    for row = start_row, end_row do
+                        local source_line = row + 1 + range_offset
+                        local buf_line = source_line_to_display[source_line]
+                        if buf_line then
+                            local col_start = row == start_row and start_col or 0
+                            local col_end = row == end_row and end_col or #(display_lines[buf_line] or "")
+                            pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1 + line_offset, col_start, {
+                                end_col = col_end,
+                                hl_group = hl_group,
+                                priority = 50,
+                            })
+                        end
                     end
                 end
             end
