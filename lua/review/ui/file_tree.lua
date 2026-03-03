@@ -14,10 +14,27 @@ local collapsed_dirs = {}
 -- Optional devicons support
 local has_devicons, devicons = pcall(require, "nvim-web-devicons")
 
+---Check if a filename is a test or spec file
+---@param filename string
+---@return boolean
+local function is_test_file(filename)
+    local basename = vim.fn.fnamemodify(filename, ":t")
+    return basename:match("^test[_.]")
+        or basename:match("[_.]test%.")
+        or basename:match("[_.]spec%.")
+        or basename:match("^spec[_.]")
+        or basename:match("_test%.")
+        or basename:match("_spec%.")
+        ~= nil
+end
+
 ---Get file icon from devicons or fallback
 ---@param filename string
 ---@return string icon, string|nil highlight
 local function get_file_icon(filename)
+    if is_test_file(filename) then
+        return "󰂓", "ReviewFileModified"
+    end
     if has_devicons then
         local icon, hl = devicons.get_icon(filename, vim.fn.fnamemodify(filename, ":e"), { default = true })
         return icon or "", hl
