@@ -1439,6 +1439,21 @@ local function setup_keymaps(bufnr, callbacks, old_bufnr)
     map("[c", goto_prev_hunk, { desc = "Previous hunk", group = "Navigation" }, all_bufnrs)
     map("]f", goto_next_file, { desc = "Next file", group = "Navigation" }, all_bufnrs)
     map("[f", goto_prev_file, { desc = "Previous file", group = "Navigation" }, all_bufnrs)
+    map("e", function()
+        local file = state.state.current_file
+        if not file then
+            return
+        end
+        local source_line = get_current_source_line()
+        local git_root = git.get_root()
+        local filepath = git_root .. "/" .. file
+        local ui = require("review.ui")
+        ui.close()
+        vim.cmd("edit " .. vim.fn.fnameescape(filepath))
+        if source_line then
+            vim.api.nvim_win_set_cursor(0, { source_line, 0 })
+        end
+    end, { desc = "Open file at line", group = "Navigation" }, all_bufnrs)
     map("S", toggle_mode, { desc = "Toggle split/unified diff", group = "View" }, all_bufnrs)
     map("<C-n>", function()
         local ui = require("review.ui")
