@@ -425,6 +425,44 @@ local function setup_keymaps(bufnr)
             vim.api.nvim_set_current_win(branch_list_component.winid)
         end
     end, { nowait = true, desc = "Next panel" })
+    map("u", function()
+        if not M.current then
+            return
+        end
+
+        local line = vim.api.nvim_win_get_cursor(0)[1]
+        local commit_index = line_to_commit_index(line)
+        if not commit_index then
+            return
+        end
+
+        local entry = M.current.commits[commit_index]
+        if not entry or entry.is_head then
+            return
+        end
+
+        local head_entry = M.current.commits[2]
+        if not head_entry or entry.hash ~= head_entry.hash then
+            vim.notify("Can only uncommit the most recent commit", vim.log.levels.WARN)
+            return
+        end
+
+        vim.ui.select({ { label = "Yes" }, { label = "No" } }, {
+            prompt = "Uncommit '" .. entry.subject .. "'?",
+            format_item = function(item)
+                return item.label
+            end,
+        }, function(choice)
+            if not choice or choice.label ~= "Yes" then
+                return
+            end
+
+            if callbacks.on_uncommit then
+                callbacks.on_uncommit(entry)
+            end
+        end)
+    end, { nowait = true, desc = "Uncommit (soft reset)" })
+
     vim.keymap.set("n", "<Left>", "<Nop>", { buffer = bufnr, nowait = true })
     vim.keymap.set("n", "<Right>", "<Nop>", { buffer = bufnr, nowait = true })
 end

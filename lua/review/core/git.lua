@@ -784,6 +784,30 @@ function M.amend_no_edit(callback)
     )
 end
 
+---Soft reset HEAD (uncommit last commit, keeping changes staged)
+---@param callback fun(success: boolean, error: string|nil)
+function M.soft_reset_head(callback)
+    local git_root = M.get_root()
+    if not git_root then
+        callback(false, "Not a git repository")
+        return
+    end
+
+    vim.system(
+        { "git", "reset", "--soft", "HEAD~1" },
+        { text = true, cwd = git_root },
+        function(result)
+            vim.schedule(function()
+                if result.code == 0 then
+                    callback(true, nil)
+                else
+                    callback(false, vim.trim(result.stderr))
+                end
+            end)
+        end
+    )
+end
+
 ---Get file content at a specific revision
 ---@param file string File path relative to git root
 ---@param rev string|nil Git revision (default: HEAD)

@@ -86,6 +86,26 @@ function M.open()
         on_commit_preview = function(entry)
             M.preview_commit(entry)
         end,
+        on_uncommit = function(entry)
+            git.soft_reset_head(function(success, err)
+                if not success then
+                    vim.notify("Uncommit failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+                    return
+                end
+
+                vim.notify("Uncommitted: " .. entry.subject, vim.log.levels.INFO)
+
+                state.state.base = "HEAD"
+                state.state.base_end = nil
+
+                commit_list.refresh()
+                commit_list.set_selected({ is_head = true })
+
+                file_tree.refresh(function()
+                    focus_first_file(true)
+                end)
+            end)
+        end,
         on_close = function()
             M.close()
         end,
