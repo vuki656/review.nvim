@@ -141,4 +141,20 @@ function M.create_buffer_mapper(bufnr, registered_keymaps)
     end
 end
 
+---Show a Yes/No confirmation popup and invoke callback on "Yes"
+---@param prompt string
+---@param on_confirm function
+function M.confirm(prompt, on_confirm)
+    vim.ui.select({ { label = "Yes" }, { label = "No" } }, {
+        prompt = prompt,
+        format_item = function(item)
+            return item.label
+        end,
+    }, function(choice)
+        if choice and choice.label == "Yes" then
+            on_confirm()
+        end
+    end)
+end
+
 return M

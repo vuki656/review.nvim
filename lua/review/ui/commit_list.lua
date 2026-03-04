@@ -447,16 +447,7 @@ local function setup_keymaps(bufnr)
             return
         end
 
-        vim.ui.select({ { label = "Yes" }, { label = "No" } }, {
-            prompt = "Uncommit '" .. entry.subject .. "'?",
-            format_item = function(item)
-                return item.label
-            end,
-        }, function(choice)
-            if not choice or choice.label ~= "Yes" then
-                return
-            end
-
+        ui_util.confirm("Uncommit '" .. entry.subject .. "'?", function()
             if callbacks.on_uncommit then
                 callbacks.on_uncommit(entry)
             end

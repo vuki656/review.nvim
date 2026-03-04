@@ -1543,16 +1543,7 @@ local function setup_keymaps(bufnr, callbacks)
             return
         end
 
-        vim.ui.select({ { label = "Yes" }, { label = "No" } }, {
-            prompt = "Amend last commit?",
-            format_item = function(item)
-                return item.label
-            end,
-        }, function(choice)
-            if not choice or choice.label ~= "Yes" then
-                return
-            end
-
+        ui_util.confirm("Amend last commit?", function()
             if not git.stage_all() then
                 vim.notify("Failed to stage changes", vim.log.levels.ERROR)
                 return
@@ -1678,16 +1669,7 @@ local function setup_keymaps(bufnr, callbacks)
             return
         end
 
-        vim.ui.select({ { label = "Yes" }, { label = "No" } }, {
-            prompt = "Revert all changes to " .. node.path .. "?",
-            format_item = function(item)
-                return item.label
-            end,
-        }, function(choice)
-            if not choice or choice.label ~= "Yes" then
-                return
-            end
-
+        ui_util.confirm("Revert all changes to " .. node.path .. "?", function()
             if git.restore_file(node.path) then
                 state.set_reviewed(node.path, false)
                 refresh_and_sync()
