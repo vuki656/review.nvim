@@ -126,7 +126,10 @@ function M.render()
                     local subheader = "  " .. type_info.icon .. " " .. type_info.label
                     table.insert(lines, subheader)
                     line_idx = #lines - 1
-                    table.insert(highlights, { line = line_idx, col = 0, end_col = #subheader, hl = type_info.highlight })
+                    table.insert(
+                        highlights,
+                        { line = line_idx, col = 0, end_col = #subheader, hl = type_info.highlight }
+                    )
 
                     for _, comment in ipairs(group) do
                         local line_prefix = string.format("  L%-4d ", comment.line)

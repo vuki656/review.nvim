@@ -417,7 +417,7 @@ end
 ---@param files string[]
 ---@param base string|nil Base commit for comparison
 ---@param base_end string|nil End of commit range
----@param _cached_unstaged_set table<string, boolean>|nil Pre-fetched unstaged set (unused in tree view, kept for API consistency)
+---@param _cached_unstaged_set table<string, boolean>|nil Pre-fetched unstaged set (unused in tree view)
 ---@return FileNode[]
 local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
     local is_history_mode = base ~= nil and base ~= "HEAD"
@@ -881,56 +881,6 @@ end
 local function show_help()
     local help = require("review.ui.help")
     help.show("File Tree", registered_keymaps)
-end
-
----Create a centered spinner popup
----@param title string Window title
----@param message string Spinner text to display
----@param width number Window width
----@return { stop: fun() }
-local function create_spinner(title, message, width)
-    local frame = 0
-    local spinner_buf = vim.api.nvim_create_buf(false, true)
-    local spinner_win = vim.api.nvim_open_win(spinner_buf, false, {
-        relative = "editor",
-        row = math.floor(vim.o.lines / 2) - 1,
-        col = math.floor((vim.o.columns - width) / 2),
-        width = width,
-        height = 1,
-        style = "minimal",
-        border = "rounded",
-        title = " " .. title .. " ",
-        title_pos = "center",
-    })
-
-    local timer = vim.uv.new_timer()
-    timer:start(
-        0,
-        80,
-        vim.schedule_wrap(function()
-            if not vim.api.nvim_buf_is_valid(spinner_buf) then
-                timer:stop()
-                timer:close()
-                return
-            end
-            frame = (frame % #SPINNER_FRAMES) + 1
-            local text = " " .. SPINNER_FRAMES[frame] .. " " .. message
-            vim.api.nvim_buf_set_lines(spinner_buf, 0, -1, false, { text })
-        end)
-    )
-
-    return {
-        stop = function()
-            timer:stop()
-            timer:close()
-            if vim.api.nvim_win_is_valid(spinner_win) then
-                vim.api.nvim_win_close(spinner_win, true)
-            end
-            if vim.api.nvim_buf_is_valid(spinner_buf) then
-                vim.api.nvim_buf_delete(spinner_buf, { force = true })
-            end
-        end,
-    }
 end
 
 local PROGRESS_WIDTH = 72
@@ -1466,14 +1416,14 @@ local function setup_keymaps(bufnr, callbacks)
         end
     end, { nowait = true, desc = "Focus diff view", group = "Navigation" })
 
-    local ui_util = require("review.ui.util")
+    local scroll_util = require("review.ui.util")
 
     map("J", function()
-        ui_util.smooth_scroll(active_timers, "down")
+        scroll_util.smooth_scroll(active_timers, "down")
     end, { nowait = true, desc = "Scroll diff down", group = "Navigation" })
 
     map("K", function()
-        ui_util.smooth_scroll(active_timers, "up")
+        scroll_util.smooth_scroll(active_timers, "up")
     end, { nowait = true, desc = "Scroll diff up", group = "Navigation" })
 
     -- Panel navigation (file_tree is topmost, so h is nop)

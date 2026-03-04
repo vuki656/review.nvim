@@ -46,13 +46,11 @@ local function get_diff_context(render_lines, comment_line, context_count)
     for index = start_idx, end_idx do
         local line = render_lines[index]
         if line and line.type ~= "filepath" then
-            local prefix = ""
+            local prefix = " "
             if line.type == "add" then
                 prefix = "+"
             elseif line.type == "delete" then
                 prefix = "-"
-            else
-                prefix = " "
             end
             table.insert(context, prefix .. (line.content or ""))
         end

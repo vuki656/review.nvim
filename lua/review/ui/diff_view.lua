@@ -148,7 +148,9 @@ end
 ---@param source_line_to_display table
 ---@param display_lines string[]
 ---@param line_offset number
-local function apply_highlights_from_source(bufnr, lang, query, source_content, source_line_to_display, display_lines, line_offset)
+local function apply_highlights_from_source(
+    bufnr, lang, query, source_content, source_line_to_display, display_lines, line_offset
+)
     local source_lines = vim.split(source_content, "\n", { plain = true })
     local treesitter_padding = 20
     local ranges = build_source_ranges(source_line_to_display, #source_lines, treesitter_padding)
@@ -195,7 +197,8 @@ local function apply_highlights_from_source(bufnr, lang, query, source_content, 
                         if buf_line then
                             local col_start = row == start_row and start_col or 0
                             local col_end = row == end_row and end_col or #(display_lines[buf_line] or "")
-                            pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, buf_line - 1 + line_offset, col_start, {
+                            local extmark_line = buf_line - 1 + line_offset
+                            pcall(vim.api.nvim_buf_set_extmark, bufnr, ns_syntax, extmark_line, col_start, {
                                 end_col = col_end,
                                 hl_group = hl_group,
                                 priority = 50,
@@ -523,150 +526,6 @@ local LOCK_FILE_NAMES = {
 local function is_lock_file(file)
     local filename = vim.fn.fnamemodify(file, ":t")
     return LOCK_FILE_NAMES[filename] == true
-end
-
----Render diff to buffer
----@param bufnr number
----@param file string
----@return table[]|nil render_lines
-local function render_diff(bufnr, file)
-    if is_lock_file(file) then
-        vim.bo[bufnr].readonly = false
-        vim.bo[bufnr].modifiable = true
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
-            "",
-            "  Lock file diff not shown.",
-        })
-        vim.bo[bufnr].modifiable = false
-        vim.bo[bufnr].readonly = true
-        return nil
-    end
-
-    local result = git.get_diff(file, state.state.base, state.state.base_end)
-    if not result.success then
-        vim.bo[bufnr].readonly = false
-        vim.bo[bufnr].modifiable = true
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
-            "",
-            "  Error getting diff:",
-            "  " .. (result.error or "Unknown error"),
-        })
-        vim.bo[bufnr].modifiable = false
-        vim.bo[bufnr].readonly = true
-        return nil
-    end
-
-    if result.output == "" then
-        vim.bo[bufnr].readonly = false
-        vim.bo[bufnr].modifiable = true
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
-            "",
-            "  No changes in this file.",
-        })
-        vim.bo[bufnr].modifiable = false
-        vim.bo[bufnr].readonly = true
-        return nil
-    end
-
-    -- Parse diff
-    local parsed = diff_parser.parse(result.output)
-    local raw_lines = diff_parser.get_render_lines(parsed)
-
-    -- Build clean display lines (no +/-, no @@ headers)
-    local display_lines = { file, "" }
-    local render_lines = {
-        { type = "filepath", content = file },
-        { type = "filepath", content = "" },
-    }
-
-    for _, line in ipairs(raw_lines) do
-        if line.type ~= "header" then
-            -- Strip the +/- prefix, show just content
-            local content = line.content or ""
-            table.insert(display_lines, content)
-            table.insert(render_lines, line)
-        end
-    end
-
-    -- Set buffer content
-    vim.bo[bufnr].readonly = false
-    vim.bo[bufnr].modifiable = true
-    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, display_lines)
-
-    vim.bo[bufnr].modifiable = false
-    vim.bo[bufnr].readonly = true
-
-    apply_treesitter_highlights(bufnr, render_lines, display_lines, file)
-
-    -- Find line pairs for word-level diff
-    local line_pairs = find_line_pairs(render_lines)
-
-    -- Detect new/deleted files from diff headers (not from line types)
-    local is_new_file = parsed.file_old == "/dev/null"
-    local is_deleted_file = parsed.file_new == "/dev/null"
-
-    -- Apply highlights and colored border
-    vim.api.nvim_buf_clear_namespace(bufnr, ns_diff, 0, -1)
-
-    for i, line in ipairs(render_lines) do
-        local sign_hl = nil
-        local sign_text = "▌"
-        local inline_hl = nil
-
-        local line_hl = nil
-
-        if line.type == "filepath" then
-            local line_text = display_lines[i] or ""
-            if #line_text > 0 then
-                vim.api.nvim_buf_set_extmark(bufnr, ns_diff, i - 1, 0, {
-                    end_col = #line_text,
-                    hl_group = "ReviewDiffFilePath",
-                    priority = 10000,
-                })
-            end
-        elseif line.type == "add" then
-            line_hl = "ReviewDiffAdd"
-            sign_hl = "ReviewDiffSignAdd"
-            inline_hl = "ReviewDiffAddInline"
-        elseif line.type == "delete" then
-            line_hl = "ReviewDiffDelete"
-            sign_hl = "ReviewDiffSignDelete"
-            inline_hl = "ReviewDiffDeleteInline"
-        elseif line.type == "context" then
-            sign_hl = "ReviewDiffSignContext"
-            sign_text = " "
-        end
-
-        -- Add colored border in sign column and line background
-        if sign_hl then
-            local extmark_opts = {
-                sign_text = sign_text,
-                sign_hl_group = sign_hl,
-            }
-            -- Apply line background (skip for new/deleted files - just use sign column)
-            if line_hl and not is_new_file and not is_deleted_file then
-                extmark_opts.line_hl_group = line_hl
-            end
-            vim.api.nvim_buf_set_extmark(bufnr, ns_diff, i - 1, 0, extmark_opts)
-        end
-
-        -- Apply word-level diff highlighting on top (overwrites line bg for changed parts)
-        if inline_hl and line_pairs[i] then
-            local old_content = line_pairs[i]
-            local new_content = line.content or ""
-            local inline_ranges = compute_inline_diff(old_content, new_content)
-
-            for _, range in ipairs(inline_ranges) do
-                if range[1] < range[2] then
-                    vim.api.nvim_buf_add_highlight(bufnr, ns_diff, inline_hl, i - 1, range[1], range[2])
-                end
-            end
-        end
-    end
-
-    state.get_file_state(file).render_lines = render_lines
-
-    return render_lines
 end
 
 ---Async two-stage diff rendering: Stage 1 renders diff + highlights immediately,
@@ -1085,13 +944,6 @@ local function get_current_source_line()
     local line_num = cursor[1]
 
     return diff_parser.get_source_line(line_num, M.current.render_lines)
-end
-
----Check if a split line is a change
----@param line table
----@return boolean
-local function is_split_change(line)
-    return line.type == "add" or line.type == "delete"
 end
 
 ---Navigate to next change (add/delete block)
@@ -1565,8 +1417,8 @@ end
 
 ---Apply common window options to a diff view window
 ---@param winid number
----@param bufnr number
-local function apply_diff_view_win_options(winid, bufnr)
+---@param _bufnr number
+local function apply_diff_view_win_options(winid, _bufnr)
     vim.wo[winid].spell = false
     vim.wo[winid].list = false
 

@@ -145,8 +145,8 @@ end
 ---@param bufnr number
 ---@param commits CommitEntry[]
 ---@param selected_index number
----@param winid number|nil
-local function render(bufnr, commits, selected_index, winid)
+---@param _winid number|nil
+local function render(bufnr, commits, selected_index, _winid)
     if not vim.api.nvim_buf_is_valid(bufnr) then
         return
     end
@@ -371,14 +371,14 @@ local function setup_keymaps(bufnr)
         end
     end, { nowait = true, desc = "Select commit" })
 
-    local ui_util = require("review.ui.util")
+    local scroll_util = require("review.ui.util")
 
     map("<C-d>", function()
-        ui_util.smooth_scroll(active_timers, "down")
+        scroll_util.smooth_scroll(active_timers, "down")
     end, { nowait = true, desc = "Scroll diff down" })
 
     map("<C-u>", function()
-        ui_util.smooth_scroll(active_timers, "up")
+        scroll_util.smooth_scroll(active_timers, "up")
     end, { nowait = true, desc = "Scroll diff up" })
 
     local function close_review()

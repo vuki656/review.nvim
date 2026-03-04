@@ -28,11 +28,9 @@ local function apply_tree_win_options(winid)
     vim.api.nvim_win_set_option(winid, "cursorline", true)
     vim.api.nvim_win_set_option(winid, "signcolumn", "no")
     vim.api.nvim_win_set_option(winid, "wrap", false)
-    vim.api.nvim_win_set_option(
-        winid,
-        "winhighlight",
-        "Normal:Normal,CursorLine:ReviewSelected,WinBar:ReviewWinBar,WinBarNC:ReviewWinBar,WinSeparator:ReviewWinSeparator"
-    )
+    local winhighlight = "Normal:Normal,CursorLine:ReviewSelected,"
+        .. "WinBar:ReviewWinBar,WinBarNC:ReviewWinBar,WinSeparator:ReviewWinSeparator"
+    vim.api.nvim_win_set_option(winid, "winhighlight", winhighlight)
     vim.api.nvim_win_set_option(winid, "winfixwidth", true)
     vim.wo[winid].fillchars = "horiz:─,horizup:┴,horizdown:┬,vert:│,vertleft:┤,vertright:├,verthoriz:┼"
 end
