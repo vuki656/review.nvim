@@ -235,7 +235,7 @@ local function render(bufnr, commits, selected_index, winid)
 
     for _, date_entry in ipairs(date_entries) do
         vim.api.nvim_buf_set_extmark(bufnr, date_extmark_ns, date_entry.line_index, 0, {
-            virt_text = { { date_entry.date, "ReviewCommitDate" } },
+            virt_text = { { date_entry.date .. " ", "ReviewCommitDate" } },
             virt_text_pos = "right_align",
         })
     end
