@@ -863,6 +863,33 @@ function M.get_working_tree_file(file)
     return table.concat(lines, "\n"), nil
 end
 
+---Get hashes of unpushed commits (commits ahead of upstream)
+---@return table<string, boolean> Set of commit hashes that are unpushed
+function M.get_unpushed_hashes()
+    local git_root = M.get_root()
+    if not git_root then
+        return {}
+    end
+
+    local result = vim.system(
+        { "git", "rev-list", "@{u}..HEAD" },
+        { text = true, cwd = git_root }
+    ):wait()
+
+    if result.code ~= 0 then
+        return {}
+    end
+
+    local hashes = {}
+    for line in result.stdout:gmatch("[^\r\n]+") do
+        if line ~= "" then
+            hashes[line] = true
+        end
+    end
+
+    return hashes
+end
+
 ---Get count of unpushed commits (commits ahead of upstream)
 ---@param callback fun(count: number|nil) nil if no upstream configured
 function M.get_unpushed_count(callback)

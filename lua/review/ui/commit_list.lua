@@ -11,6 +11,7 @@ local M = {}
 ---@field subject string
 ---@field date string|nil
 ---@field author string|nil
+---@field is_unpushed boolean
 
 ---@class CommitListComponent
 ---@field bufnr number
@@ -103,10 +104,13 @@ local function fetch_commits()
             subject = "Working changes",
             date = nil,
             author = nil,
+            is_unpushed = false,
         },
     }
 
     local commits = git.get_recent_commits(COMMIT_COUNT)
+    local unpushed = git.get_unpushed_hashes()
+
     for _, commit in ipairs(commits) do
         table.insert(entries, {
             is_head = false,
@@ -115,6 +119,7 @@ local function fetch_commits()
             subject = commit.subject,
             date = commit.date,
             author = commit.author,
+            is_unpushed = unpushed[commit.hash] or false,
         })
     end
 
@@ -187,6 +192,7 @@ local function render(bufnr, commits, selected_index, _winid)
                 initials = initials ~= "" and { initials_start, initials_end } or nil,
                 subject = { subject_start, #line },
                 is_active = is_active,
+                is_unpushed = entry.is_unpushed,
             })
 
             if entry.date then
@@ -216,7 +222,8 @@ local function render(bufnr, commits, selected_index, _winid)
 
         local node_hl = range.is_active and "ReviewCommitGraphActive" or "ReviewCommitGraph"
         vim.api.nvim_buf_add_highlight(bufnr, -1, node_hl, range.line_index, range.node[1], range.node[2])
-        vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewCommitHash", range.line_index, range.hash[1], range.hash[2])
+        local hash_hl = range.is_unpushed and "ReviewCommitUnpushed" or "ReviewCommitPushed"
+        vim.api.nvim_buf_add_highlight(bufnr, -1, hash_hl, range.line_index, range.hash[1], range.hash[2])
 
         if range.initials then
             vim.api.nvim_buf_add_highlight(

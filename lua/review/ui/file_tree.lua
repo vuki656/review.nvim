@@ -1156,6 +1156,8 @@ local function push_flow(force)
 
         if success then
             vim.notify("Pushed successfully", vim.log.levels.INFO)
+            local commit_list = require("review.ui.commit_list")
+            commit_list.refresh()
         elseif not force and err and is_push_rejected(err) then
             ui_util.confirm("Push rejected (diverged). Force push with --force-with-lease?", function()
                 push_flow(true)

@@ -118,6 +118,8 @@ function M.setup()
         ReviewCommitSeparator = { fg = "#3e4452" },
         ReviewCommitGraph = { fg = "#c678dd" },
         ReviewCommitGraphActive = { fg = "#89ca78", bold = true },
+        ReviewCommitPushed = { fg = "#89ca78" },
+        ReviewCommitUnpushed = { fg = "#e06c75" },
 
         -- Branch list
         ReviewBranchName = { fg = "#abb2bf" },
