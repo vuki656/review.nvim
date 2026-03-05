@@ -59,11 +59,10 @@ M.view_mode = "list"
 local active_timers = {
     select_timer = nil,
     scroll_timer = nil,
-    push_timer = nil,
 }
 
 -- Footer state
-local footer_state = { unpushed_count = nil, spinner_frame = 0 }
+local footer_state = { unpushed_count = nil }
 local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 
 ---@class FileNode
@@ -789,51 +788,7 @@ local function render_to_buffer(bufnr, nodes, winid)
     vim.bo[bufnr].readonly = true
 end
 
----Render the footer (unpushed count or push spinner) below file nodes
----@param bufnr number
-local function render_footer(bufnr)
-    if not vim.api.nvim_buf_is_valid(bufnr) then
-        return
-    end
-    if not M.current or not M.current.nodes then
-        return
-    end
-
-    local node_count = #M.current.nodes
-    local footer_lines = {}
-    local footer_hls = {} -- { line_offset, hl_group, col_start, col_end }
-
-    if state.state.is_pushing then
-        footer_state.spinner_frame = (footer_state.spinner_frame % #SPINNER_FRAMES) + 1
-        local text = "  " .. SPINNER_FRAMES[footer_state.spinner_frame] .. " Pushing..."
-        table.insert(footer_lines, "")
-        table.insert(footer_lines, text)
-        table.insert(footer_hls, { 1, "ReviewFooterText", 0, -1 })
-    end
-
-    vim.bo[bufnr].readonly = false
-    vim.bo[bufnr].modifiable = true
-
-    -- Clear any existing footer lines (everything after node_count)
-    local current_line_count = vim.api.nvim_buf_line_count(bufnr)
-    if current_line_count > node_count then
-        vim.api.nvim_buf_set_lines(bufnr, node_count, current_line_count, false, {})
-    end
-
-    -- Append footer lines
-    if #footer_lines > 0 then
-        vim.api.nvim_buf_set_lines(bufnr, node_count, node_count, false, footer_lines)
-        for _, hl in ipairs(footer_hls) do
-            local line_idx = node_count + hl[1]
-            vim.api.nvim_buf_add_highlight(bufnr, -1, hl[2], line_idx, hl[3], hl[4])
-        end
-    end
-
-    vim.bo[bufnr].modifiable = false
-    vim.bo[bufnr].readonly = true
-end
-
----Fetch unpushed count and re-render footer
+---Fetch unpushed count and update the winbar title
 local function update_footer()
     if not M.current then
         return
@@ -842,7 +797,6 @@ local function update_footer()
     git.get_unpushed_count(function(count)
         footer_state.unpushed_count = count
         if M.current then
-            render_footer(M.current.bufnr)
             update_winbar(M.current.winid, #M.current.files)
         end
     end)
@@ -1121,7 +1075,7 @@ local function commit_flow(callbacks)
     end
 end
 
----Push to remote with spinner animation in footer
+---Push to remote with a small centered spinner popup
 local function push_flow()
     if state.state.is_pushing then
         vim.notify("Already pushing...", vim.log.levels.WARN)
@@ -1134,34 +1088,52 @@ local function push_flow()
     end
 
     state.state.is_pushing = true
-    footer_state.spinner_frame = 0
 
-    -- Start spinner animation timer
-    if active_timers.push_timer then
-        active_timers.push_timer:stop()
-        active_timers.push_timer:close()
+    local label = "Pushing..."
+    local popup_width = #label + 6
+    local popup_buf = vim.api.nvim_create_buf(false, true)
+    vim.bo[popup_buf].bufhidden = "wipe"
+    vim.api.nvim_buf_set_lines(popup_buf, 0, -1, false, {
+        " " .. SPINNER_FRAMES[1] .. " " .. label,
+    })
+
+    local popup_win = vim.api.nvim_open_win(popup_buf, false, {
+        relative = "editor",
+        row = math.floor(vim.o.lines / 2),
+        col = math.floor((vim.o.columns - popup_width) / 2),
+        width = popup_width,
+        height = 1,
+        style = "minimal",
+        border = "rounded",
+    })
+
+    local frame = 0
+    local timer = vim.uv.new_timer()
+    timer:start(0, 80, vim.schedule_wrap(function()
+        if not vim.api.nvim_buf_is_valid(popup_buf) then
+            timer:stop()
+            timer:close()
+            return
+        end
+        frame = (frame % #SPINNER_FRAMES) + 1
+        vim.api.nvim_buf_set_lines(popup_buf, 0, 1, false, {
+            " " .. SPINNER_FRAMES[frame] .. " " .. label,
+        })
+    end))
+
+    local function close_popup()
+        timer:stop()
+        timer:close()
+        if vim.api.nvim_win_is_valid(popup_win) then
+            vim.api.nvim_win_close(popup_win, true)
+        end
+        if vim.api.nvim_buf_is_valid(popup_buf) then
+            vim.api.nvim_buf_delete(popup_buf, { force = true })
+        end
     end
-    active_timers.push_timer = vim.uv.new_timer()
-    active_timers.push_timer:start(
-        0,
-        80,
-        vim.schedule_wrap(function()
-            if not state.state.is_pushing then
-                return
-            end
-            if M.current then
-                render_footer(M.current.bufnr)
-            end
-        end)
-    )
 
     git.push(function(success, err)
-        -- Stop spinner
-        if active_timers.push_timer then
-            active_timers.push_timer:stop()
-            active_timers.push_timer:close()
-            active_timers.push_timer = nil
-        end
+        close_popup()
         state.state.is_pushing = false
 
         if success then
