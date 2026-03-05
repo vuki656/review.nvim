@@ -49,9 +49,11 @@ local function update_border_highlights()
         if component and vim.api.nvim_win_is_valid(component.winid) then
             if component.winid == current_win then
                 vim.wo[component.winid].winhighlight = ACTIVE_SIDEBAR_WINHIGHLIGHT
+                vim.wo[component.winid].cursorline = true
             else
                 local base = INACTIVE_WINHIGHLIGHT .. ",CursorLine:ReviewSelected"
                 vim.wo[component.winid].winhighlight = base
+                vim.wo[component.winid].cursorline = false
             end
         end
     end
