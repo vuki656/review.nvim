@@ -641,8 +641,9 @@ local function update_winbar(winid, file_count, is_refreshing)
     if not vim.api.nvim_win_is_valid(winid) then
         return
     end
-    local suffix = is_refreshing and " %#ReviewWinBarCount#[refreshing...]%*" or ""
-    vim.wo[winid].winbar = "%#ReviewWinBar#  Files%* %#ReviewWinBarCount#(" .. file_count .. ")%*" .. suffix
+    local suffix = is_refreshing and " [refreshing...]" or ""
+    local title = "  Files (" .. file_count .. ")" .. suffix .. " "
+    pcall(vim.api.nvim_win_set_config, winid, { title = title, title_pos = "left" })
 end
 
 ---Render the file tree to buffer

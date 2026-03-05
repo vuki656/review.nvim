@@ -69,6 +69,12 @@ function M.setup()
         ReviewGitDeleted = { fg = "#ef596f" },
         ReviewGitRenamed = { fg = "#c678dd" },
 
+        -- Floating window borders
+        ReviewFloatBorder = { fg = "#e5e5e5" },
+        ReviewFloatBorderActive = { fg = "#89ca78" },
+        ReviewFloatTitle = { fg = "#e5e5e5", bold = true },
+        ReviewFloatTitleActive = { fg = "#89ca78", bold = true },
+
         -- UI elements
         ReviewWinSeparator = { fg = "#5c6370" },
         ReviewBorder = { fg = "#3e4452" },
