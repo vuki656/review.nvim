@@ -24,7 +24,7 @@ stylua lua/
 
 ## Workflow
 
-After every code change, run `luacheck lua/` and `make test`. Fix any failures before considering the task done. When adding new logic to pure modules (non-UI, non-git-shelling), add corresponding tests in `tests/`.
+After every code change, run `luacheck lua/` and `make test`. Fix ALL luacheck warnings (not just errors) before considering the task done — zero warnings is the target. When adding new logic to pure modules (non-UI, non-git-shelling), add corresponding tests in `tests/`.
 
 ## Testing
 
