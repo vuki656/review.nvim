@@ -42,6 +42,9 @@ function M.setup()
         elseif subcommand == "qp" then
             local quick_comments = require("review.quick_comments")
             quick_comments.toggle_panel()
+        elseif subcommand == "log" then
+            local log = require("review.core.log")
+            vim.cmd("tabedit " .. vim.fn.fnameescape(log.get_log_path()))
         else
             vim.notify("Unknown subcommand: " .. subcommand, vim.log.levels.ERROR)
         end
@@ -50,7 +53,7 @@ function M.setup()
         complete = function(_, cmdline, _)
             local args = vim.split(cmdline, "%s+")
             if #args == 2 then
-                return { "close", "export", "send", "commit", "pick", "qc", "qp" }
+                return { "close", "export", "send", "commit", "pick", "qc", "qp", "log" }
             end
             return {}
         end,

@@ -1,5 +1,6 @@
 local async = require("review.core.async")
 local git = require("review.core.git")
+local log = require("review.core.log")
 local state = require("review.state")
 local ui_util = require("review.ui.util")
 
@@ -1065,17 +1066,20 @@ local function commit_flow(callbacks)
 
         close_popup()
 
+        log.info("commit_flow: subject:", subject)
         local progress = create_commit_progress("Committing", "Committing...")
 
         git.commit_streaming(subject, progress.add_line, function(success, err)
             progress.stop()
 
             if success then
+                log.info("commit_flow: success")
                 vim.notify("Committed: " .. subject, vim.log.levels.INFO)
                 if callbacks.on_commit_complete then
                     callbacks.on_commit_complete()
                 end
             else
+                log.error("commit_flow: failed:", err)
                 vim.notify("Commit failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
             end
         end, description)
@@ -1471,7 +1475,9 @@ local function setup_keymaps(bufnr, callbacks)
         end
 
         ui_util.confirm("Amend last commit?", function()
+            log.info("amend_flow: staging all changes")
             if not git.stage_all() then
+                log.error("amend_flow: stage_all failed")
                 vim.notify("Failed to stage changes", vim.log.levels.ERROR)
                 return
             end
@@ -1482,9 +1488,11 @@ local function setup_keymaps(bufnr, callbacks)
                 progress.stop()
 
                 if success then
+                    log.info("amend_flow: success")
                     vim.notify("Amended all changes to last commit", vim.log.levels.INFO)
                     refresh_and_sync()
                 else
+                    log.error("amend_flow: failed:", err)
                     vim.notify("Amend failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
                 end
             end)

@@ -51,6 +51,7 @@ lua/review/
 │   ├── git.lua                 # Git operations (diffs, status, staging)
 │   ├── diff.lua                # Unified diff parsing into structured hunks
 │   ├── async.lua               # Coroutine-based async utilities
+│   ├── log.lua                 # File-based logger (DEBUG/INFO/WARN/ERROR)
 │   ├── json_persistence.lua    # JSON file read/write
 │   ├── persistence.lua         # Session persistence (wraps json_persistence + state)
 │   └── watcher.lua             # File system watcher for auto-refresh
@@ -98,6 +99,15 @@ lua/review/
 - `:Review send [target]` – Send comments to tmux pane
 - `:Review commit <sha>` – Change git comparison base
 - `:Review pick [count]` – Interactive commit picker
+- `:Review log` – Open the log file in a new tab
+
+## Logging
+
+Log file: `vim.fn.stdpath("log") .. "/review.log"` (typically `~/.local/state/nvim/review.log`).
+
+Config: `log_level = "INFO"` (options: DEBUG, INFO, WARN, ERROR). Set via `require("review").setup({ log_level = "DEBUG" })`.
+
+Use `:Review log` to open the log file. Key flows logged: git operations (stage, commit, push), layout lifecycle, commit/amend UI flow.
 
 ## Code Style
 

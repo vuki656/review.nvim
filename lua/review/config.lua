@@ -8,6 +8,7 @@
 ---@field auto_refresh ReviewAutoRefreshConfig
 ---@field persistence ReviewPersistenceConfig
 ---@field templates ReviewTemplate[]
+---@field log_level string
 
 ---@class ReviewKeymaps
 ---@field toggle string
@@ -97,6 +98,7 @@ M.defaults = {
     persistence = {
         enabled = true,
     },
+    log_level = "INFO",
     templates = {
         { key = "e", label = "Extract", text = "Extract this into a separate function/component" },
         { key = "r", label = "Rename", text = "Rename to: " },

@@ -1,6 +1,7 @@
 local commands = require("review.commands")
 local config = require("review.config")
 local export = require("review.export.markdown")
+local log = require("review.core.log")
 local persistence = require("review.core.persistence")
 local quick_comments = require("review.quick_comments")
 local state = require("review.state")
@@ -14,6 +15,10 @@ function M.setup(opts)
     -- Initialize config
     config.setup(opts)
     local cfg = config.get()
+
+    -- Initialize logging
+    log.setup(cfg.log_level)
+    log.info("review.nvim setup complete")
 
     -- Initialize state with config defaults
     state.state.diff_mode = cfg.ui.diff_view_mode

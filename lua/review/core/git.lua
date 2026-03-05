@@ -1,3 +1,5 @@
+local log = require("review.core.log")
+
 local M = {}
 
 ---@class GitDiffResult
@@ -265,11 +267,16 @@ end
 function M.stage_file(file)
     local git_root = M.get_root()
     if not git_root then
+        log.error("stage_file: no git root")
         return false
     end
 
+    log.debug("stage_file:", file)
     local result = vim.system({ "git", "add", "--", file }, { text = true, cwd = git_root }):wait()
 
+    if result.code ~= 0 then
+        log.error("stage_file failed:", file, result.stderr)
+    end
     return result.code == 0
 end
 
@@ -279,11 +286,16 @@ end
 function M.unstage_file(file)
     local git_root = M.get_root()
     if not git_root then
+        log.error("unstage_file: no git root")
         return false
     end
 
+    log.debug("unstage_file:", file)
     local result = vim.system({ "git", "reset", "HEAD", "--", file }, { text = true, cwd = git_root }):wait()
 
+    if result.code ~= 0 then
+        log.error("unstage_file failed:", file, result.stderr)
+    end
     return result.code == 0
 end
 
@@ -752,11 +764,16 @@ end
 function M.stage_all()
     local git_root = M.get_root()
     if not git_root then
+        log.error("stage_all: no git root")
         return false
     end
 
+    log.info("stage_all")
     local result = vim.system({ "git", "add", "-A" }, { text = true, cwd = git_root }):wait()
 
+    if result.code ~= 0 then
+        log.error("stage_all failed:", result.stderr)
+    end
     return result.code == 0
 end
 
@@ -872,15 +889,19 @@ end
 function M.push(callback)
     local git_root = M.get_root()
     if not git_root then
+        log.error("push: no git root")
         callback(false, "Not a git repository")
         return
     end
 
+    log.info("push: starting")
     vim.system({ "git", "push" }, { text = true, cwd = git_root }, function(result)
         vim.schedule(function()
             if result.code == 0 then
+                log.info("push: success")
                 callback(true, nil)
             else
+                log.error("push: failed:", vim.trim(result.stderr))
                 callback(false, vim.trim(result.stderr))
             end
         end)
@@ -925,6 +946,7 @@ end
 function M.commit_streaming(message, on_output, callback, description)
     local git_root = M.get_root()
     if not git_root then
+        log.error("commit_streaming: no git root")
         callback(false, "Not a git repository")
         return
     end
@@ -935,6 +957,8 @@ function M.commit_streaming(message, on_output, callback, description)
         table.insert(cmd, description)
     end
 
+    log.info("commit_streaming:", table.concat(cmd, " "))
+
     local handler = line_buffered_handler(on_output)
 
     vim.system(cmd, {
@@ -944,9 +968,11 @@ function M.commit_streaming(message, on_output, callback, description)
     }, function(result)
         vim.schedule(function()
             if result.code == 0 then
+                log.info("commit_streaming: success")
                 callback(true, nil)
             else
                 local error_output = vim.trim((result.stderr or "") .. (result.stdout or ""))
+                log.error("commit_streaming: failed:", error_output)
                 callback(false, error_output ~= "" and error_output or "Commit failed")
             end
         end)

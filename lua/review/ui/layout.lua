@@ -1,4 +1,5 @@
 local config = require("review.config")
+local log = require("review.core.log")
 
 local M = {}
 
@@ -198,6 +199,7 @@ end
 ---Create the main layout with floating windows in a new tab
 ---@return ReviewLayout
 function M.create()
+    log.info("layout: creating")
     M.prev_tab = vim.api.nvim_get_current_tabpage()
 
     vim.cmd("tabnew")
@@ -259,6 +261,7 @@ function M.reposition()
 
     local sidebar_visible = M.is_file_tree_visible()
     local positions = calculate_positions(sidebar_visible)
+    log.debug("layout: reposition", vim.o.columns .. "x" .. vim.o.lines, "sidebar=" .. tostring(sidebar_visible))
 
     if sidebar_visible then
         local panels = {
@@ -567,6 +570,7 @@ end
 
 ---Unmount the layout
 function M.unmount()
+    log.info("layout: unmounting")
     if M.current then
         if M.is_split_mode() then
             M.exit_split_mode()
