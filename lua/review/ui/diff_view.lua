@@ -1414,7 +1414,6 @@ local function setup_keymaps(bufnr, callbacks, old_bufnr)
         })
     end
     map("q", close_review, { nowait = true, desc = "Close review", group = "General" }, all_bufnrs)
-    map("<Esc>", close_review, { nowait = true, desc = "Close review", group = "General" }, all_bufnrs)
     map("?", show_help, { desc = "Show help", group = "General" }, all_bufnrs)
 end
 
@@ -1883,7 +1882,6 @@ function M.create_commit_preview(layout_component, base, base_end, preview_callb
 
     registered_keymaps = {}
     vim.keymap.set("n", "q", close_review, { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "<Esc>", close_review, { buffer = bufnr, nowait = true })
 
     pcall(vim.api.nvim_buf_set_name, bufnr, "Review: commit preview")
 

@@ -388,7 +388,6 @@ local function setup_keymaps(bufnr)
     end
 
     map("q", close_review, { nowait = true, desc = "Close review" })
-    map("<Esc>", close_review, { nowait = true, desc = "Close review" })
 
     -- Cycle to next left pane (commit_list → branch_list)
     map("<Tab>", function()

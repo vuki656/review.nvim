@@ -1617,7 +1617,6 @@ local function setup_keymaps(bufnr, callbacks)
     end
 
     map("q", close_review, { nowait = true, desc = "Close review", group = "General" })
-    map("<Esc>", close_review, { nowait = true, desc = "Close review", group = "General" })
     map("?", show_help, { desc = "Show help", group = "General" })
 end
 
