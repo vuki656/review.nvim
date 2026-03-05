@@ -886,7 +886,8 @@ end
 
 ---Push to remote asynchronously
 ---@param callback fun(success: boolean, error: string|nil)
-function M.push(callback)
+---@param force? boolean Use --force-with-lease for safer force push
+function M.push(callback, force)
     local git_root = M.get_root()
     if not git_root then
         log.error("push: no git root")
@@ -894,8 +895,13 @@ function M.push(callback)
         return
     end
 
-    log.info("push: starting")
-    vim.system({ "git", "push" }, { text = true, cwd = git_root }, function(result)
+    local cmd = { "git", "push" }
+    if force then
+        table.insert(cmd, "--force-with-lease")
+    end
+
+    log.info("push: starting", force and "(force-with-lease)" or "")
+    vim.system(cmd, { text = true, cwd = git_root }, function(result)
         vim.schedule(function()
             if result.code == 0 then
                 log.info("push: success")

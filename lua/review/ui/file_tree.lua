@@ -1075,21 +1075,10 @@ local function commit_flow(callbacks)
     end
 end
 
----Push to remote with a small centered spinner popup
-local function push_flow()
-    if state.state.is_pushing then
-        vim.notify("Already pushing...", vim.log.levels.WARN)
-        return
-    end
-
-    if state.is_history_mode() then
-        vim.notify("Cannot push in history mode", vim.log.levels.WARN)
-        return
-    end
-
-    state.state.is_pushing = true
-
-    local label = "Pushing..."
+---Create a small centered spinner popup
+---@param label string
+---@return { close: fun() }
+local function create_push_spinner(label)
     local popup_width = #label + 6
     local popup_buf = vim.api.nvim_create_buf(false, true)
     vim.bo[popup_buf].bufhidden = "wipe"
@@ -1121,29 +1110,62 @@ local function push_flow()
         })
     end))
 
-    local function close_popup()
-        timer:stop()
-        timer:close()
-        if vim.api.nvim_win_is_valid(popup_win) then
-            vim.api.nvim_win_close(popup_win, true)
-        end
-        if vim.api.nvim_buf_is_valid(popup_buf) then
-            vim.api.nvim_buf_delete(popup_buf, { force = true })
-        end
+    return {
+        close = function()
+            timer:stop()
+            timer:close()
+            if vim.api.nvim_win_is_valid(popup_win) then
+                vim.api.nvim_win_close(popup_win, true)
+            end
+            if vim.api.nvim_buf_is_valid(popup_buf) then
+                vim.api.nvim_buf_delete(popup_buf, { force = true })
+            end
+        end,
+    }
+end
+
+---Check if push error is a rejection (diverged history)
+---@param err string
+---@return boolean
+local function is_push_rejected(err)
+    return err:find("rejected") ~= nil
+        or err:find("non%-fast%-forward") ~= nil
+        or err:find("fetch first") ~= nil
+end
+
+---Push to remote with a small centered spinner popup
+---@param force? boolean
+local function push_flow(force)
+    if state.state.is_pushing then
+        vim.notify("Already pushing...", vim.log.levels.WARN)
+        return
     end
 
+    if state.is_history_mode() then
+        vim.notify("Cannot push in history mode", vim.log.levels.WARN)
+        return
+    end
+
+    state.state.is_pushing = true
+    local label = force and "Force pushing..." or "Pushing..."
+    local spinner = create_push_spinner(label)
+
     git.push(function(success, err)
-        close_popup()
+        spinner.close()
         state.state.is_pushing = false
 
         if success then
             vim.notify("Pushed successfully", vim.log.levels.INFO)
+        elseif not force and err and is_push_rejected(err) then
+            ui_util.confirm("Push rejected (diverged). Force push with --force-with-lease?", function()
+                push_flow(true)
+            end)
         else
             vim.notify("Push failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
         end
 
         update_footer()
-    end)
+    end, force)
 end
 
 ---Setup keymaps for the file tree
