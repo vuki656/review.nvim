@@ -76,6 +76,8 @@ local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧",
 ---@field in_deleted_section boolean
 ---@field git_status_hl string
 ---@field file_icon_hl string|nil
+---@field checkbox_start number|nil
+---@field checkbox_end number|nil
 ---@field dot_start number
 ---@field dot_end number
 ---@field file_icon_start number
@@ -228,12 +230,16 @@ local function create_file_node(file, in_reviewed_section, in_deleted_section, b
     end
 
     local padding = "  "
+    local checkbox_part = is_history_mode and "" or (reviewed and "󰄵 " or "󰄱 ")
     local dot_part = "● "
     local file_icon_part = file_icon .. " "
     local filename_part = filename
-    local text = padding .. dot_part .. file_icon_part .. filename_part .. path_suffix
+    local text = padding .. checkbox_part .. dot_part .. file_icon_part .. filename_part .. path_suffix
 
     local offset = #padding
+    local checkbox_start = not is_history_mode and offset or nil
+    local checkbox_end = not is_history_mode and (offset + #checkbox_part) or nil
+    local dot_offset = offset + #checkbox_part
     return {
         path = file,
         text = text,
@@ -244,13 +250,14 @@ local function create_file_node(file, in_reviewed_section, in_deleted_section, b
         in_deleted_section = in_deleted_section or false,
         git_status_hl = git_status_hl,
         file_icon_hl = file_icon_hl,
-        -- Byte offsets for highlighting
-        dot_start = offset,
-        dot_end = offset + #dot_part,
-        file_icon_start = offset + #dot_part,
-        file_icon_end = offset + #dot_part + #file_icon_part,
-        filename_start = offset + #dot_part + #file_icon_part,
-        filename_end = offset + #dot_part + #file_icon_part + #filename_part,
+        checkbox_start = checkbox_start,
+        checkbox_end = checkbox_end,
+        dot_start = dot_offset,
+        dot_end = dot_offset + #dot_part,
+        file_icon_start = dot_offset + #dot_part,
+        file_icon_end = dot_offset + #dot_part + #file_icon_part,
+        filename_start = dot_offset + #dot_part + #file_icon_part,
+        filename_end = dot_offset + #dot_part + #file_icon_part + #filename_part,
     }
 end
 
@@ -505,11 +512,15 @@ local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
             local reviewed = not is_history_mode and state.is_reviewed(file)
             local file_icon, file_icon_hl = get_file_icon(file)
 
+            local checkbox_part = is_history_mode and "" or (reviewed and "󰄵 " or "󰄱 ")
             local dot_part = "● "
             local left_pad = " "
-            local text = left_pad .. indent .. dot_part .. file_icon .. " " .. name
+            local text = left_pad .. indent .. checkbox_part .. dot_part .. file_icon .. " " .. name
 
             local offset = #left_pad + #indent
+            local checkbox_start = not is_history_mode and offset or nil
+            local checkbox_end = not is_history_mode and (offset + #checkbox_part) or nil
+            local dot_offset = offset + #checkbox_part
             table.insert(nodes, {
                 path = file,
                 text = text,
@@ -523,11 +534,13 @@ local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
                 git_status_hl = git_status_hl,
                 file_icon_hl = file_icon_hl,
                 indent_ranges = indent_ranges,
-                dot_start = offset,
-                dot_end = offset + #dot_part,
-                file_icon_start = offset + #dot_part,
-                file_icon_end = offset + #dot_part + #file_icon + 1,
-                filename_start = offset + #dot_part + #file_icon + 1,
+                checkbox_start = checkbox_start,
+                checkbox_end = checkbox_end,
+                dot_start = dot_offset,
+                dot_end = dot_offset + #dot_part,
+                file_icon_start = dot_offset + #dot_part,
+                file_icon_end = dot_offset + #dot_part + #file_icon + 1,
+                filename_start = dot_offset + #dot_part + #file_icon + 1,
                 filename_end = #text,
             })
         else
@@ -759,6 +772,19 @@ local function render_to_buffer(bufnr, nodes, winid)
                 for _, range in ipairs(node.indent_ranges) do
                     vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewTreeIndent", i - 1, range.start, range.finish)
                 end
+            end
+
+            -- Staging checkbox
+            if node.checkbox_start then
+                local checkbox_hl = node.reviewed and "ReviewFileReviewed" or "ReviewFilePending"
+                vim.api.nvim_buf_add_highlight(
+                    bufnr,
+                    -1,
+                    checkbox_hl,
+                    i - 1,
+                    node.checkbox_start,
+                    node.checkbox_end
+                )
             end
 
             -- Git status dot - colored by status (green=added, orange=modified, red=deleted)
