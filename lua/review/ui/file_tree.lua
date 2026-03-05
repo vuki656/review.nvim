@@ -643,7 +643,9 @@ local function update_winbar(winid, file_count, is_refreshing)
         return
     end
     local suffix = is_refreshing and " [refreshing...]" or ""
-    local title = "  Files (" .. file_count .. ")" .. suffix .. " "
+    local unpushed = footer_state.unpushed_count
+    local unpushed_suffix = unpushed and unpushed > 0 and (" ↑" .. unpushed) or ""
+    local title = "  Files (" .. file_count .. ")" .. suffix .. unpushed_suffix .. " "
     pcall(vim.api.nvim_win_set_config, winid, { title = title, title_pos = "left" })
 end
 
@@ -807,16 +809,6 @@ local function render_footer(bufnr)
         table.insert(footer_lines, "")
         table.insert(footer_lines, text)
         table.insert(footer_hls, { 1, "ReviewFooterText", 0, -1 })
-    elseif footer_state.unpushed_count and footer_state.unpushed_count > 0 then
-        local count_str = tostring(footer_state.unpushed_count)
-        local text = "  ↑ " .. count_str .. " unpushed"
-        table.insert(footer_lines, "")
-        table.insert(footer_lines, text)
-        local prefix = "  ↑ "
-        local prefix_len = #prefix
-        table.insert(footer_hls, { 1, "ReviewFooterText", 0, prefix_len })
-        table.insert(footer_hls, { 1, "ReviewFooterCount", prefix_len, prefix_len + #count_str })
-        table.insert(footer_hls, { 1, "ReviewFooterText", prefix_len + #count_str, -1 })
     end
 
     vim.bo[bufnr].readonly = false
@@ -851,6 +843,7 @@ local function update_footer()
         footer_state.unpushed_count = count
         if M.current then
             render_footer(M.current.bufnr)
+            update_winbar(M.current.winid, #M.current.files)
         end
     end)
 end
