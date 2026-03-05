@@ -982,7 +982,7 @@ local function commit_flow(callbacks)
     vim.bo[desc_buf].omnifunc = ""
     vim.bo[desc_buf].completefunc = ""
 
-    local commit_winhighlight = "NormalFloat:Normal,FloatBorder:ReviewFloatBorderActive,FloatTitle:ReviewFloatTitleActive"
+    local commit_winhighlight = "NormalFloat:Normal,FloatBorder:ReviewFloatBorder,FloatTitle:ReviewFloatTitle"
 
     local subject_win = vim.api.nvim_open_win(subject_buf, true, {
         relative = "editor",
