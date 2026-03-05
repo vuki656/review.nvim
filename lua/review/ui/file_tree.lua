@@ -1032,6 +1032,7 @@ local function commit_flow(callbacks)
             return
         end
         closed = true
+        vim.cmd("stopinsert")
         for _, winid in ipairs({ subject_win, desc_win }) do
             if vim.api.nvim_win_is_valid(winid) then
                 vim.api.nvim_win_close(winid, true)
