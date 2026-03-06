@@ -16,6 +16,21 @@ local M = {}
 -- Store original tabline setting
 local saved_showtabline = nil
 
+---Update the branch info display in the top-left panel
+---@param branch_name string
+local function update_branch_info(branch_name)
+    if not layout.is_mounted() then
+        return
+    end
+    local branch_info = layout.get_branch_info()
+    if branch_info and vim.api.nvim_buf_is_valid(branch_info.bufnr) then
+        local display = " " .. (branch_name or "unknown")
+        vim.bo[branch_info.bufnr].modifiable = true
+        vim.api.nvim_buf_set_lines(branch_info.bufnr, 0, -1, false, { display })
+        vim.bo[branch_info.bufnr].modifiable = false
+    end
+end
+
 ---Focus the first file in the file tree and show its diff, or show welcome
 ---@param set_cursor? boolean Whether to set cursor on the file tree (default false)
 local function focus_first_file(set_cursor)
@@ -84,6 +99,9 @@ function M.open()
         on_branch_select = function(entry)
             M.select_branch(entry)
         end,
+        on_checkout = function(entry)
+            update_branch_info(entry.name)
+        end,
         on_close = function()
             M.close()
         end,
@@ -146,19 +164,9 @@ function M.open()
     if l.branch_info then
         git.get_current_branch(function(branch_name)
             vim.schedule(function()
-                if not layout.is_mounted() then
-                    return
-                end
-                local branch_info = layout.get_branch_info()
-                if branch_info and vim.api.nvim_buf_is_valid(branch_info.bufnr) then
-                    local display = " " .. (branch_name or "unknown")
-                    vim.bo[branch_info.bufnr].modifiable = true
-                    vim.api.nvim_buf_set_lines(branch_info.bufnr, 0, -1, false, { display })
-                    vim.bo[branch_info.bufnr].modifiable = false
-                end
+                update_branch_info(branch_name)
             end)
         end)
-
     end
 
     -- Focus file tree

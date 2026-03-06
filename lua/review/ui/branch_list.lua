@@ -431,7 +431,10 @@ local function setup_keymaps(bufnr)
                 checkout_line_index = nil
 
                 if success then
-                    M.fetch_and_render(line)
+                    if callbacks.on_checkout then
+                        callbacks.on_checkout(entry)
+                    end
+                    M.fetch_and_render()
                 else
                     vim.notify("Checkout failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
                 end
@@ -453,7 +456,7 @@ end
 
 ---Create the branch list component
 ---@param layout_component ReviewLayoutComponent
----@param cbs table { on_branch_select: function, on_close: function }
+---@param cbs table { on_branch_select: function, on_checkout: function, on_close: function }
 function M.create(layout_component, cbs)
     callbacks = cbs
 
@@ -500,6 +503,13 @@ function M.fetch_and_render(restore_cursor_line)
                     is_main = branch_name == main_branch,
                 })
             end
+
+            table.sort(entries, function(first, second)
+                if first.is_current ~= second.is_current then
+                    return first.is_current
+                end
+                return false
+            end)
 
             M.current.branches = entries
             M.current.selected_index = find_active_index(entries)
