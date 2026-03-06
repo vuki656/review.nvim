@@ -1413,6 +1413,21 @@ local function setup_keymaps(bufnr, callbacks, old_bufnr)
             end,
         })
     end
+    for _, target_bufnr in ipairs(all_bufnrs) do
+        vim.keymap.set("n", "<C-h>", function()
+            local file_tree_component = layout.get_file_tree()
+            if
+                file_tree_component
+                and file_tree_component.winid
+                and vim.api.nvim_win_is_valid(file_tree_component.winid)
+            then
+                vim.api.nvim_set_current_win(file_tree_component.winid)
+            end
+        end, { buffer = target_bufnr, nowait = true })
+        vim.keymap.set("n", "<C-l>", "<Nop>", { buffer = target_bufnr, nowait = true })
+        vim.keymap.set("n", "<C-j>", "<Nop>", { buffer = target_bufnr, nowait = true })
+        vim.keymap.set("n", "<C-k>", "<Nop>", { buffer = target_bufnr, nowait = true })
+    end
     map("q", close_review, { nowait = true, desc = "Close review", group = "General" }, all_bufnrs)
     map("?", show_help, { desc = "Show help", group = "General" }, all_bufnrs)
 end

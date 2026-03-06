@@ -1438,6 +1438,16 @@ local function setup_keymaps(bufnr, callbacks)
     end, { nowait = true, desc = "Next panel", group = "Navigation" })
     vim.keymap.set("n", "<Left>", "<Nop>", { buffer = bufnr, nowait = true })
     vim.keymap.set("n", "<Right>", "<Nop>", { buffer = bufnr, nowait = true })
+    vim.keymap.set("n", "<C-h>", "<Nop>", { buffer = bufnr, nowait = true })
+    vim.keymap.set("n", "<C-l>", function()
+        local current_layout = require("review.ui.layout")
+        local diff_component = current_layout.get_diff_view()
+        if diff_component and diff_component.winid and vim.api.nvim_win_is_valid(diff_component.winid) then
+            vim.api.nvim_set_current_win(diff_component.winid)
+        end
+    end, { buffer = bufnr, nowait = true })
+    vim.keymap.set("n", "<C-j>", "<Nop>", { buffer = bufnr, nowait = true })
+    vim.keymap.set("n", "<C-k>", "<Nop>", { buffer = bufnr, nowait = true })
 
     -- Toggle stage with space
     map("<Space>", toggle_stage, { nowait = true, desc = "Toggle stage", group = "Review" })
