@@ -145,6 +145,7 @@ function M.setup()
         ReviewBranchHead = { fg = "#61afef" },
         ReviewBranchActive = { fg = "#89ca78", bold = true },
         ReviewBranchCurrent = { fg = "#c678dd" },
+        ReviewBranchCurrentRow = { bg = "#2c2033" },
         ReviewBranchSeparator = { fg = "#3e4452" },
         ReviewHeadLabel = { fg = "#e5c07b", bold = true },
     }

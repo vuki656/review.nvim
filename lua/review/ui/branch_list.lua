@@ -148,6 +148,10 @@ local function render(bufnr, branches, selected_index, _winid, sync_counts)
             vim.api.nvim_buf_set_extmark(bufnr, row_hl_ns, range.line_index, 0, {
                 line_hl_group = "ReviewActiveRow",
             })
+        elseif range.is_current then
+            vim.api.nvim_buf_set_extmark(bufnr, row_hl_ns, range.line_index, 0, {
+                line_hl_group = "ReviewBranchCurrentRow",
+            })
         end
 
         local node_hl = range.is_active and "ReviewBranchActive" or "ReviewBranchCurrent"
