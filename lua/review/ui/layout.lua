@@ -8,6 +8,7 @@ local M = {}
 ---@field winid number
 
 ---@class ReviewLayout
+---@field branch_info ReviewLayoutComponent
 ---@field file_tree ReviewLayoutComponent
 ---@field commit_list ReviewLayoutComponent
 ---@field branch_list ReviewLayoutComponent
@@ -28,7 +29,9 @@ M.base_winid = nil
 local resize_autocmd_id = nil
 
 local SIDEBAR_PANEL_COUNT = 3
-local SIDEBAR_BORDER_ROWS = SIDEBAR_PANEL_COUNT * 2
+local BRANCH_INFO_HEIGHT = 1
+local BRANCH_INFO_OUTER_HEIGHT = BRANCH_INFO_HEIGHT + 2
+local SIDEBAR_BORDER_ROWS = (SIDEBAR_PANEL_COUNT + 1) * 2
 
 ---@type number|nil
 local focus_autocmd_id = nil
@@ -57,6 +60,11 @@ local function update_border_highlights()
                 vim.wo[component.winid].cursorline = false
             end
         end
+    end
+    local branch_info = M.current.branch_info
+    if branch_info and vim.api.nvim_win_is_valid(branch_info.winid) then
+        vim.wo[branch_info.winid].winhighlight = INACTIVE_WINHIGHLIGHT
+        vim.wo[branch_info.winid].cursorline = false
     end
     local diff_panels = { M.current.diff_view, M.current.diff_view_old, M.current.diff_view_new }
     for _, component in ipairs(diff_panels) do
@@ -88,7 +96,7 @@ local function calculate_positions(sidebar_visible)
         local diff_content_width = columns - sidebar_outer_width - 2
         local diff_col = sidebar_outer_width
 
-        local available_content = total_height - SIDEBAR_BORDER_ROWS
+        local available_content = total_height - SIDEBAR_BORDER_ROWS - BRANCH_INFO_HEIGHT
         local panel_height = math.floor(available_content / SIDEBAR_PANEL_COUNT)
         local remainder = available_content - (panel_height * SIDEBAR_PANEL_COUNT)
 
@@ -96,25 +104,36 @@ local function calculate_positions(sidebar_visible)
         local commit_height = panel_height
         local branch_height = panel_height
 
+        local branch_info_row = 0
+        local file_tree_row = BRANCH_INFO_OUTER_HEIGHT
         local file_tree_outer = file_tree_height + 2
+        local commit_row = file_tree_row + file_tree_outer
         local commit_outer = commit_height + 2
+        local branch_row = commit_row + commit_outer
+
+        positions.branch_info = {
+            row = branch_info_row,
+            col = 0,
+            width = sidebar_content_width,
+            height = BRANCH_INFO_HEIGHT,
+        }
 
         positions.file_tree = {
-            row = 0,
+            row = file_tree_row,
             col = 0,
             width = sidebar_content_width,
             height = file_tree_height,
         }
 
         positions.commit_list = {
-            row = file_tree_outer,
+            row = commit_row,
             col = 0,
             width = sidebar_content_width,
             height = commit_height,
         }
 
         positions.branch_list = {
-            row = file_tree_outer + commit_outer,
+            row = branch_row,
             col = 0,
             width = sidebar_content_width,
             height = branch_height,
@@ -210,12 +229,17 @@ function M.create()
     vim.api.nvim_win_set_buf(base_win, base_buf)
     M.base_winid = base_win
 
+    local branch_info_buf = create_panel_buffer("review-branch-info")
     local tree_buf = create_panel_buffer("review-tree")
     local commit_list_buf = create_panel_buffer("review-commits")
     local branch_list_buf = create_panel_buffer("review-branches")
     local diff_buf = create_panel_buffer("review-diff")
 
     local positions = calculate_positions(true)
+
+    local branch_info_win = open_float(branch_info_buf, positions.branch_info, " Branch")
+    apply_tree_win_options(branch_info_win)
+    vim.wo[branch_info_win].cursorline = false
 
     local tree_win = open_float(tree_buf, positions.file_tree, " Files")
     apply_tree_win_options(tree_win)
@@ -230,6 +254,7 @@ function M.create()
     apply_diff_win_options(diff_win)
 
     M.current = {
+        branch_info = { bufnr = branch_info_buf, winid = branch_info_win },
         file_tree = { bufnr = tree_buf, winid = tree_win },
         commit_list = { bufnr = commit_list_buf, winid = commit_list_win },
         branch_list = { bufnr = branch_list_buf, winid = branch_list_win },
@@ -265,6 +290,7 @@ function M.reposition()
 
     if sidebar_visible then
         local panels = {
+            { component = M.current.branch_info, pos = positions.branch_info, title = " Branch" },
             { component = M.current.file_tree, pos = positions.file_tree, title = " Files" },
             { component = M.current.commit_list, pos = positions.commit_list, title = " Commits" },
             { component = M.current.branch_list, pos = positions.branch_list, title = " Branches" },
@@ -332,7 +358,15 @@ function M.is_layout_window(winid)
     if not M.current then
         return false
     end
-    local components = { "file_tree", "commit_list", "branch_list", "diff_view", "diff_view_old", "diff_view_new" }
+    local components = {
+        "branch_info",
+        "file_tree",
+        "commit_list",
+        "branch_list",
+        "diff_view",
+        "diff_view_old",
+        "diff_view_new",
+    }
     for _, name in ipairs(components) do
         local component = M.current[name]
         if component and component.winid == winid then
@@ -362,7 +396,7 @@ function M.hide_file_tree()
         vim.api.nvim_set_current_win(diff_win)
     end
 
-    local sidebar_panels = { "branch_list", "commit_list", "file_tree" }
+    local sidebar_panels = { "branch_list", "commit_list", "file_tree", "branch_info" }
     for _, name in ipairs(sidebar_panels) do
         local component = M.current[name]
         if component and vim.api.nvim_win_is_valid(component.winid) then
@@ -395,6 +429,14 @@ function M.show_file_tree()
     end
 
     local positions = calculate_positions(true)
+
+    local branch_info = M.current.branch_info
+    if branch_info then
+        local branch_info_win = open_float(branch_info.bufnr, positions.branch_info, " Branch")
+        apply_tree_win_options(branch_info_win)
+        vim.wo[branch_info_win].cursorline = false
+        M.current.branch_info.winid = branch_info_win
+    end
 
     local tree_win = open_float(tree.bufnr, positions.file_tree, " Files")
     apply_tree_win_options(tree_win)
@@ -586,6 +628,7 @@ function M.unmount()
             focus_autocmd_id = nil
         end
 
+        local branch_info_buf = M.current.branch_info and M.current.branch_info.bufnr
         local tree_buf = M.current.file_tree.bufnr
         local commit_list_buf = M.current.commit_list and M.current.commit_list.bufnr
         local branch_list_buf = M.current.branch_list and M.current.branch_list.bufnr
@@ -593,7 +636,7 @@ function M.unmount()
         local prev_tab = M.prev_tab
 
         local float_wins = {}
-        local components = { "file_tree", "commit_list", "branch_list", "diff_view" }
+        local components = { "branch_info", "file_tree", "commit_list", "branch_list", "diff_view" }
         for _, name in ipairs(components) do
             local component = M.current[name]
             if component and vim.api.nvim_win_is_valid(component.winid) then
@@ -619,6 +662,11 @@ function M.unmount()
         M.base_winid = nil
 
         vim.schedule(function()
+            pcall(function()
+                if branch_info_buf and vim.api.nvim_buf_is_valid(branch_info_buf) then
+                    vim.api.nvim_buf_delete(branch_info_buf, { force = true })
+                end
+            end)
             pcall(function()
                 if vim.api.nvim_buf_is_valid(tree_buf) then
                     vim.api.nvim_buf_delete(tree_buf, { force = true })
@@ -647,6 +695,12 @@ end
 ---@return boolean
 function M.is_mounted()
     return M.current ~= nil
+end
+
+---Get the branch info component
+---@return ReviewLayoutComponent|nil
+function M.get_branch_info()
+    return M.current and M.current.branch_info
 end
 
 ---Get the file tree component

@@ -121,6 +121,24 @@ function M.open()
         end,
     })
 
+    -- Populate branch info
+    if l.branch_info then
+        git.get_current_branch(function(branch_name)
+            vim.schedule(function()
+                if not layout.is_mounted() then
+                    return
+                end
+                local branch_info = layout.get_branch_info()
+                if branch_info and vim.api.nvim_buf_is_valid(branch_info.bufnr) then
+                    local display = " " .. (branch_name or "unknown")
+                    vim.bo[branch_info.bufnr].modifiable = true
+                    vim.api.nvim_buf_set_lines(branch_info.bufnr, 0, -1, false, { display })
+                    vim.bo[branch_info.bufnr].modifiable = false
+                end
+            end)
+        end)
+    end
+
     -- Focus file tree
     if l.file_tree and l.file_tree.winid then
         vim.api.nvim_set_current_win(l.file_tree.winid)
