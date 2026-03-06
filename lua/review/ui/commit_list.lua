@@ -13,6 +13,7 @@ local M = {}
 ---@field date string|nil
 ---@field author string|nil
 ---@field is_unpushed boolean
+---@field parent_count number
 
 ---@class CommitListComponent
 ---@field bufnr number
@@ -32,6 +33,22 @@ local active_timers = {
 }
 
 local COMMIT_COUNT = 30
+
+local ICON_REGULAR = "\u{f417} "
+local ICON_MERGE = "\u{f419} "
+local ICON_ROOT = "\u{f444} "
+
+---Map parent count to a Nerd Font commit type icon and highlight group
+---@param parent_count number
+---@return string icon, string highlight_group
+local function commit_type_icon(parent_count)
+    if parent_count == 0 then
+        return ICON_ROOT, "ReviewCommitIconRoot"
+    elseif parent_count >= 2 then
+        return ICON_MERGE, "ReviewCommitIconMerge"
+    end
+    return ICON_REGULAR, "ReviewCommitIconRegular"
+end
 
 local date_extmark_ns = vim.api.nvim_create_namespace("review_commit_dates")
 local row_hl_ns = vim.api.nvim_create_namespace("review_commit_row_hl")
@@ -66,6 +83,7 @@ local function fetch_commits()
             date = nil,
             author = nil,
             is_unpushed = false,
+            parent_count = 0,
         },
     }
 
@@ -81,6 +99,7 @@ local function fetch_commits()
             date = commit.date,
             author = commit.author,
             is_unpushed = unpushed[commit.hash] or false,
+            parent_count = commit.parent_count or 1,
         })
     end
 
@@ -128,9 +147,17 @@ local function render(bufnr, commits, selected_index, _winid)
             local is_active = index == selected_index
             local marker = is_active and " ▎" or "  "
             local node = is_active and "● " or "○ "
+            local type_icon, type_icon_highlight = commit_type_icon(entry.parent_count)
             local initials = format.author_initials(entry.author)
             local initials_segment = initials ~= "" and (initials .. " ") or ""
-            local line = marker .. node .. entry.short_hash .. " " .. initials_segment .. " " .. entry.subject
+            local line = marker
+                .. node
+                .. type_icon
+                .. entry.short_hash
+                .. " "
+                .. initials_segment
+                .. " "
+                .. entry.subject
             table.insert(lines, line)
 
             local line_index = render_index
@@ -139,7 +166,9 @@ local function render(bufnr, commits, selected_index, _winid)
             local marker_end = offset + #marker
             local node_start = marker_end
             local node_end = node_start + #node
-            local hash_start = node_end
+            local icon_start = node_end
+            local icon_end = icon_start + #type_icon
+            local hash_start = icon_end
             local hash_end = hash_start + #entry.short_hash
             local initials_start = hash_end + 1
             local initials_end = initials_start + #initials
@@ -149,6 +178,8 @@ local function render(bufnr, commits, selected_index, _winid)
                 line_index = line_index,
                 marker = { offset, marker_end },
                 node = { node_start, node_end },
+                type_icon = { icon_start, icon_end },
+                type_icon_highlight = type_icon_highlight,
                 hash = { hash_start, hash_end },
                 initials = initials ~= "" and { initials_start, initials_end } or nil,
                 author = entry.author,
@@ -184,6 +215,17 @@ local function render(bufnr, commits, selected_index, _winid)
 
         local node_hl = range.is_active and "ReviewCommitGraphActive" or "ReviewCommitGraph"
         vim.api.nvim_buf_add_highlight(bufnr, -1, node_hl, range.line_index, range.node[1], range.node[2])
+
+        local icon_hl = range.is_active and "ReviewCommitGraphActive" or range.type_icon_highlight
+        vim.api.nvim_buf_add_highlight(
+            bufnr,
+            -1,
+            icon_hl,
+            range.line_index,
+            range.type_icon[1],
+            range.type_icon[2]
+        )
+
         local hash_hl = range.is_unpushed and "ReviewCommitUnpushed" or "ReviewCommitPushed"
         vim.api.nvim_buf_add_highlight(bufnr, -1, hash_hl, range.line_index, range.hash[1], range.hash[2])
 

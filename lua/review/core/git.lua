@@ -613,12 +613,12 @@ end
 
 ---Get recent commits
 ---@param count number Number of commits to fetch (default 20)
----@return table[] commits with {hash, short_hash, subject, author, date}
+---@return table[] commits with {hash, short_hash, subject, author, date, parent_count}
 function M.get_recent_commits(count)
     count = count or 20
     return with_git_root({}, function(git_root)
         local result = vim.system(
-            { "git", "log", "--oneline", "--pretty=format:%H|%h|%s|%an|%ar", "-n", tostring(count) },
+            { "git", "log", "--oneline", "--pretty=format:%H|%h|%s|%an|%ar|%P", "-n", tostring(count) },
             { text = true, cwd = git_root }
         ):wait()
 
@@ -628,14 +628,22 @@ function M.get_recent_commits(count)
 
         local commits = {}
         for line in parse_lines(result.stdout) do
-            local hash, short_hash, subject, author, date = line:match("([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)")
+            local hash, short_hash, subject, author, date, parents =
+                line:match("([^|]+)|([^|]+)|([^|]+)|([^|]+)|([^|]+)|?(.*)")
             if hash then
+                local parent_count = 0
+                if parents and parents ~= "" then
+                    for _ in parents:gmatch("%S+") do
+                        parent_count = parent_count + 1
+                    end
+                end
                 table.insert(commits, {
                     hash = hash,
                     short_hash = short_hash,
                     subject = subject,
                     author = author,
                     date = date,
+                    parent_count = parent_count,
                 })
             end
         end

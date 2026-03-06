@@ -126,6 +126,9 @@ function M.setup()
         ReviewCommitGraphActive = { fg = "#89ca78", bold = true },
         ReviewCommitPushed = { fg = "#89ca78" },
         ReviewCommitUnpushed = { fg = "#e06c75" },
+        ReviewCommitIconRegular = { fg = "#abb2bf" },
+        ReviewCommitIconMerge = { fg = "#c678dd" },
+        ReviewCommitIconRoot = { fg = "#e5c07b" },
 
         -- Branch list
         ReviewBranchName = { fg = "#abb2bf" },
