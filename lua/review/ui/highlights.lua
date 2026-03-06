@@ -102,7 +102,7 @@ function M.setup()
         ReviewQCPanelLineNr = { fg = "#5c6370" },
 
         -- Comment list panel
-        ReviewCommentListFile = { fg = "#abb2bf", bold = true },
+        ReviewCommentListFile = { fg = "#abb2bf" },
         ReviewCommentListEmpty = { fg = "#5c6370", italic = true },
 
         -- Template picker

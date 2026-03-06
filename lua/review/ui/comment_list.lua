@@ -1,6 +1,22 @@
 local comment_types_module = require("review.comment_types")
+local paths = require("review.core.paths")
 local state = require("review.state")
 local ui_util = require("review.ui.util")
+
+local has_devicons, devicons = pcall(require, "nvim-web-devicons")
+
+---@param filename string
+---@return string icon, string|nil highlight
+local function get_file_icon(filename)
+    if paths.is_test_file(filename) then
+        return "\u{f0668}", "ReviewFileModified"
+    end
+    if has_devicons then
+        local icon, highlight = devicons.get_icon(filename, vim.fn.fnamemodify(filename, ":e"), { default = true })
+        return (icon or "") .. " ", highlight
+    end
+    return "", nil
+end
 
 local comment_types = comment_types_module.TYPES
 
@@ -303,13 +319,21 @@ local function render(bufnr, nodes)
     for index, node in ipairs(nodes) do
         if view_mode == "flat" then
             if node.type == "file_header" then
-                local display_path = node.path
-                local line = "  " .. display_path
+                local file_icon, file_icon_highlight = get_file_icon(node.path)
+                local line = "  " .. file_icon .. node.path
                 table.insert(lines, line)
+                if file_icon_highlight and #file_icon > 0 then
+                    table.insert(highlights, {
+                        line = index - 1,
+                        group = file_icon_highlight,
+                        col_start = 2,
+                        col_end = 2 + #file_icon,
+                    })
+                end
                 table.insert(highlights, {
                     line = index - 1,
                     group = "ReviewCommentListFile",
-                    col_start = 0,
+                    col_start = 2 + #file_icon,
                     col_end = -1,
                 })
                 line_map[index] = node
@@ -360,12 +384,22 @@ local function render(bufnr, nodes)
                 line_map[index] = node
             elseif node.type == "file_header" then
                 local filename = vim.fn.fnamemodify(node.path, ":t")
-                local line = "  " .. prefix .. filename
+                local file_icon, file_icon_highlight = get_file_icon(node.path)
+                local line = "  " .. prefix .. file_icon .. filename
                 table.insert(lines, line)
+                local content_start = 2 + #prefix
+                if file_icon_highlight and #file_icon > 0 then
+                    table.insert(highlights, {
+                        line = index - 1,
+                        group = file_icon_highlight,
+                        col_start = content_start,
+                        col_end = content_start + #file_icon,
+                    })
+                end
                 table.insert(highlights, {
                     line = index - 1,
                     group = "ReviewCommentListFile",
-                    col_start = 0,
+                    col_start = content_start + #file_icon,
                     col_end = -1,
                 })
                 if #prefix > 0 then
@@ -519,11 +553,13 @@ local function setup_keymaps(bufnr)
             return
         end
 
-        if callbacks.on_comment_delete then
-            callbacks.on_comment_delete(node.comment)
-        end
+        ui_util.confirm("Delete comment?", function()
+            if callbacks.on_comment_delete then
+                callbacks.on_comment_delete(node.comment)
+            end
 
-        M.refresh()
+            M.refresh()
+        end)
     end, { nowait = true, desc = "Delete comment" })
 
     map("t", function()
