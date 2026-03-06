@@ -1198,6 +1198,7 @@ local function add_comment()
         if text ~= "" then
             state.add_comment(file, line_num, get_current_type(), text, original_line)
             render_comments(bufnr, file)
+            require("review.ui.comment_list").refresh()
         end
     end
 
@@ -1304,6 +1305,7 @@ local function delete_comment()
     if comment then
         state.remove_comment(M.current.file, comment.id)
         render_comments(M.current.bufnr, M.current.file)
+        require("review.ui.comment_list").refresh()
         vim.notify("Comment deleted", vim.log.levels.INFO)
     else
         vim.notify("No comment at this line", vim.log.levels.WARN)

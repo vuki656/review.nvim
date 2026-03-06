@@ -101,6 +101,10 @@ function M.setup()
         ReviewQCPanelContext = { fg = "#5c6370", italic = true },
         ReviewQCPanelLineNr = { fg = "#5c6370" },
 
+        -- Comment list panel
+        ReviewCommentListFile = { fg = "#abb2bf", bold = true },
+        ReviewCommentListEmpty = { fg = "#5c6370", italic = true },
+
         -- Template picker
         ReviewTemplateKey = { fg = "#e5c07b", bold = true },
         ReviewTemplateLabel = { fg = "#abb2bf" },

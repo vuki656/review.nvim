@@ -1,4 +1,5 @@
 local branch_list = require("review.ui.branch_list")
+local comment_list = require("review.ui.comment_list")
 local commit_list = require("review.ui.commit_list")
 local config = require("review.config")
 local diff_view = require("review.ui.diff_view")
@@ -115,6 +116,26 @@ function M.open()
                     focus_first_file(true)
                 end)
             end)
+        end,
+        on_close = function()
+            M.close()
+        end,
+    })
+
+    -- Initialize comment list
+    comment_list.create(l.comment_list, {
+        on_comment_select = function(comment)
+            M.show_diff(comment.file)
+            vim.schedule(function()
+                local diff_split = layout.get_diff_view()
+                if diff_split and vim.api.nvim_win_is_valid(diff_split.winid) then
+                    pcall(vim.api.nvim_win_set_cursor, diff_split.winid, { comment.line, 0 })
+                end
+            end)
+        end,
+        on_comment_delete = function(comment)
+            state.remove_comment(comment.file, comment.id)
+            diff_view.render()
         end,
         on_close = function()
             M.close()
@@ -273,6 +294,7 @@ local function do_close(action)
     file_tree.destroy()
     commit_list.destroy()
     branch_list.destroy()
+    comment_list.destroy()
     diff_view.destroy()
 
     -- Unmount layout

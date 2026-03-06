@@ -12,6 +12,7 @@ local M = {}
 ---@field file_tree ReviewLayoutComponent
 ---@field commit_list ReviewLayoutComponent
 ---@field branch_list ReviewLayoutComponent
+---@field comment_list ReviewLayoutComponent
 ---@field diff_view ReviewLayoutComponent
 ---@field diff_view_old ReviewLayoutComponent|nil
 ---@field diff_view_new ReviewLayoutComponent|nil
@@ -33,12 +34,17 @@ local resize_autocmd_id = nil
 ---@field title string Display title for float border
 ---@field filetype string Buffer filetype
 ---@field is_interactive boolean Whether this panel gets cursorline/active highlight
+---@field height_weight number|nil Weight for height calculation (default 1.0)
 
 local SIDEBAR_PANELS = {
     { name = "branch_info", title = "Branch", filetype = "review-branch-info", is_interactive = false },
     { name = "file_tree", title = "Files", filetype = "review-tree", is_interactive = true },
     { name = "branch_list", title = "Branches", filetype = "review-branches", is_interactive = true },
     { name = "commit_list", title = "Commits", filetype = "review-commits", is_interactive = true },
+    {
+        name = "comment_list", title = "Comments", filetype = "review-comments",
+        is_interactive = true, height_weight = 0.5,
+    },
 }
 
 local INTERACTIVE_SIDEBAR_PANELS = {}
@@ -117,47 +123,51 @@ local function calculate_positions(sidebar_visible)
         local diff_col = sidebar_outer_width
 
         local available_content = total_height - SIDEBAR_BORDER_ROWS - BRANCH_INFO_HEIGHT
-        local panel_height = math.floor(available_content / SIDEBAR_PANEL_COUNT)
-        local remainder = available_content - (panel_height * SIDEBAR_PANEL_COUNT)
 
-        local file_tree_height = panel_height + remainder
-        local commit_height = panel_height
-        local branch_height = panel_height
+        local total_weight = 0
+        for _, panel in ipairs(INTERACTIVE_SIDEBAR_PANELS) do
+            total_weight = total_weight + (panel.height_weight or 1.0)
+        end
 
-        local branch_info_row = 0
-        local file_tree_row = BRANCH_INFO_OUTER_HEIGHT
-        local file_tree_outer = file_tree_height + 2
-        local branch_row = file_tree_row + file_tree_outer
-        local branch_outer = branch_height + 2
-        local commit_row = branch_row + branch_outer
+        local panel_heights = {}
+        local allocated = 0
+        for panel_index, panel in ipairs(INTERACTIVE_SIDEBAR_PANELS) do
+            local weight = panel.height_weight or 1.0
+            local height
+            if panel_index == 1 then
+                local base = math.floor(available_content * weight / total_weight)
+                height = base
+            else
+                height = math.floor(available_content * weight / total_weight)
+            end
+            panel_heights[panel.name] = height
+            allocated = allocated + height
+        end
+
+        local remainder = available_content - allocated
+        if remainder > 0 then
+            panel_heights[INTERACTIVE_SIDEBAR_PANELS[1].name] = panel_heights[INTERACTIVE_SIDEBAR_PANELS[1].name]
+                + remainder
+        end
 
         positions.branch_info = {
-            row = branch_info_row,
+            row = 0,
             col = 0,
             width = sidebar_content_width,
             height = BRANCH_INFO_HEIGHT,
         }
 
-        positions.file_tree = {
-            row = file_tree_row,
-            col = 0,
-            width = sidebar_content_width,
-            height = file_tree_height,
-        }
-
-        positions.branch_list = {
-            row = branch_row,
-            col = 0,
-            width = sidebar_content_width,
-            height = branch_height,
-        }
-
-        positions.commit_list = {
-            row = commit_row,
-            col = 0,
-            width = sidebar_content_width,
-            height = commit_height,
-        }
+        local current_row = BRANCH_INFO_OUTER_HEIGHT
+        for _, panel in ipairs(INTERACTIVE_SIDEBAR_PANELS) do
+            local height = panel_heights[panel.name]
+            positions[panel.name] = {
+                row = current_row,
+                col = 0,
+                width = sidebar_content_width,
+                height = height,
+            }
+            current_row = current_row + height + 2
+        end
 
         positions.diff_view = {
             row = 0,
@@ -694,6 +704,11 @@ end
 ---@return ReviewLayoutComponent|nil
 function M.get_branch_list()
     return M.get_component("branch_list")
+end
+
+---@return ReviewLayoutComponent|nil
+function M.get_comment_list()
+    return M.get_component("comment_list")
 end
 
 ---@return ReviewLayoutComponent|nil
