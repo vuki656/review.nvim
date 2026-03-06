@@ -129,6 +129,7 @@ function M.setup()
 
         -- Branch list
         ReviewBranchName = { fg = "#abb2bf" },
+        ReviewBranchMain = { fg = "#89ca78" },
         ReviewBranchHead = { fg = "#61afef" },
         ReviewBranchActive = { fg = "#89ca78", bold = true },
         ReviewBranchCurrent = { fg = "#c678dd" },

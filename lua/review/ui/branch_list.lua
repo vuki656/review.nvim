@@ -86,6 +86,7 @@ local function render(bufnr, branches, selected_index, _winid)
             head_label = entry.is_current and { head_label_start, head_label_end } or nil,
             is_active = is_active,
             is_current = entry.is_current,
+            is_main = entry.is_main,
         })
     end
 
@@ -115,6 +116,8 @@ local function render(bufnr, branches, selected_index, _winid)
             name_highlight = "ReviewBranchActive"
         elseif range.is_current then
             name_highlight = "ReviewBranchCurrent"
+        elseif range.is_main then
+            name_highlight = "ReviewBranchMain"
         else
             name_highlight = "ReviewBranchName"
         end
