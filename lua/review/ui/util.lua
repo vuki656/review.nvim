@@ -43,6 +43,18 @@ function M.smooth_scroll(active_timers, direction)
     )
 end
 
+---Stop and close all timers in a table, setting entries to nil
+---@param timers table<string, userdata|nil>
+function M.destroy_timers(timers)
+    for name, timer in pairs(timers) do
+        if timer then
+            timer:stop()
+            timer:close()
+            timers[name] = nil
+        end
+    end
+end
+
 ---Temporarily make a buffer modifiable, run fn, then lock it again
 ---@param bufnr number
 ---@param fn function

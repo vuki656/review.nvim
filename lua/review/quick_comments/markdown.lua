@@ -1,19 +1,9 @@
 local comment_types_module = require("review.comment_types")
+local paths = require("review.core.paths")
 
 local comment_types = comment_types_module.TYPES
 
 local M = {}
-
----Get relative path from cwd
----@param path string
----@return string
-local function get_relative_path(path)
-    local cwd = vim.fn.getcwd()
-    if path:sub(1, #cwd) == cwd then
-        return path:sub(#cwd + 2)
-    end
-    return path
-end
 
 ---Build markdown content from quick comments
 ---@param comments QuickComment[]
@@ -26,7 +16,7 @@ function M.build(comments)
         if comment.file ~= current_file then
             current_file = comment.file
             table.insert(lines, "")
-            table.insert(lines, "## " .. get_relative_path(comment.file))
+            table.insert(lines, "## " .. paths.get_relative_path(comment.file))
         end
 
         local type_info = comment_types[comment.type]

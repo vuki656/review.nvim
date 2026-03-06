@@ -1,3 +1,4 @@
+local paths = require("review.core.paths")
 local state = require("review.state")
 
 local M = {}
@@ -7,23 +8,6 @@ local type_labels = {
     fix = "FIX",
     question = "QUESTION",
 }
-
----Get file extension for fenced code block language
----@param file string
----@return string
-local function get_language(file)
-    local ext = vim.fn.fnamemodify(file, ":e")
-    local lang_map = {
-        ts = "typescript",
-        js = "javascript",
-        py = "python",
-        rb = "ruby",
-        rs = "rust",
-        yml = "yaml",
-        md = "markdown",
-    }
-    return lang_map[ext] or ext
-end
 
 ---Extract context lines from render_lines around a comment
 ---@param render_lines table[]|nil
@@ -129,7 +113,7 @@ function M.generate()
             table.insert(lines, "")
 
             if not language_cache[file] then
-                language_cache[file] = get_language(file)
+                language_cache[file] = paths.get_code_fence_language(file)
             end
             local language = language_cache[file]
 

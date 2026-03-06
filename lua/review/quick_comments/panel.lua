@@ -1,6 +1,7 @@
 local comment_types_module = require("review.comment_types")
 local config = require("review.config")
 local markdown = require("review.quick_comments.markdown")
+local paths = require("review.core.paths")
 local persistence = require("review.quick_comments.persistence")
 local qc_state = require("review.quick_comments.state")
 local signs = require("review.quick_comments.signs")
@@ -24,17 +25,6 @@ local panel = {
 local ns_panel = vim.api.nvim_create_namespace("review_qc_panel")
 
 local comment_types = comment_types_module.TYPES
-
----Get relative path from cwd
----@param path string
----@return string
-local function get_relative_path(path)
-    local cwd = vim.fn.getcwd()
-    if path:sub(1, #cwd) == cwd then
-        return path:sub(#cwd + 2)
-    end
-    return path
-end
 
 ---Render the panel content
 function M.render()
@@ -75,7 +65,7 @@ function M.render()
 
         for _, file in ipairs(files) do
             local comments = comments_by_file[file]
-            local rel_path = get_relative_path(file)
+            local rel_path = paths.get_relative_path(file)
 
             -- File header
             table.insert(lines, "")

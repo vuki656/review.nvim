@@ -1,6 +1,7 @@
 local async = require("review.core.async")
 local git = require("review.core.git")
 local log = require("review.core.log")
+local paths = require("review.core.paths")
 local state = require("review.state")
 local ui_util = require("review.ui.util")
 
@@ -15,25 +16,11 @@ local collapsed_dirs = {}
 -- Optional devicons support
 local has_devicons, devicons = pcall(require, "nvim-web-devicons")
 
----Check if a filename is a test or spec file
----@param filename string
----@return boolean
-local function is_test_file(filename)
-    local basename = vim.fn.fnamemodify(filename, ":t")
-    return basename:match("^test[_.]")
-        or basename:match("[_.]test%.")
-        or basename:match("[_.]spec%.")
-        or basename:match("^spec[_.]")
-        or basename:match("_test%.")
-        or basename:match("_spec%.")
-        ~= nil
-end
-
 ---Get file icon from devicons or fallback
 ---@param filename string
 ---@return string icon, string|nil highlight
 local function get_file_icon(filename)
-    if is_test_file(filename) then
+    if paths.is_test_file(filename) then
         return "󰂓", "ReviewFileModified"
     end
     if has_devicons then
@@ -1413,41 +1400,19 @@ local function setup_keymaps(bufnr, callbacks)
         end
     end, { nowait = true, desc = "Focus diff view", group = "Navigation" })
 
-    local scroll_util = require("review.ui.util")
-
-    map("J", function()
-        scroll_util.smooth_scroll(active_timers, "down")
-    end, { nowait = true, desc = "Scroll diff down", group = "Navigation" })
-
-    map("K", function()
-        scroll_util.smooth_scroll(active_timers, "up")
-    end, { nowait = true, desc = "Scroll diff up", group = "Navigation" })
-
-    -- Panel navigation (file_tree is topmost, so h is nop)
-    vim.keymap.set("n", "h", "<Nop>", { buffer = bufnr, nowait = true })
-    map("l", function()
-        local current_layout = require("review.ui.layout")
-        local branch_list_component = current_layout.get_branch_list()
-        if
-            branch_list_component
-            and branch_list_component.winid
-            and vim.api.nvim_win_is_valid(branch_list_component.winid)
-        then
-            vim.api.nvim_set_current_win(branch_list_component.winid)
+    local panel_keymaps = require("review.ui.panel_keymaps")
+    local function close_review()
+        if callbacks.on_close then
+            callbacks.on_close()
         end
-    end, { nowait = true, desc = "Next panel", group = "Navigation" })
-    vim.keymap.set("n", "<Left>", "<Nop>", { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "<Right>", "<Nop>", { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "<C-h>", "<Nop>", { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "<C-l>", function()
-        local current_layout = require("review.ui.layout")
-        local diff_component = current_layout.get_diff_view()
-        if diff_component and diff_component.winid and vim.api.nvim_win_is_valid(diff_component.winid) then
-            vim.api.nvim_set_current_win(diff_component.winid)
-        end
-    end, { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "<C-j>", "<Nop>", { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "<C-k>", "<Nop>", { buffer = bufnr, nowait = true })
+    end
+    panel_keymaps.setup(bufnr, {
+        tab_target = "get_branch_list",
+        h_target = nil,
+        l_target = "get_branch_list",
+        scroll_keys = { down = "J", up = "K" },
+        keymap_group = "Navigation",
+    }, close_review, active_timers, map)
 
     -- Toggle stage with space
     map("<Space>", toggle_stage, { nowait = true, desc = "Toggle stage", group = "Review" })
@@ -1472,19 +1437,6 @@ local function setup_keymaps(bufnr, callbacks)
             vim.api.nvim_set_current_win(commit_list_component.winid)
         end
     end, { desc = "Focus commit list", group = "Git" })
-
-    -- Cycle to next left pane (file_tree → branch_list)
-    map("<Tab>", function()
-        local current_layout = require("review.ui.layout")
-        local branch_list_component = current_layout.get_branch_list()
-        if
-            branch_list_component
-            and branch_list_component.winid
-            and vim.api.nvim_win_is_valid(branch_list_component.winid)
-        then
-            vim.api.nvim_set_current_win(branch_list_component.winid)
-        end
-    end, { desc = "Next pane", group = "View" })
 
     -- Commit staged changes
     map("c", function()
@@ -1641,14 +1593,6 @@ local function setup_keymaps(bufnr, callbacks)
         end)
     end, { desc = "Revert file changes", group = "Git" })
 
-    -- Close (shows exit popup)
-    local function close_review()
-        if callbacks.on_close then
-            callbacks.on_close()
-        end
-    end
-
-    map("q", close_review, { nowait = true, desc = "Close review", group = "General" })
     map("?", show_help, { desc = "Show help", group = "General" })
 end
 
@@ -1862,13 +1806,7 @@ function M.destroy()
     -- Bump generation to discard any in-flight async results
     generation = generation + 1
     -- Clean up any active timers
-    for name, timer in pairs(active_timers) do
-        if timer then
-            timer:stop()
-            timer:close()
-            active_timers[name] = nil
-        end
-    end
+    ui_util.destroy_timers(active_timers)
     -- Reset footer state
     footer_state = { unpushed_count = nil, spinner_frame = 0 }
     collapsed_dirs = {}

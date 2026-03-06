@@ -1,3 +1,4 @@
+local format = require("review.core.format")
 local git = require("review.core.git")
 local state = require("review.state")
 local ui_util = require("review.ui.util")
@@ -34,64 +35,6 @@ local COMMIT_COUNT = 30
 
 local date_extmark_ns = vim.api.nvim_create_namespace("review_commit_dates")
 local row_hl_ns = vim.api.nvim_create_namespace("review_commit_row_hl")
-
----Shorten a git relative date string
----@param date string
----@return string
-local function shorten_date(date)
-    local number, unit = date:match("^(%d+) (%a+) ago$")
-    if not number then
-        return date
-    end
-
-    local short_units = {
-        second = "s",
-        seconds = "s",
-        minute = "m",
-        minutes = "m",
-        hour = "h",
-        hours = "h",
-        day = "d",
-        days = "d",
-        week = "w",
-        weeks = "w",
-        month = "mo",
-        months = "mo",
-        year = "y",
-        years = "y",
-    }
-
-    local short = short_units[unit]
-    if short then
-        return number .. short
-    end
-
-    return date
-end
-
----Extract author initials from a name (e.g. "John Doe" → "JD", "vuki" → "VU")
----@param author string|nil
----@return string
-local function author_initials(author)
-    if not author or author == "" then
-        return ""
-    end
-
-    local words = {}
-    for word in author:gmatch("%S+") do
-        table.insert(words, word)
-    end
-
-    if #words == 0 then
-        return ""
-    end
-
-    if #words == 1 then
-        return words[1]:sub(1, 2):upper()
-    end
-
-    return (words[1]:sub(1, 1) .. words[2]:sub(1, 1)):upper()
-end
 
 ---Build the list of commit entries (HEAD + recent commits)
 ---@return CommitEntry[]
@@ -167,7 +110,7 @@ local function render(bufnr, commits, selected_index, _winid)
             local is_active = index == selected_index
             local marker = is_active and " ▎" or "  "
             local node = is_active and "● " or "○ "
-            local initials = author_initials(entry.author)
+            local initials = format.author_initials(entry.author)
             local initials_segment = initials ~= "" and (initials .. " ") or ""
             local line = marker .. node .. entry.short_hash .. " " .. initials_segment .. " " .. entry.subject
             table.insert(lines, line)
@@ -196,7 +139,7 @@ local function render(bufnr, commits, selected_index, _winid)
             })
 
             if entry.date then
-                table.insert(date_entries, { line_index = line_index, date = shorten_date(entry.date) })
+                table.insert(date_entries, { line_index = line_index, date = format.shorten_date(entry.date) })
             end
         end
     end
@@ -378,49 +321,17 @@ local function setup_keymaps(bufnr)
         end
     end, { nowait = true, desc = "Select commit" })
 
-    local scroll_util = require("review.ui.util")
-
-    map("<C-d>", function()
-        scroll_util.smooth_scroll(active_timers, "down")
-    end, { nowait = true, desc = "Scroll diff down" })
-
-    map("<C-u>", function()
-        scroll_util.smooth_scroll(active_timers, "up")
-    end, { nowait = true, desc = "Scroll diff up" })
-
-    local function close_review()
+    local panel_keymaps = require("review.ui.panel_keymaps")
+    panel_keymaps.setup(bufnr, {
+        tab_target = "get_file_tree",
+        h_target = "get_branch_list",
+        l_target = nil,
+    }, function()
         if callbacks.on_close then
             callbacks.on_close()
         end
-    end
+    end, active_timers, map)
 
-    map("q", close_review, { nowait = true, desc = "Close review" })
-
-    -- Cycle to next left pane (commit_list → file_tree)
-    map("<Tab>", function()
-        local current_layout = require("review.ui.layout")
-        local file_tree_component = current_layout.get_file_tree()
-        if
-            file_tree_component
-            and file_tree_component.winid
-            and vim.api.nvim_win_is_valid(file_tree_component.winid)
-        then
-            vim.api.nvim_set_current_win(file_tree_component.winid)
-        end
-    end, { nowait = true, desc = "Next pane" })
-
-    map("h", function()
-        local current_layout = require("review.ui.layout")
-        local branch_list_component = current_layout.get_branch_list()
-        if
-            branch_list_component
-            and branch_list_component.winid
-            and vim.api.nvim_win_is_valid(branch_list_component.winid)
-        then
-            vim.api.nvim_set_current_win(branch_list_component.winid)
-        end
-    end, { nowait = true, desc = "Previous panel" })
-    vim.keymap.set("n", "l", "<Nop>", { buffer = M.current.bufnr, nowait = true })
     map("u", function()
         if not M.current then
             return
@@ -449,19 +360,6 @@ local function setup_keymaps(bufnr)
             end
         end)
     end, { nowait = true, desc = "Uncommit (soft reset)" })
-
-    vim.keymap.set("n", "<Left>", "<Nop>", { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "<Right>", "<Nop>", { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "<C-h>", "<Nop>", { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "<C-l>", function()
-        local current_layout = require("review.ui.layout")
-        local diff_component = current_layout.get_diff_view()
-        if diff_component and diff_component.winid and vim.api.nvim_win_is_valid(diff_component.winid) then
-            vim.api.nvim_set_current_win(diff_component.winid)
-        end
-    end, { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "<C-j>", "<Nop>", { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "<C-k>", "<Nop>", { buffer = bufnr, nowait = true })
 end
 
 ---Create the commit list component
@@ -528,13 +426,7 @@ end
 ---Destroy the component
 function M.destroy()
     preview_timer:stop()
-    for name, timer in pairs(active_timers) do
-        if timer then
-            timer:stop()
-            timer:close()
-            active_timers[name] = nil
-        end
-    end
+    ui_util.destroy_timers(active_timers)
     callbacks = {}
     M.current = nil
 end

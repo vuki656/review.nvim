@@ -226,71 +226,16 @@ local function setup_keymaps(bufnr)
         end
     end, { nowait = true, desc = "Select branch" })
 
-    local scroll_util = require("review.ui.util")
-
-    map("<C-d>", function()
-        scroll_util.smooth_scroll(active_timers, "down")
-    end, { nowait = true, desc = "Scroll diff down" })
-
-    map("<C-u>", function()
-        scroll_util.smooth_scroll(active_timers, "up")
-    end, { nowait = true, desc = "Scroll diff up" })
-
-    local function close_review()
+    local panel_keymaps = require("review.ui.panel_keymaps")
+    panel_keymaps.setup(bufnr, {
+        tab_target = "get_commit_list",
+        h_target = "get_file_tree",
+        l_target = "get_commit_list",
+    }, function()
         if callbacks.on_close then
             callbacks.on_close()
         end
-    end
-
-    map("q", close_review, { nowait = true, desc = "Close review" })
-
-    -- Cycle to next left pane (branch_list → commit_list)
-    map("<Tab>", function()
-        local current_layout = require("review.ui.layout")
-        local commit_list_component = current_layout.get_commit_list()
-        if
-            commit_list_component
-            and commit_list_component.winid
-            and vim.api.nvim_win_is_valid(commit_list_component.winid)
-        then
-            vim.api.nvim_set_current_win(commit_list_component.winid)
-        end
-    end, { nowait = true, desc = "Next pane" })
-
-    map("h", function()
-        local current_layout = require("review.ui.layout")
-        local file_tree_component = current_layout.get_file_tree()
-        if
-            file_tree_component
-            and file_tree_component.winid
-            and vim.api.nvim_win_is_valid(file_tree_component.winid)
-        then
-            vim.api.nvim_set_current_win(file_tree_component.winid)
-        end
-    end, { nowait = true, desc = "Previous panel" })
-    map("l", function()
-        local current_layout = require("review.ui.layout")
-        local commit_list_component = current_layout.get_commit_list()
-        if
-            commit_list_component
-            and commit_list_component.winid
-            and vim.api.nvim_win_is_valid(commit_list_component.winid)
-        then
-            vim.api.nvim_set_current_win(commit_list_component.winid)
-        end
-    end, { nowait = true, desc = "Next panel" })
-    vim.keymap.set("n", "<Left>", "<Nop>", { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "<Right>", "<Nop>", { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "<C-h>", "<Nop>", { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "<C-l>", function()
-        local current_layout = require("review.ui.layout")
-        local diff_component = current_layout.get_diff_view()
-        if diff_component and diff_component.winid and vim.api.nvim_win_is_valid(diff_component.winid) then
-            vim.api.nvim_set_current_win(diff_component.winid)
-        end
-    end, { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "<C-j>", "<Nop>", { buffer = bufnr, nowait = true })
-    vim.keymap.set("n", "<C-k>", "<Nop>", { buffer = bufnr, nowait = true })
+    end, active_timers, map)
 end
 
 ---Create the branch list component
@@ -382,13 +327,7 @@ end
 
 ---Destroy the component
 function M.destroy()
-    for name, timer in pairs(active_timers) do
-        if timer then
-            timer:stop()
-            timer:close()
-            active_timers[name] = nil
-        end
-    end
+    ui_util.destroy_timers(active_timers)
     callbacks = {}
     M.current = nil
 end
