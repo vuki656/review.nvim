@@ -34,6 +34,14 @@ function M.shorten_date(date)
     return date
 end
 
+---Get the first N UTF-8 characters from a string
+---@param str string
+---@param count number
+---@return string
+local function utf8_sub(str, count)
+    return vim.fn.strcharpart(str, 0, count)
+end
+
 ---Extract author initials from a name (e.g. "John Doe" -> "JD", "vuki" -> "VU")
 ---@param author string|nil
 ---@return string
@@ -52,10 +60,10 @@ function M.author_initials(author)
     end
 
     if #words == 1 then
-        return words[1]:sub(1, 2):upper()
+        return vim.fn.toupper(utf8_sub(words[1], 2))
     end
 
-    return (words[1]:sub(1, 1) .. words[2]:sub(1, 1)):upper()
+    return vim.fn.toupper(utf8_sub(words[1], 1) .. utf8_sub(words[2], 1))
 end
 
 return M

@@ -36,6 +36,24 @@ local COMMIT_COUNT = 30
 local date_extmark_ns = vim.api.nvim_create_namespace("review_commit_dates")
 local row_hl_ns = vim.api.nvim_create_namespace("review_commit_row_hl")
 
+local AUTHOR_COLOR_COUNT = 6
+
+---Deterministic color index for an author name (1-based)
+---@param author string|nil
+---@return number
+local function author_color_index(author)
+    if not author or author == "" then
+        return 1
+    end
+
+    local hash = 0
+    for char_index = 1, #author do
+        hash = (hash * 31 + string.byte(author, char_index)) % 2147483647
+    end
+
+    return (hash % AUTHOR_COLOR_COUNT) + 1
+end
+
 ---Build the list of commit entries (HEAD + recent commits)
 ---@return CommitEntry[]
 local function fetch_commits()
@@ -133,6 +151,7 @@ local function render(bufnr, commits, selected_index, _winid)
                 node = { node_start, node_end },
                 hash = { hash_start, hash_end },
                 initials = initials ~= "" and { initials_start, initials_end } or nil,
+                author = entry.author,
                 subject = { subject_start, #line },
                 is_active = is_active,
                 is_unpushed = entry.is_unpushed,
@@ -169,10 +188,11 @@ local function render(bufnr, commits, selected_index, _winid)
         vim.api.nvim_buf_add_highlight(bufnr, -1, hash_hl, range.line_index, range.hash[1], range.hash[2])
 
         if range.initials then
+            local author_hl = "ReviewCommitAuthor" .. author_color_index(range.author)
             vim.api.nvim_buf_add_highlight(
                 bufnr,
                 -1,
-                "ReviewCommitAuthor",
+                author_hl,
                 range.line_index,
                 range.initials[1],
                 range.initials[2]

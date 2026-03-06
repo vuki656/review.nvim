@@ -73,4 +73,16 @@ T["author_initials"]["lowercase name uppercases initials"] = function()
     expect.equality(format.author_initials("alice bob"), "AB")
 end
 
+T["author_initials"]["handles Croatian characters in two-word name"] = function()
+    expect.equality(format.author_initials("Šime Čabraja"), "ŠČ")
+end
+
+T["author_initials"]["handles Croatian characters in single-word name"] = function()
+    expect.equality(format.author_initials("Željko"), "ŽE")
+end
+
+T["author_initials"]["handles mixed ascii and multibyte"] = function()
+    expect.equality(format.author_initials("Luka Žuvela"), "LŽ")
+end
+
 return T

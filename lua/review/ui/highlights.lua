@@ -113,6 +113,12 @@ function M.setup()
         -- Commit list
         ReviewCommitHash = { fg = "#e5c07b" },
         ReviewCommitAuthor = { fg = "#61afef" },
+        ReviewCommitAuthor1 = { fg = "#61afef" },
+        ReviewCommitAuthor2 = { fg = "#c678dd" },
+        ReviewCommitAuthor3 = { fg = "#e5c07b" },
+        ReviewCommitAuthor4 = { fg = "#56b6c2" },
+        ReviewCommitAuthor5 = { fg = "#d19a66" },
+        ReviewCommitAuthor6 = { fg = "#ef596f" },
         ReviewCommitDate = { fg = "#4b5263" },
         ReviewCommitActive = { fg = "#89ca78", bold = true },
         ReviewCommitSeparator = { fg = "#3e4452" },
