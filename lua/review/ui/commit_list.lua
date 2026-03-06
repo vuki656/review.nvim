@@ -409,6 +409,8 @@ function M.create(layout_component, cbs)
         vim.api.nvim_win_set_cursor(layout_component.winid, { cursor_line, 0 })
     end
 
+    trigger_preview()
+
     return M.current
 end
 
