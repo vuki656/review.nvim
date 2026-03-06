@@ -988,6 +988,32 @@ function M.checkout(branch_name, callback)
     end)
 end
 
+---Delete a local branch asynchronously
+---@param branch_name string
+---@param callback fun(success: boolean, error: string|nil)
+function M.delete_branch(branch_name, callback)
+    local git_root = M.get_root()
+    if not git_root then
+        log.error("delete_branch: no git root")
+        callback(false, "Not a git repository")
+        return
+    end
+
+    log.info("delete_branch: deleting", branch_name)
+    vim.system({ "git", "branch", "-d", branch_name }, { text = true, cwd = git_root }, function(result)
+        vim.schedule(function()
+            if result.code == 0 then
+                log.info("delete_branch: success", branch_name)
+                callback(true, nil)
+            else
+                local err = vim.trim(result.stderr)
+                log.error("delete_branch: failed:", err)
+                callback(false, err)
+            end
+        end)
+    end)
+end
+
 ---Pull from remote asynchronously (fast-forward only, aborts on conflicts)
 ---@param callback fun(success: boolean, error: string|nil)
 function M.pull(callback)

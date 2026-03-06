@@ -442,6 +442,38 @@ local function setup_keymaps(bufnr)
         end)
     end, { nowait = true, desc = "Checkout branch" })
 
+    map("d", function()
+        if not M.current then
+            return
+        end
+
+        local line = vim.api.nvim_win_get_cursor(0)[1]
+        local branch_index = line_to_branch_index(line)
+        if not branch_index then
+            return
+        end
+
+        local entry = M.current.branches[branch_index]
+        if not entry then
+            return
+        end
+
+        if entry.is_current then
+            vim.notify("Cannot delete the currently checked out branch", vim.log.levels.WARN)
+            return
+        end
+
+        ui_util.confirm("Delete branch '" .. entry.name .. "'?", function()
+            git.delete_branch(entry.name, function(success, err)
+                if success then
+                    M.fetch_and_render()
+                else
+                    vim.notify("Delete failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+                end
+            end)
+        end)
+    end, { nowait = true, desc = "Delete branch" })
+
     local panel_keymaps = require("review.ui.panel_keymaps")
     panel_keymaps.setup(bufnr, {
         tab_target = "get_commit_list",
