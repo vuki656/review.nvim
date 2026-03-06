@@ -396,20 +396,8 @@ local function setup_keymaps(bufnr)
 
     map("q", close_review, { nowait = true, desc = "Close review" })
 
-    -- Cycle to next left pane (commit_list → branch_list)
+    -- Cycle to next left pane (commit_list → file_tree)
     map("<Tab>", function()
-        local current_layout = require("review.ui.layout")
-        local branch_list_component = current_layout.get_branch_list()
-        if
-            branch_list_component
-            and branch_list_component.winid
-            and vim.api.nvim_win_is_valid(branch_list_component.winid)
-        then
-            vim.api.nvim_set_current_win(branch_list_component.winid)
-        end
-    end, { nowait = true, desc = "Next pane" })
-
-    map("h", function()
         local current_layout = require("review.ui.layout")
         local file_tree_component = current_layout.get_file_tree()
         if
@@ -419,8 +407,9 @@ local function setup_keymaps(bufnr)
         then
             vim.api.nvim_set_current_win(file_tree_component.winid)
         end
-    end, { nowait = true, desc = "Previous panel" })
-    map("l", function()
+    end, { nowait = true, desc = "Next pane" })
+
+    map("h", function()
         local current_layout = require("review.ui.layout")
         local branch_list_component = current_layout.get_branch_list()
         if
@@ -430,7 +419,8 @@ local function setup_keymaps(bufnr)
         then
             vim.api.nvim_set_current_win(branch_list_component.winid)
         end
-    end, { nowait = true, desc = "Next panel" })
+    end, { nowait = true, desc = "Previous panel" })
+    vim.keymap.set("n", "l", "<Nop>", { buffer = M.current.bufnr, nowait = true })
     map("u", function()
         if not M.current then
             return

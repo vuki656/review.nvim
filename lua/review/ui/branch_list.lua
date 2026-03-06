@@ -244,20 +244,8 @@ local function setup_keymaps(bufnr)
 
     map("q", close_review, { nowait = true, desc = "Close review" })
 
-    -- Cycle to next left pane (branch_list → file_tree)
+    -- Cycle to next left pane (branch_list → commit_list)
     map("<Tab>", function()
-        local current_layout = require("review.ui.layout")
-        local file_tree_component = current_layout.get_file_tree()
-        if
-            file_tree_component
-            and file_tree_component.winid
-            and vim.api.nvim_win_is_valid(file_tree_component.winid)
-        then
-            vim.api.nvim_set_current_win(file_tree_component.winid)
-        end
-    end, { nowait = true, desc = "Next pane" })
-
-    map("h", function()
         local current_layout = require("review.ui.layout")
         local commit_list_component = current_layout.get_commit_list()
         if
@@ -267,8 +255,30 @@ local function setup_keymaps(bufnr)
         then
             vim.api.nvim_set_current_win(commit_list_component.winid)
         end
+    end, { nowait = true, desc = "Next pane" })
+
+    map("h", function()
+        local current_layout = require("review.ui.layout")
+        local file_tree_component = current_layout.get_file_tree()
+        if
+            file_tree_component
+            and file_tree_component.winid
+            and vim.api.nvim_win_is_valid(file_tree_component.winid)
+        then
+            vim.api.nvim_set_current_win(file_tree_component.winid)
+        end
     end, { nowait = true, desc = "Previous panel" })
-    vim.keymap.set("n", "l", "<Nop>", { buffer = bufnr, nowait = true })
+    map("l", function()
+        local current_layout = require("review.ui.layout")
+        local commit_list_component = current_layout.get_commit_list()
+        if
+            commit_list_component
+            and commit_list_component.winid
+            and vim.api.nvim_win_is_valid(commit_list_component.winid)
+        then
+            vim.api.nvim_set_current_win(commit_list_component.winid)
+        end
+    end, { nowait = true, desc = "Next panel" })
     vim.keymap.set("n", "<Left>", "<Nop>", { buffer = bufnr, nowait = true })
     vim.keymap.set("n", "<Right>", "<Nop>", { buffer = bufnr, nowait = true })
 end

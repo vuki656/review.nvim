@@ -78,6 +78,16 @@ function M.open()
         end,
     })
 
+    -- Initialize branch list
+    branch_list.create(l.branch_list, {
+        on_branch_select = function(entry)
+            M.select_branch(entry)
+        end,
+        on_close = function()
+            M.close()
+        end,
+    })
+
     -- Initialize commit list
     commit_list.create(l.commit_list, {
         on_commit_select = function(entry)
@@ -105,16 +115,6 @@ function M.open()
                     focus_first_file(true)
                 end)
             end)
-        end,
-        on_close = function()
-            M.close()
-        end,
-    })
-
-    -- Initialize branch list
-    branch_list.create(l.branch_list, {
-        on_branch_select = function(entry)
-            M.select_branch(entry)
         end,
         on_close = function()
             M.close()

@@ -107,9 +107,9 @@ local function calculate_positions(sidebar_visible)
         local branch_info_row = 0
         local file_tree_row = BRANCH_INFO_OUTER_HEIGHT
         local file_tree_outer = file_tree_height + 2
-        local commit_row = file_tree_row + file_tree_outer
-        local commit_outer = commit_height + 2
-        local branch_row = commit_row + commit_outer
+        local branch_row = file_tree_row + file_tree_outer
+        local branch_outer = branch_height + 2
+        local commit_row = branch_row + branch_outer
 
         positions.branch_info = {
             row = branch_info_row,
@@ -125,18 +125,18 @@ local function calculate_positions(sidebar_visible)
             height = file_tree_height,
         }
 
-        positions.commit_list = {
-            row = commit_row,
-            col = 0,
-            width = sidebar_content_width,
-            height = commit_height,
-        }
-
         positions.branch_list = {
             row = branch_row,
             col = 0,
             width = sidebar_content_width,
             height = branch_height,
+        }
+
+        positions.commit_list = {
+            row = commit_row,
+            col = 0,
+            width = sidebar_content_width,
+            height = commit_height,
         }
 
         positions.diff_view = {
@@ -244,11 +244,11 @@ function M.create()
     local tree_win = open_float(tree_buf, positions.file_tree, " Files")
     apply_tree_win_options(tree_win)
 
-    local commit_list_win = open_float(commit_list_buf, positions.commit_list, " Commits")
-    apply_tree_win_options(commit_list_win)
-
     local branch_list_win = open_float(branch_list_buf, positions.branch_list, " Branches")
     apply_tree_win_options(branch_list_win)
+
+    local commit_list_win = open_float(commit_list_buf, positions.commit_list, " Commits")
+    apply_tree_win_options(commit_list_win)
 
     local diff_win = open_float(diff_buf, positions.diff_view, nil)
     apply_diff_win_options(diff_win)
@@ -442,18 +442,18 @@ function M.show_file_tree()
     apply_tree_win_options(tree_win)
     M.current.file_tree.winid = tree_win
 
-    local commit_list = M.current.commit_list
-    if commit_list then
-        local commit_win = open_float(commit_list.bufnr, positions.commit_list, " Commits")
-        apply_tree_win_options(commit_win)
-        M.current.commit_list.winid = commit_win
-    end
-
     local branch_list = M.current.branch_list
     if branch_list then
         local branch_win = open_float(branch_list.bufnr, positions.branch_list, " Branches")
         apply_tree_win_options(branch_win)
         M.current.branch_list.winid = branch_win
+    end
+
+    local commit_list = M.current.commit_list
+    if commit_list then
+        local commit_win = open_float(commit_list.bufnr, positions.commit_list, " Commits")
+        apply_tree_win_options(commit_win)
+        M.current.commit_list.winid = commit_win
     end
 
     local diff_pos = positions.diff_view
