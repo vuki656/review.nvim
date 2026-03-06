@@ -27,6 +27,7 @@ local active_timers = {
 
 local row_hl_ns = vim.api.nvim_create_namespace("review_branch_row_hl")
 local pull_ns = vim.api.nvim_create_namespace("review_branch_pull")
+local checkout_ns = vim.api.nvim_create_namespace("review_branch_checkout")
 
 local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 
@@ -35,6 +36,12 @@ local pull_spinner_timer = nil
 
 ---@type number|nil
 local pull_line_index = nil
+
+---@type uv_timer_t|nil
+local checkout_spinner_timer = nil
+
+---@type number|nil
+local checkout_line_index = nil
 
 ---Determine which branch entry is currently active based on state
 ---@param branches BranchEntry[]
@@ -341,6 +348,93 @@ local function setup_keymaps(bufnr)
         end)
     end, { nowait = true, desc = "Pull from remote" })
 
+    map("<Space>", function()
+        if not M.current then
+            return
+        end
+
+        if checkout_spinner_timer then
+            return
+        end
+
+        local line = vim.api.nvim_win_get_cursor(0)[1]
+        local branch_index = line_to_branch_index(line)
+        if not branch_index then
+            return
+        end
+
+        local entry = M.current.branches[branch_index]
+        if not entry then
+            return
+        end
+
+        if entry.is_current then
+            return
+        end
+
+        checkout_line_index = line - 1
+        local frame = 0
+
+        checkout_spinner_timer = vim.uv.new_timer()
+        checkout_spinner_timer:start(0, 80, vim.schedule_wrap(function()
+            if not M.current or not vim.api.nvim_buf_is_valid(M.current.bufnr) then
+                if checkout_spinner_timer then
+                    checkout_spinner_timer:stop()
+                    checkout_spinner_timer:close()
+                    checkout_spinner_timer = nil
+                end
+                return
+            end
+
+            frame = (frame % #SPINNER_FRAMES) + 1
+
+            vim.api.nvim_buf_clear_namespace(M.current.bufnr, checkout_ns, checkout_line_index, checkout_line_index + 1)
+            vim.api.nvim_buf_set_extmark(M.current.bufnr, checkout_ns, checkout_line_index, 0, {
+                virt_text = { { " " .. SPINNER_FRAMES[frame], "ReviewBranchSpinner" } },
+                virt_text_pos = "eol",
+            })
+        end))
+
+        git.has_dirty_worktree(function(is_dirty)
+            if is_dirty then
+                if checkout_spinner_timer then
+                    checkout_spinner_timer:stop()
+                    checkout_spinner_timer:close()
+                    checkout_spinner_timer = nil
+                end
+
+                if M.current and vim.api.nvim_buf_is_valid(M.current.bufnr) then
+                    vim.api.nvim_buf_clear_namespace(M.current.bufnr, checkout_ns, 0, -1)
+                end
+
+                checkout_line_index = nil
+                local message = "Checkout failed: you have uncommitted changes. Stash or commit them first."
+                vim.notify(message, vim.log.levels.ERROR)
+                return
+            end
+
+            git.checkout(entry.name, function(success, err)
+                if checkout_spinner_timer then
+                    checkout_spinner_timer:stop()
+                    checkout_spinner_timer:close()
+                    checkout_spinner_timer = nil
+                end
+
+                if M.current and vim.api.nvim_buf_is_valid(M.current.bufnr) then
+                    vim.api.nvim_buf_clear_namespace(M.current.bufnr, checkout_ns, 0, -1)
+                end
+
+                checkout_line_index = nil
+
+                if success then
+                    M.fetch_and_render(line)
+                else
+                    vim.notify("Checkout failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+                end
+            end)
+        end)
+    end, { nowait = true, desc = "Checkout branch" })
+
     local panel_keymaps = require("review.ui.panel_keymaps")
     panel_keymaps.setup(bufnr, {
         tab_target = "get_commit_list",
@@ -463,6 +557,12 @@ function M.destroy()
         pull_spinner_timer = nil
     end
     pull_line_index = nil
+    if checkout_spinner_timer then
+        checkout_spinner_timer:stop()
+        checkout_spinner_timer:close()
+        checkout_spinner_timer = nil
+    end
+    checkout_line_index = nil
     ui_util.destroy_timers(active_timers)
     callbacks = {}
     M.current = nil

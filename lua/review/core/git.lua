@@ -940,6 +940,54 @@ function M.get_branch_sync_counts(callback)
     )
 end
 
+---Check if the working tree has uncommitted changes (staged or unstaged)
+---@param callback fun(is_dirty: boolean)
+function M.has_dirty_worktree(callback)
+    local git_root = M.get_root()
+    if not git_root then
+        callback(false)
+        return
+    end
+
+    vim.system({ "git", "status", "--porcelain" }, { text = true, cwd = git_root }, function(result)
+        vim.schedule(function()
+            if result.code ~= 0 then
+                callback(false)
+                return
+            end
+
+            local is_dirty = vim.trim(result.stdout) ~= ""
+            callback(is_dirty)
+        end)
+    end)
+end
+
+---Checkout a branch asynchronously
+---@param branch_name string
+---@param callback fun(success: boolean, error: string|nil)
+function M.checkout(branch_name, callback)
+    local git_root = M.get_root()
+    if not git_root then
+        log.error("checkout: no git root")
+        callback(false, "Not a git repository")
+        return
+    end
+
+    log.info("checkout: switching to", branch_name)
+    vim.system({ "git", "checkout", branch_name }, { text = true, cwd = git_root }, function(result)
+        vim.schedule(function()
+            if result.code == 0 then
+                log.info("checkout: success", branch_name)
+                callback(true, nil)
+            else
+                local err = vim.trim(result.stderr)
+                log.error("checkout: failed:", err)
+                callback(false, err)
+            end
+        end)
+    end)
+end
+
 ---Pull from remote asynchronously (fast-forward only, aborts on conflicts)
 ---@param callback fun(success: boolean, error: string|nil)
 function M.pull(callback)
