@@ -451,6 +451,13 @@ function M.create(layout_component, cbs)
         vim.api.nvim_win_set_cursor(layout_component.winid, { cursor_line, 0 })
     end
 
+    vim.api.nvim_create_autocmd("BufEnter", {
+        buffer = layout_component.bufnr,
+        callback = function()
+            trigger_preview()
+        end,
+    })
+
     return M.current
 end
 

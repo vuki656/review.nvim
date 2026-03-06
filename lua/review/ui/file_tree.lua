@@ -1495,6 +1495,13 @@ local function setup_keymaps(bufnr, callbacks)
     end, { desc = "Revert file changes", group = "Git" })
 
     map("?", show_help, { desc = "Show help", group = "General" })
+
+    vim.api.nvim_create_autocmd("BufEnter", {
+        buffer = bufnr,
+        callback = function()
+            sync_diff_to_cursor()
+        end,
+    })
 end
 
 ---Get node at a specific line (1-indexed)
