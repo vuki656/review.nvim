@@ -24,7 +24,7 @@ stylua lua/
 
 ## Workflow
 
-After every code change, run `luacheck lua/` and `make test`. Fix ALL luacheck warnings (not just errors) before considering the task done — zero warnings is the target. When adding new logic to pure modules (non-UI, non-git-shelling), add corresponding tests in `tests/`.
+After every code change, run `luacheck lua/` and `make test`. Fix ALL luacheck warnings (not just errors) before considering the task done — zero warnings is the target. When adding new features or logic to pure modules (non-UI, non-git-shelling), always add corresponding tests in `tests/`. If a module is testable (pure logic, no vim.api dependencies), it should have tests.
 
 ## Testing
 
@@ -34,9 +34,9 @@ Test files live in `tests/` and follow the naming convention `test_<module>.lua`
 
 Shared fixtures and factories are in `tests/helpers.lua`.
 
-Tested modules: `comment_types`, `core/diff`, `config`, `state`, `quick_comments/state`, `core/json_persistence`, `export/markdown`, `quick_comments/markdown`.
+Tested modules: `comment_types`, `config`, `core/diff`, `core/format`, `core/json_persistence`, `core/paths`, `export/markdown`, `quick_comments/markdown`, `quick_comments/state`, `state`.
 
-Not tested (integration-heavy): `core/git`, `core/async`, `core/watcher`, `ui/*`, `commands`.
+Not tested (integration-heavy): `core/async`, `core/git`, `core/log`, `core/persistence`, `core/watcher`, `commands`, `quick_comments/init`, `quick_comments/panel`, `quick_comments/persistence`, `quick_comments/signs`, `ui/*`.
 
 ## Architecture
 
