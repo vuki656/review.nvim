@@ -40,6 +40,10 @@ function M.setup(bufnr, navigation, on_close, active_timers, map_function)
 
     map_function("q", on_close, { nowait = true, desc = "Close review", group = group })
 
+    map_function("P", function()
+        require("review.ui.push").push()
+    end, { nowait = true, desc = "Push to remote", group = group })
+
     map_function("<Tab>", function()
         navigate_to(navigation.tab_target)
     end, { nowait = true, desc = "Next pane", group = group })
