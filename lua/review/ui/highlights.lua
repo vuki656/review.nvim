@@ -72,6 +72,7 @@ function M.setup()
         -- Branch info sync counts
         ReviewBranchAhead = { fg = "#d19a66" },
         ReviewBranchBehind = { fg = "#d19a66" },
+        ReviewBranchSpinner = { fg = "#d19a66", bg = "#000000" },
 
         -- Floating window borders
         ReviewFloatBorder = { fg = "#e5e5e5" },

@@ -940,6 +940,31 @@ function M.get_branch_sync_counts(callback)
     )
 end
 
+---Pull from remote asynchronously (fast-forward only, aborts on conflicts)
+---@param callback fun(success: boolean, error: string|nil)
+function M.pull(callback)
+    local git_root = M.get_root()
+    if not git_root then
+        log.error("pull: no git root")
+        callback(false, "Not a git repository")
+        return
+    end
+
+    log.info("pull: starting")
+    vim.system({ "git", "pull", "--ff-only" }, { text = true, cwd = git_root }, function(result)
+        vim.schedule(function()
+            if result.code == 0 then
+                log.info("pull: success")
+                callback(true, nil)
+            else
+                local err = vim.trim(result.stderr)
+                log.error("pull: failed:", err)
+                callback(false, err)
+            end
+        end)
+    end)
+end
+
 ---Push to remote asynchronously
 ---@param callback fun(success: boolean, error: string|nil)
 ---@param force? boolean Use --force-with-lease for safer force push

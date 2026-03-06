@@ -26,6 +26,15 @@ local active_timers = {
 }
 
 local row_hl_ns = vim.api.nvim_create_namespace("review_branch_row_hl")
+local pull_ns = vim.api.nvim_create_namespace("review_branch_pull")
+
+local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+
+---@type uv_timer_t|nil
+local pull_spinner_timer = nil
+
+---@type number|nil
+local pull_line_index = nil
 
 ---Determine which branch entry is currently active based on state
 ---@param branches BranchEntry[]
@@ -267,6 +276,71 @@ local function setup_keymaps(bufnr)
         end
     end, { nowait = true, desc = "Select branch" })
 
+    map("p", function()
+        if not M.current then
+            return
+        end
+
+        if pull_spinner_timer then
+            return
+        end
+
+        local line = vim.api.nvim_win_get_cursor(0)[1]
+        local branch_index = line_to_branch_index(line)
+        if not branch_index then
+            return
+        end
+
+        local entry = M.current.branches[branch_index]
+        if not entry then
+            return
+        end
+
+        pull_line_index = line - 1
+        local saved_cursor_line = line
+        local frame = 0
+
+        pull_spinner_timer = vim.uv.new_timer()
+        pull_spinner_timer:start(0, 80, vim.schedule_wrap(function()
+            if not M.current or not vim.api.nvim_buf_is_valid(M.current.bufnr) then
+                if pull_spinner_timer then
+                    pull_spinner_timer:stop()
+                    pull_spinner_timer:close()
+                    pull_spinner_timer = nil
+                end
+                return
+            end
+
+            frame = (frame % #SPINNER_FRAMES) + 1
+
+            vim.api.nvim_buf_clear_namespace(M.current.bufnr, pull_ns, pull_line_index, pull_line_index + 1)
+            vim.api.nvim_buf_set_extmark(M.current.bufnr, pull_ns, pull_line_index, 0, {
+                virt_text = { { " " .. SPINNER_FRAMES[frame], "ReviewBranchSpinner" } },
+                virt_text_pos = "eol",
+            })
+        end))
+
+        git.pull(function(success, err)
+            if pull_spinner_timer then
+                pull_spinner_timer:stop()
+                pull_spinner_timer:close()
+                pull_spinner_timer = nil
+            end
+
+            if M.current and vim.api.nvim_buf_is_valid(M.current.bufnr) then
+                vim.api.nvim_buf_clear_namespace(M.current.bufnr, pull_ns, 0, -1)
+            end
+
+            pull_line_index = nil
+
+            if success then
+                M.fetch_and_render(saved_cursor_line)
+            else
+                vim.notify("Pull failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+            end
+        end)
+    end, { nowait = true, desc = "Pull from remote" })
+
     local panel_keymaps = require("review.ui.panel_keymaps")
     panel_keymaps.setup(bufnr, {
         tab_target = "get_commit_list",
@@ -301,7 +375,8 @@ function M.create(layout_component, cbs)
 end
 
 ---Fetch branches and render
-function M.fetch_and_render()
+---@param restore_cursor_line? number If provided, restore cursor to this line instead of selected_index
+function M.fetch_and_render(restore_cursor_line)
     if not M.current then
         return
     end
@@ -333,7 +408,13 @@ function M.fetch_and_render()
 
             render(M.current.bufnr, entries, M.current.selected_index, M.current.winid)
 
-            local cursor_line = M.current.selected_index and branch_index_to_line(M.current.selected_index) or 1
+            local line_count = vim.api.nvim_buf_line_count(M.current.bufnr)
+            local cursor_line
+            if restore_cursor_line then
+                cursor_line = math.min(restore_cursor_line, line_count)
+            else
+                cursor_line = M.current.selected_index and branch_index_to_line(M.current.selected_index) or 1
+            end
             if vim.api.nvim_win_is_valid(M.current.winid) then
                 vim.api.nvim_win_set_cursor(M.current.winid, { cursor_line, 0 })
             end
@@ -376,6 +457,12 @@ end
 
 ---Destroy the component
 function M.destroy()
+    if pull_spinner_timer then
+        pull_spinner_timer:stop()
+        pull_spinner_timer:close()
+        pull_spinner_timer = nil
+    end
+    pull_line_index = nil
     ui_util.destroy_timers(active_timers)
     callbacks = {}
     M.current = nil
