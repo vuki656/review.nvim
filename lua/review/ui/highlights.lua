@@ -69,6 +69,10 @@ function M.setup()
         ReviewGitDeleted = { fg = "#ef596f" },
         ReviewGitRenamed = { fg = "#c678dd" },
 
+        -- Branch info sync counts
+        ReviewBranchAhead = { fg = "#d19a66" },
+        ReviewBranchBehind = { fg = "#d19a66" },
+
         -- Floating window borders
         ReviewFloatBorder = { fg = "#e5e5e5" },
         ReviewFloatBorderActive = { fg = "#89ca78" },

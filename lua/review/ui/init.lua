@@ -158,6 +158,7 @@ function M.open()
                 end
             end)
         end)
+
     end
 
     -- Focus file tree

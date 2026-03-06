@@ -903,6 +903,43 @@ function M.get_unpushed_count(callback)
     end)
 end
 
+---Get ahead/behind counts for all local branches relative to their upstream
+---@param callback fun(counts: table<string, {ahead: number, behind: number}>)
+function M.get_branch_sync_counts(callback)
+    local git_root = M.get_root()
+    if not git_root then
+        callback({})
+        return
+    end
+
+    vim.system(
+        { "git", "for-each-ref", "--format=%(refname:short) %(upstream:track)", "refs/heads/" },
+        { text = true, cwd = git_root },
+        function(result)
+            vim.schedule(function()
+                local counts = {}
+                if result.code ~= 0 then
+                    callback(counts)
+                    return
+                end
+
+                for line in parse_lines(result.stdout) do
+                    local branch_name, track = line:match("^(%S+)%s*(.*)$")
+                    if branch_name then
+                        local ahead = tonumber(track:match("ahead (%d+)")) or 0
+                        local behind = tonumber(track:match("behind (%d+)")) or 0
+                        if ahead > 0 or behind > 0 then
+                            counts[branch_name] = { ahead = ahead, behind = behind }
+                        end
+                    end
+                end
+
+                callback(counts)
+            end)
+        end
+    )
+end
+
 ---Push to remote asynchronously
 ---@param callback fun(success: boolean, error: string|nil)
 ---@param force? boolean Use --force-with-lease for safer force push

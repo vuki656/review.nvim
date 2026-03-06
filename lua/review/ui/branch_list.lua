@@ -46,15 +46,34 @@ local function find_active_index(branches)
     return nil
 end
 
+---Build sync count suffix string
+---@param sync_counts table<string, {ahead: number, behind: number}>
+---@param branch_name string
+---@return string suffix, string|nil ahead_segment, string|nil behind_segment
+local function build_sync_suffix(sync_counts, branch_name)
+    local counts = sync_counts[branch_name]
+    if not counts then
+        return "", nil, nil
+    end
+
+    local ahead_str = counts.ahead > 0 and (" ↑" .. counts.ahead) or ""
+    local behind_str = counts.behind > 0 and (" ↓" .. counts.behind) or ""
+
+    return ahead_str .. behind_str, ahead_str, behind_str
+end
+
 ---Render branches to buffer
 ---@param bufnr number
 ---@param branches BranchEntry[]
 ---@param selected_index number
 ---@param _winid number|nil
-local function render(bufnr, branches, selected_index, _winid)
+---@param sync_counts table<string, {ahead: number, behind: number}>|nil
+local function render(bufnr, branches, selected_index, _winid, sync_counts)
     if not vim.api.nvim_buf_is_valid(bufnr) then
         return
     end
+
+    sync_counts = sync_counts or {}
 
     ui_util.with_modifiable(bufnr, function()
     local lines = {}
@@ -65,8 +84,9 @@ local function render(bufnr, branches, selected_index, _winid)
         local marker = is_active and " ▎" or "  "
         local node = is_active and "● " or "○ "
         local head_suffix = entry.is_current and " HEAD" or ""
+        local sync_suffix, ahead_str, behind_str = build_sync_suffix(sync_counts, entry.name)
 
-        local line = marker .. node .. entry.name .. head_suffix
+        local line = marker .. node .. entry.name .. head_suffix .. sync_suffix
         table.insert(lines, line)
 
         local offset = 0
@@ -76,7 +96,11 @@ local function render(bufnr, branches, selected_index, _winid)
         local name_start = node_end
         local name_end = name_start + #entry.name
         local head_label_start = name_end
-        local head_label_end = #line
+        local head_label_end = head_label_start + #head_suffix
+        local ahead_start = head_label_end
+        local ahead_end = ahead_start + (ahead_str and #ahead_str or 0)
+        local behind_start = ahead_end
+        local behind_end = behind_start + (behind_str and #behind_str or 0)
 
         table.insert(highlight_ranges, {
             line_index = index - 1,
@@ -84,6 +108,8 @@ local function render(bufnr, branches, selected_index, _winid)
             node = { node_start, node_end },
             name = { name_start, name_end },
             head_label = entry.is_current and { head_label_start, head_label_end } or nil,
+            ahead = (ahead_str and #ahead_str > 0) and { ahead_start, ahead_end } or nil,
+            behind = (behind_str and #behind_str > 0) and { behind_start, behind_end } or nil,
             is_active = is_active,
             is_current = entry.is_current,
             is_main = entry.is_main,
@@ -131,6 +157,18 @@ local function render(bufnr, branches, selected_index, _winid)
                 range.line_index,
                 range.head_label[1],
                 range.head_label[2]
+            )
+        end
+
+        if range.ahead then
+            vim.api.nvim_buf_add_highlight(
+                bufnr, -1, "ReviewBranchAhead", range.line_index, range.ahead[1], range.ahead[2]
+            )
+        end
+
+        if range.behind then
+            vim.api.nvim_buf_add_highlight(
+                bufnr, -1, "ReviewBranchBehind", range.line_index, range.behind[1], range.behind[2]
             )
         end
     end
@@ -299,6 +337,14 @@ function M.fetch_and_render()
             if vim.api.nvim_win_is_valid(M.current.winid) then
                 vim.api.nvim_win_set_cursor(M.current.winid, { cursor_line, 0 })
             end
+
+            git.get_branch_sync_counts(function(sync_counts)
+                if not M.current or not vim.api.nvim_buf_is_valid(M.current.bufnr) then
+                    return
+                end
+                M.current.sync_counts = sync_counts
+                render(M.current.bufnr, M.current.branches, M.current.selected_index, M.current.winid, sync_counts)
+            end)
         end)
     end)
 end
@@ -317,7 +363,7 @@ function M.set_selected(entry)
         end
     end
 
-    render(M.current.bufnr, M.current.branches, M.current.selected_index, M.current.winid)
+    render(M.current.bufnr, M.current.branches, M.current.selected_index, M.current.winid, M.current.sync_counts)
 end
 
 ---Refresh the branch list (re-fetch and re-render)
