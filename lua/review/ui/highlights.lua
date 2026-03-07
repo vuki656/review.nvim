@@ -1,153 +1,132 @@
+local palette = require("review.ui.palette")
+
 local M = {}
 
----Define all highlight groups for the plugin
 function M.setup()
     local highlights = {
-        -- Diff line backgrounds
-        ReviewDiffAdd = { bg = "#002800" },
-        ReviewDiffDelete = { bg = "#3f0001" },
+        ReviewDiffAdd = { bg = palette.diff_add },
+        ReviewDiffDelete = { bg = palette.diff_delete },
 
-        -- Inline diff (actual changed parts)
-        ReviewDiffAddInline = { bg = "#004000" },
-        ReviewDiffDeleteInline = { bg = "#600010" },
+        ReviewDiffAddInline = { bg = palette.diff_add_emphasis },
+        ReviewDiffDeleteInline = { bg = palette.diff_delete_emphasis },
 
-        -- Diff sign column (fat colored border)
-        ReviewDiffSignAdd = { fg = "#89ca78", bold = true },
-        ReviewDiffSignDelete = { fg = "#ef596f", bold = true },
-        ReviewDiffSignContext = { fg = "#3e4452" },
+        ReviewDiffSignAdd = { fg = palette.positive, bold = true },
+        ReviewDiffSignDelete = { fg = palette.negative, bold = true },
+        ReviewDiffSignContext = { fg = palette.border },
 
-        -- Diff view file path header
-        ReviewDiffFilePath = { fg = "#abb2bf", bold = true },
-        ReviewDiffFileHeaderBg = { bg = "#1e2940" },
-        ReviewDiffFileDivider = { fg = "#abb2bf", bg = "#1e2940", bold = true },
-        ReviewDiffFileDividerBorderTop = { fg = "#4a90d9" },
-        ReviewDiffFileDividerBorderBottom = { fg = "#4a90d9" },
+        ReviewDiffFilePath = { fg = palette.text, bold = true },
+        ReviewDiffFileHeaderBg = { bg = palette.header },
+        ReviewDiffFileDivider = { fg = palette.text, bg = palette.header, bold = true },
+        ReviewDiffFileDividerBorderTop = { fg = palette.border_accent },
+        ReviewDiffFileDividerBorderBottom = { fg = palette.border_accent },
 
-        -- Split diff padding (empty side)
-        ReviewDiffPadding = { bg = "#1e1e1e" },
+        ReviewDiffPadding = { bg = palette.padding },
 
-        -- Legacy (keep for compatibility)
-        ReviewDiffChange = { fg = "#a8c8e8", bg = "#2a2a3a" },
-        ReviewDiffText = { fg = "#e5c07b", bg = "#3e4452", bold = true },
-        ReviewDiffHeader = { fg = "#c678dd", bg = "#2c2033", bold = true },
-        ReviewDiffHunkHeader = { fg = "#61afef", bg = "#1e2a3a", italic = true },
+        ReviewDiffChange = { fg = palette.text, bg = palette.surface },
+        ReviewDiffText = { fg = palette.highlight, bg = palette.border, bold = true },
+        ReviewDiffHeader = { fg = palette.special, bg = palette.tint, bold = true },
+        ReviewDiffHunkHeader = { fg = palette.accent, bg = palette.header, italic = true },
 
-        -- Comment type colors
-        ReviewCommentNote = { fg = "#61afef", bold = true },
-        ReviewCommentFix = { fg = "#ef596f", bold = true },
-        ReviewCommentQuestion = { fg = "#e5c07b", bold = true },
-        ReviewCommentBorder = { fg = "#5c6370" },
-        ReviewCommentText = { fg = "#abb2bf" },
+        ReviewCommentNote = { fg = palette.accent, bold = true },
+        ReviewCommentFix = { fg = palette.negative, bold = true },
+        ReviewCommentQuestion = { fg = palette.highlight, bold = true },
+        ReviewCommentBorder = { fg = palette.muted },
+        ReviewCommentText = { fg = palette.text },
 
-        -- File tree
-        ReviewFileReviewed = { fg = "#89ca78" },
-        ReviewFileModified = { fg = "#d19a66" },
-        ReviewFilePending = { fg = "#abb2bf" },
-        ReviewFilePath = { fg = "#abb2bf" },
-        ReviewFilePathFaded = { fg = "#5c6370" },
-        ReviewFileFaded = { fg = "#4b5263" },
-        ReviewTreeDirectory = { fg = "#abb2bf" },
-        ReviewTreeIndent = { fg = "#3e4452" },
-        ReviewLogo = { fg = "#61afef", bold = true },
+        ReviewFileReviewed = { fg = palette.positive },
+        ReviewFileModified = { fg = palette.caution },
+        ReviewFilePending = { fg = palette.text },
+        ReviewFilePath = { fg = palette.text },
+        ReviewFilePathFaded = { fg = palette.muted },
+        ReviewFileFaded = { fg = palette.faded },
+        ReviewTreeDirectory = { fg = palette.text },
+        ReviewTreeIndent = { fg = palette.border },
+        ReviewLogo = { fg = palette.accent, bold = true },
 
-        -- Comment input
-        ReviewInputBorder = { fg = "#abb2bf" },
-        ReviewInputTitle = { fg = "#abb2bf", bold = true },
-        ReviewInputFooter = { fg = "#5c6370" },
+        ReviewInputBorder = { fg = palette.text },
+        ReviewInputTitle = { fg = palette.text, bold = true },
+        ReviewInputFooter = { fg = palette.muted },
 
-        -- Comment input per-type colors (border + title)
-        ReviewInputBorderFix = { fg = "#ef596f" },
-        ReviewInputTitleFix = { fg = "#ef596f", bold = true },
-        ReviewInputBorderNote = { fg = "#61afef" },
-        ReviewInputTitleNote = { fg = "#61afef", bold = true },
-        ReviewInputBorderQuestion = { fg = "#e5c07b" },
-        ReviewInputTitleQuestion = { fg = "#e5c07b", bold = true },
+        ReviewInputBorderFix = { fg = palette.negative },
+        ReviewInputTitleFix = { fg = palette.negative, bold = true },
+        ReviewInputBorderNote = { fg = palette.accent },
+        ReviewInputTitleNote = { fg = palette.accent, bold = true },
+        ReviewInputBorderQuestion = { fg = palette.highlight },
+        ReviewInputTitleQuestion = { fg = palette.highlight, bold = true },
 
-        -- Git status icons in file tree
-        ReviewGitAdded = { fg = "#89ca78" },
-        ReviewGitModified = { fg = "#d19a66" },
-        ReviewGitDeleted = { fg = "#ef596f" },
-        ReviewGitRenamed = { fg = "#c678dd" },
+        ReviewGitAdded = { fg = palette.positive },
+        ReviewGitModified = { fg = palette.caution },
+        ReviewGitDeleted = { fg = palette.negative },
+        ReviewGitRenamed = { fg = palette.special },
 
-        -- Branch info sync counts
-        ReviewBranchAhead = { fg = "#d19a66" },
-        ReviewBranchBehind = { fg = "#d19a66" },
-        ReviewBranchSpinner = { fg = "#d19a66", bg = "#000000" },
+        ReviewBranchAhead = { fg = palette.caution },
+        ReviewBranchBehind = { fg = palette.caution },
+        ReviewBranchSpinner = { fg = palette.caution, bg = palette.selected },
 
-        -- Floating window borders
-        ReviewFloatBorder = { fg = "#abb2bf" },
-        ReviewFloatBorderActive = { fg = "#89ca78" },
-        ReviewFloatTitle = { fg = "#abb2bf", bold = true },
-        ReviewFloatTitleActive = { fg = "#89ca78", bold = true },
+        ReviewFloatBorder = { fg = palette.text },
+        ReviewFloatBorderActive = { fg = palette.positive },
+        ReviewFloatTitle = { fg = palette.text, bold = true },
+        ReviewFloatTitleActive = { fg = palette.positive, bold = true },
 
-        -- UI elements
-        ReviewWinSeparator = { fg = "#5c6370" },
-        ReviewBorder = { fg = "#3e4452" },
-        ReviewTitle = { fg = "#61afef", bold = true },
-        ReviewWinBar = { fg = "#abb2bf", bold = true, bg = "NONE" },
-        ReviewWinBarCount = { fg = "#4b5263", bg = "NONE" },
-        ReviewSelected = { bg = "#000000" },
-        ReviewHelpGroup = { fg = "#abb2bf", bg = "#2c313a", bold = true },
-        ReviewHelpKey = { fg = "#e5c07b" },
+        ReviewWinSeparator = { fg = palette.muted },
+        ReviewBorder = { fg = palette.border },
+        ReviewTitle = { fg = palette.accent, bold = true },
+        ReviewWinBar = { fg = palette.text, bold = true, bg = "NONE" },
+        ReviewWinBarCount = { fg = palette.faded, bg = "NONE" },
+        ReviewSelected = { bg = palette.selected },
+        ReviewHelpGroup = { fg = palette.text, bg = palette.surface, bold = true },
+        ReviewHelpKey = { fg = palette.highlight },
 
-        -- Line numbers in diff
-        ReviewLineNrAdd = { fg = "#89ca78" },
-        ReviewLineNrDelete = { fg = "#ef596f" },
-        ReviewLineNrContext = { fg = "#5c6370" },
+        ReviewLineNrAdd = { fg = palette.positive },
+        ReviewLineNrDelete = { fg = palette.negative },
+        ReviewLineNrContext = { fg = palette.muted },
 
-        -- Footer
-        ReviewFooterText = { fg = "#5c6370" },
-        ReviewFooterCount = { fg = "#61afef" },
+        ReviewFooterText = { fg = palette.muted },
+        ReviewFooterCount = { fg = palette.accent },
 
-        -- Quick Comments Panel
-        ReviewQCPanelHeader = { fg = "#61afef", bold = true },
-        ReviewQCPanelBorder = { fg = "#3e4452" },
-        ReviewQCPanelFile = { fg = "#abb2bf", bold = true },
-        ReviewQCPanelContext = { fg = "#5c6370", italic = true },
-        ReviewQCPanelLineNr = { fg = "#5c6370" },
+        ReviewQCPanelHeader = { fg = palette.accent, bold = true },
+        ReviewQCPanelBorder = { fg = palette.border },
+        ReviewQCPanelFile = { fg = palette.text, bold = true },
+        ReviewQCPanelContext = { fg = palette.muted, italic = true },
+        ReviewQCPanelLineNr = { fg = palette.muted },
 
-        -- Comment list panel
-        ReviewCommentListFile = { fg = "#abb2bf" },
-        ReviewCommentListEmpty = { fg = "#5c6370", italic = true },
+        ReviewCommentListFile = { fg = palette.text },
+        ReviewCommentListEmpty = { fg = palette.muted, italic = true },
 
-        -- Template picker
-        ReviewTemplateKey = { fg = "#e5c07b", bold = true },
-        ReviewTemplateLabel = { fg = "#abb2bf" },
-        ReviewTemplateBorder = { fg = "#5c6370" },
-        ReviewTemplateTitle = { fg = "#61afef", bold = true },
+        ReviewTemplateKey = { fg = palette.highlight, bold = true },
+        ReviewTemplateLabel = { fg = palette.text },
+        ReviewTemplateBorder = { fg = palette.muted },
+        ReviewTemplateTitle = { fg = palette.accent, bold = true },
 
-        -- Active row background (shared by commit + branch lists)
-        ReviewActiveRow = { bg = "#2a2d35" },
+        ReviewActiveRow = { bg = palette.surface },
 
-        -- Commit list
-        ReviewCommitHash = { fg = "#e5c07b" },
-        ReviewCommitAuthor = { fg = "#61afef" },
-        ReviewCommitAuthor1 = { fg = "#61afef" },
-        ReviewCommitAuthor2 = { fg = "#c678dd" },
-        ReviewCommitAuthor3 = { fg = "#e5c07b" },
-        ReviewCommitAuthor4 = { fg = "#56b6c2" },
-        ReviewCommitAuthor5 = { fg = "#d19a66" },
-        ReviewCommitAuthor6 = { fg = "#ef596f" },
-        ReviewCommitDate = { fg = "#4b5263" },
-        ReviewCommitActive = { fg = "#89ca78", bold = true },
-        ReviewCommitSeparator = { fg = "#3e4452" },
-        ReviewCommitGraph = { fg = "#c678dd" },
-        ReviewCommitGraphActive = { fg = "#89ca78", bold = true },
-        ReviewCommitPushed = { fg = "#89ca78" },
-        ReviewCommitUnpushed = { fg = "#e06c75" },
-        ReviewCommitIconRegular = { fg = "#abb2bf" },
-        ReviewCommitIconMerge = { fg = "#c678dd" },
-        ReviewCommitIconRoot = { fg = "#e5c07b" },
+        ReviewCommitHash = { fg = palette.highlight },
+        ReviewCommitAuthor = { fg = palette.accent },
+        ReviewCommitAuthor1 = { fg = palette.author1 },
+        ReviewCommitAuthor2 = { fg = palette.author2 },
+        ReviewCommitAuthor3 = { fg = palette.author3 },
+        ReviewCommitAuthor4 = { fg = palette.author4 },
+        ReviewCommitAuthor5 = { fg = palette.author5 },
+        ReviewCommitAuthor6 = { fg = palette.author6 },
+        ReviewCommitDate = { fg = palette.faded },
+        ReviewCommitActive = { fg = palette.positive, bold = true },
+        ReviewCommitSeparator = { fg = palette.border },
+        ReviewCommitGraph = { fg = palette.special },
+        ReviewCommitGraphActive = { fg = palette.positive, bold = true },
+        ReviewCommitPushed = { fg = palette.positive },
+        ReviewCommitUnpushed = { fg = palette.negative },
+        ReviewCommitIconRegular = { fg = palette.text },
+        ReviewCommitIconMerge = { fg = palette.special },
+        ReviewCommitIconRoot = { fg = palette.highlight },
 
-        -- Branch list
-        ReviewBranchName = { fg = "#abb2bf" },
-        ReviewBranchMain = { fg = "#89ca78" },
-        ReviewBranchHead = { fg = "#61afef" },
-        ReviewBranchActive = { fg = "#89ca78", bold = true },
-        ReviewBranchCurrent = { fg = "#c678dd" },
-        ReviewBranchCurrentRow = { bg = "#2c2033" },
-        ReviewBranchSeparator = { fg = "#3e4452" },
-        ReviewHeadLabel = { fg = "#e5c07b", bold = true },
+        ReviewBranchName = { fg = palette.text },
+        ReviewBranchMain = { fg = palette.positive },
+        ReviewBranchHead = { fg = palette.accent },
+        ReviewBranchActive = { fg = palette.positive, bold = true },
+        ReviewBranchCurrent = { fg = palette.special },
+        ReviewBranchCurrentRow = { bg = palette.tint },
+        ReviewBranchSeparator = { fg = palette.border },
+        ReviewHeadLabel = { fg = palette.highlight, bold = true },
     }
 
     for name, opts in pairs(highlights) do
