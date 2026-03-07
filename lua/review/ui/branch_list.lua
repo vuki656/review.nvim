@@ -474,6 +474,50 @@ local function setup_keymaps(bufnr)
         end)
     end, { nowait = true, desc = "Delete branch" })
 
+    map("n", function()
+        if not M.current then
+            return
+        end
+
+        local line = vim.api.nvim_win_get_cursor(0)[1]
+        local branch_index = line_to_branch_index(line)
+        if not branch_index then
+            return
+        end
+
+        local entry = M.current.branches[branch_index]
+        if not entry then
+            return
+        end
+
+        vim.ui.input({ prompt = "New branch from '" .. entry.name .. "': " }, function(new_branch_name)
+            if not new_branch_name or new_branch_name == "" then
+                return
+            end
+
+            git.has_dirty_worktree(function(is_dirty)
+                if is_dirty then
+                    vim.notify(
+                        "Cannot create branch: you have uncommitted changes. Stash or commit them first.",
+                        vim.log.levels.ERROR
+                    )
+                    return
+                end
+
+                git.create_branch(new_branch_name, entry.name, function(success, err)
+                    if success then
+                        if callbacks.on_checkout then
+                            callbacks.on_checkout({ name = new_branch_name, is_current = true, is_main = false })
+                        end
+                        M.fetch_and_render()
+                    else
+                        vim.notify("Branch creation failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+                    end
+                end)
+            end)
+        end)
+    end, { nowait = true, desc = "New branch from selected" })
+
     local panel_keymaps = require("review.ui.panel_keymaps")
     panel_keymaps.setup(bufnr, {
         tab_target = "get_commit_list",

@@ -988,6 +988,33 @@ function M.checkout(branch_name, callback)
     end)
 end
 
+---Create and checkout a new branch off a base branch asynchronously
+---@param branch_name string
+---@param base_branch string
+---@param callback fun(success: boolean, error: string|nil)
+function M.create_branch(branch_name, base_branch, callback)
+    local git_root = M.get_root()
+    if not git_root then
+        log.error("create_branch: no git root")
+        callback(false, "Not a git repository")
+        return
+    end
+
+    log.info("create_branch: creating", branch_name, "from", base_branch)
+    vim.system({ "git", "checkout", "-b", branch_name, base_branch }, { text = true, cwd = git_root }, function(result)
+        vim.schedule(function()
+            if result.code == 0 then
+                log.info("create_branch: success", branch_name)
+                callback(true, nil)
+            else
+                local err = vim.trim(result.stderr)
+                log.error("create_branch: failed:", err)
+                callback(false, err)
+            end
+        end)
+    end)
+end
+
 ---Delete a local branch asynchronously
 ---@param branch_name string
 ---@param callback fun(success: boolean, error: string|nil)
