@@ -33,6 +33,8 @@ M.current = nil
 ---@type SplitDiffState|nil
 M.split_state = nil
 
+M.transitioning = false
+
 ---Namespace for diff highlights
 local ns_diff = vim.api.nvim_create_namespace("review_diff")
 
@@ -1465,7 +1467,7 @@ function M.create(layout_component, file, callbacks)
 
         if not old_component or not new_component then
             state.state.diff_mode = "unified"
-            return M.create(layout_component, file, callbacks)
+            return M.create(layout.get_diff_view(), file, callbacks)
         end
 
         local old_lines, new_lines = render_split_diff(old_component.bufnr, new_component.bufnr, file)
@@ -1473,7 +1475,7 @@ function M.create(layout_component, file, callbacks)
         if not old_lines then
             state.state.diff_mode = "unified"
             layout.exit_split_mode()
-            return M.create(layout_component, file, callbacks)
+            return M.create(layout.get_diff_view(), file, callbacks)
         end
 
         M.split_state = {
@@ -1506,6 +1508,8 @@ function M.create(layout_component, file, callbacks)
 
     if layout.is_split_mode() then
         layout.exit_split_mode()
+        layout_component = layout.get_diff_view()
+        bufnr = layout_component.bufnr
     end
     M.split_state = nil
 
@@ -1575,7 +1579,9 @@ function M.toggle_diff_mode(callbacks)
         return
     end
 
+    M.transitioning = true
     M.create(diff_split, M.current.file, callbacks)
+    M.transitioning = false
 
     if source_line and M.current.render_lines then
         local target_lines = M.split_state and M.split_state.new_lines or M.current.render_lines

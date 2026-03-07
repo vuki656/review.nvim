@@ -1574,6 +1574,10 @@ local function setup_keymaps(bufnr, callbacks)
     vim.api.nvim_create_autocmd("BufEnter", {
         buffer = bufnr,
         callback = function()
+            local diff_view = require("review.ui.diff_view")
+            if diff_view.transitioning then
+                return
+            end
             sync_diff_to_cursor()
         end,
     })
