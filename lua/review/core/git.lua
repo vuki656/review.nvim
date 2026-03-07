@@ -772,6 +772,22 @@ function M.stage_all()
     return result.code == 0
 end
 
+function M.unstage_all()
+    local git_root = M.get_root()
+    if not git_root then
+        log.error("unstage_all: no git root")
+        return false
+    end
+
+    log.info("unstage_all")
+    local result = vim.system({ "git", "reset", "HEAD" }, { text = true, cwd = git_root }):wait()
+
+    if result.code ~= 0 then
+        log.error("unstage_all failed:", result.stderr)
+    end
+    return result.code == 0
+end
+
 ---Amend staged changes to the last commit (keep the same message)
 ---@param callback fun(success: boolean, error: string|nil)
 function M.amend_no_edit(callback)

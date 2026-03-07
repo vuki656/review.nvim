@@ -40,7 +40,7 @@ end
 M.current = nil
 
 ---@type "list"|"tree"
-M.view_mode = "list"
+M.view_mode = "tree"
 
 -- Active timers (for cleanup on destroy)
 local active_timers = {
@@ -601,6 +601,38 @@ local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
         end
     end
 
+    -- Add root `/` node
+    local root_total, root_staged = count_dir_files(tree)
+    local root_all_staged = root_total > 0 and root_staged == root_total
+    local root_checkbox_part = is_history_mode and "" or (root_all_staged and "󰄵 " or "󰄱 ")
+    local root_text = " " .. root_checkbox_part .. "/"
+    local root_offset = 1
+    local root_checkbox_start = not is_history_mode and root_offset or nil
+    local root_checkbox_end = not is_history_mode and (root_offset + #root_checkbox_part) or nil
+    table.insert(nodes, {
+        path = nil,
+        dir_path = nil,
+        text = root_text,
+        is_file = false,
+        is_separator = false,
+        is_directory = true,
+        is_root = true,
+        is_tree_view = true,
+        reviewed = root_all_staged,
+        dir_partially_staged = root_staged > 0 and not root_all_staged,
+        in_reviewed_section = false,
+        in_deleted_section = false,
+        git_status_hl = "ReviewTreeDirectory",
+        file_icon_hl = nil,
+        indent_ranges = {},
+        checkbox_start = root_checkbox_start,
+        checkbox_end = root_checkbox_end,
+        dir_icon_start = root_offset + #root_checkbox_part,
+        dir_icon_end = #root_text,
+        dirname_start = root_offset + #root_checkbox_part,
+        dirname_end = #root_text,
+    })
+
     -- Sort root level
     local root_dirs, root_files = {}, {}
     for k, v in pairs(tree) do
@@ -722,6 +754,18 @@ local function render_to_buffer(bufnr, nodes, winid)
             end
         elseif node.is_directory then
             -- Directory node (tree view)
+            -- Staging checkbox (root node)
+            if node.checkbox_start then
+                local checkbox_hl = node.reviewed and "ReviewFileReviewed" or "ReviewFilePending"
+                vim.api.nvim_buf_add_highlight(
+                    bufnr,
+                    -1,
+                    checkbox_hl,
+                    i - 1,
+                    node.checkbox_start,
+                    node.checkbox_end
+                )
+            end
             -- Indent markers
             if node.indent_ranges then
                 for _, range in ipairs(node.indent_ranges) do
@@ -1173,6 +1217,36 @@ local function setup_keymaps(bufnr, callbacks)
         refresh_and_sync()
     end
 
+    local function stage_all_files()
+        if not M.current or not M.current.files then
+            return
+        end
+
+        local all_staged = true
+        for _, file in ipairs(M.current.files) do
+            if not state.is_reviewed(file) then
+                all_staged = false
+                break
+            end
+        end
+
+        if all_staged then
+            if git.unstage_all() then
+                for _, file in ipairs(M.current.files) do
+                    state.set_reviewed(file, false)
+                end
+                refresh_and_sync()
+            end
+        else
+            if git.stage_all() then
+                for _, file in ipairs(M.current.files) do
+                    state.set_reviewed(file, true)
+                end
+                refresh_and_sync()
+            end
+        end
+    end
+
     -- Toggle stage with space
     local function toggle_stage()
         if state.is_history_mode() then
@@ -1186,7 +1260,9 @@ local function setup_keymaps(bufnr, callbacks)
             return
         end
 
-        if node.is_directory and node.dir_path then
+        if node.is_root then
+            stage_all_files()
+        elseif node.is_directory and node.dir_path then
             stage_directory(node.dir_path)
         elseif node.is_file then
             stage_single_file(node)
@@ -1598,15 +1674,28 @@ function M.create(layout_component, callbacks)
         render_to_buffer(bufnr, nodes, layout_component.winid)
         update_winbar(layout_component.winid, #files)
 
-        -- Position cursor on first file and load its diff
+        -- Position cursor on first navigable node (root `/` in tree view, first file in list view)
         if vim.api.nvim_win_is_valid(layout_component.winid) then
+            local cursor_set = false
             for node_index, node in ipairs(nodes) do
-                if node.is_file then
+                if node.is_root or node.is_file then
                     vim.api.nvim_win_set_cursor(layout_component.winid, { node_index, 0 })
-                    if callbacks.on_file_select then
+                    cursor_set = true
+                    if node.is_file and callbacks.on_file_select then
                         callbacks.on_file_select(node.path)
                     end
                     break
+                end
+            end
+            if not cursor_set then
+                for node_index, node in ipairs(nodes) do
+                    if node.is_file then
+                        vim.api.nvim_win_set_cursor(layout_component.winid, { node_index, 0 })
+                        if callbacks.on_file_select then
+                            callbacks.on_file_select(node.path)
+                        end
+                        break
+                    end
                 end
             end
         end
