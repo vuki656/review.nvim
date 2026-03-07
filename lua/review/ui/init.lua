@@ -91,6 +91,7 @@ function M.open()
                 M.show_diff(state.state.current_file)
             end
             commit_list.refresh()
+            branch_list.refresh()
         end,
     })
 
@@ -129,6 +130,7 @@ function M.open()
 
                 commit_list.refresh()
                 commit_list.set_selected({ is_head = true })
+                branch_list.refresh()
 
                 file_tree.refresh(function()
                     focus_first_file(true)
