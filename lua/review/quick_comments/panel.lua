@@ -53,11 +53,7 @@ function M.render()
     table.insert(lines, string.rep("─", panel_width))
     table.insert(highlights, { line = 1, col = 0, end_col = #lines[2], hl = "ReviewBorder" })
 
-    if count == 0 then
-        table.insert(lines, "")
-        table.insert(lines, "  No comments yet")
-        table.insert(lines, "")
-    else
+    if count > 0 then
         local comments_by_file = qc_state.get_all()
         local files = qc_state.get_files()
 
