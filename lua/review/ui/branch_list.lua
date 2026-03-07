@@ -31,13 +31,13 @@ local checkout_ns = vim.api.nvim_create_namespace("review_branch_checkout")
 
 local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 
----@type uv_timer_t|nil
+---@type uv.uv_timer_t|nil
 local pull_spinner_timer = nil
 
 ---@type number|nil
 local pull_line_index = nil
 
----@type uv_timer_t|nil
+---@type uv.uv_timer_t|nil
 local checkout_spinner_timer = nil
 
 ---@type number|nil

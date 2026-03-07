@@ -148,7 +148,6 @@ local function partition_files(file_list)
 end
 
 ---Create a sub-separator node for non-important files
----@param count number
 ---@return FileNode
 local function create_sub_separator_node()
     local label = "  Other"

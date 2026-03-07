@@ -1,0 +1,19 @@
+{
+    "diagnostics": {
+        "globals": ["vim", "MiniTest"],
+        "disable": [
+            "missing-fields",
+            "inject-field"
+        ]
+    },
+    "workspace": {
+        "library": [
+            "${3rd}/luv/library",
+            "$VIMRUNTIME/lua"
+        ],
+        "checkThirdParty": false
+    },
+    "runtime": {
+        "version": "LuaJIT"
+    }
+}

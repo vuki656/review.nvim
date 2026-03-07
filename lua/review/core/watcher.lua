@@ -1,9 +1,9 @@
 local M = {}
 
----@type uv_fs_event_t|nil
+---@type uv.uv_fs_event_t|nil
 local fs_event = nil
 
----@type uv_timer_t|nil
+---@type uv.uv_timer_t|nil
 local debounce_timer = nil
 
 ---Start watching a directory for file changes

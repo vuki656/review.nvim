@@ -33,7 +33,7 @@ function M.system(cmd, opts)
 end
 
 ---Run multiple async functions concurrently and wait for all to complete
----@param functions fun()[]
+---@param functions (fun(): any)[]
 ---@return any[] results (one per function, in order)
 function M.all(functions)
     local coroutine_handle = coroutine.running()

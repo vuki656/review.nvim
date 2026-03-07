@@ -472,7 +472,7 @@ function M.get_all_file_statuses(files, base, base_end)
         for _, file in ipairs(files) do
             result[file] = "modified"
         end
-        return result
+        return result, {}
     end
 
     local statuses = {}
