@@ -533,7 +533,7 @@ local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
             -- It's a directory
             local dir_path = parent_path and (parent_path .. "/" .. name) or name
             local is_collapsed = collapsed_dirs[dir_path] or false
-            local folder_icon = is_collapsed and "󰉖" or "󰉋"
+            local folder_icon = is_collapsed and "󰉋" or "󰝰"
             local dir_total, dir_staged = count_dir_files(entry)
             local dir_all_staged = dir_total > 0 and dir_staged == dir_total
             local left_pad = " "
