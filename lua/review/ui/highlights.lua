@@ -19,7 +19,7 @@ function M.setup()
         -- Diff view file path header
         ReviewDiffFilePath = { fg = "#abb2bf", bold = true },
         ReviewDiffFileHeaderBg = { bg = "#1e2940" },
-        ReviewDiffFileDivider = { fg = "#e5e5e5", bg = "#1e2940", bold = true },
+        ReviewDiffFileDivider = { fg = "#abb2bf", bg = "#1e2940", bold = true },
         ReviewDiffFileDividerBorderTop = { fg = "#4a90d9" },
         ReviewDiffFileDividerBorderBottom = { fg = "#4a90d9" },
 
@@ -46,13 +46,13 @@ function M.setup()
         ReviewFilePath = { fg = "#abb2bf" },
         ReviewFilePathFaded = { fg = "#5c6370" },
         ReviewFileFaded = { fg = "#4b5263" },
-        ReviewTreeDirectory = { fg = "#e5e5e5" },
+        ReviewTreeDirectory = { fg = "#abb2bf" },
         ReviewTreeIndent = { fg = "#3e4452" },
         ReviewLogo = { fg = "#61afef", bold = true },
 
         -- Comment input
-        ReviewInputBorder = { fg = "#e5e5e5" },
-        ReviewInputTitle = { fg = "#e5e5e5", bold = true },
+        ReviewInputBorder = { fg = "#abb2bf" },
+        ReviewInputTitle = { fg = "#abb2bf", bold = true },
         ReviewInputFooter = { fg = "#5c6370" },
 
         -- Comment input per-type colors (border + title)
@@ -75,16 +75,16 @@ function M.setup()
         ReviewBranchSpinner = { fg = "#d19a66", bg = "#000000" },
 
         -- Floating window borders
-        ReviewFloatBorder = { fg = "#e5e5e5" },
+        ReviewFloatBorder = { fg = "#abb2bf" },
         ReviewFloatBorderActive = { fg = "#89ca78" },
-        ReviewFloatTitle = { fg = "#e5e5e5", bold = true },
+        ReviewFloatTitle = { fg = "#abb2bf", bold = true },
         ReviewFloatTitleActive = { fg = "#89ca78", bold = true },
 
         -- UI elements
         ReviewWinSeparator = { fg = "#5c6370" },
         ReviewBorder = { fg = "#3e4452" },
         ReviewTitle = { fg = "#61afef", bold = true },
-        ReviewWinBar = { fg = "#848b98", bold = true, bg = "NONE" },
+        ReviewWinBar = { fg = "#abb2bf", bold = true, bg = "NONE" },
         ReviewWinBarCount = { fg = "#4b5263", bg = "NONE" },
         ReviewSelected = { bg = "#000000" },
         ReviewHelpGroup = { fg = "#abb2bf", bg = "#2c313a", bold = true },
