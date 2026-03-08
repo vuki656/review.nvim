@@ -23,6 +23,7 @@ local colors = {
     blue_bg = "#1e2940",
     purple_bg = "#2c2033",
     dark_bg = "#1e1e1e",
+    grey_subtle = "#333842",
 }
 
 local palette = {
@@ -50,6 +51,7 @@ local palette = {
     header = colors.blue_bg,
     tint = colors.purple_bg,
     padding = colors.dark_bg,
+    cursor_line = colors.grey_subtle,
 
     author1 = colors.blue,
     author2 = colors.purple,

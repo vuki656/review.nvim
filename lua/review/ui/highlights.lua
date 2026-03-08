@@ -102,6 +102,7 @@ function M.setup()
         ReviewTemplateTitle = { fg = palette.accent, bold = true },
 
         ReviewActiveRow = { bg = palette.surface },
+        ReviewDiffCursorLine = { bg = palette.cursor_line },
 
         ReviewCommitHash = { fg = palette.highlight },
         ReviewCommitAuthor = { fg = palette.accent },
