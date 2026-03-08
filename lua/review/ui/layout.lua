@@ -295,6 +295,45 @@ function M.create()
     return M.current
 end
 
+---Reposition diff windows (unified or split) to fill the given area
+---@param diff_pos table {row, col, width, height}
+local function reposition_diff_windows(diff_pos)
+    if M.is_split_mode() then
+        local half_width = math.floor(diff_pos.width / 2)
+        local old_component = M.current.diff_view_old
+        local new_component = M.current.diff_view_new
+        if old_component and vim.api.nvim_win_is_valid(old_component.winid) then
+            vim.api.nvim_win_set_config(old_component.winid, {
+                relative = "editor",
+                row = diff_pos.row,
+                col = diff_pos.col,
+                width = math.max(half_width, 1),
+                height = math.max(diff_pos.height, 1),
+            })
+        end
+        if new_component and vim.api.nvim_win_is_valid(new_component.winid) then
+            vim.api.nvim_win_set_config(new_component.winid, {
+                relative = "editor",
+                row = diff_pos.row,
+                col = diff_pos.col + half_width + 2,
+                width = math.max(diff_pos.width - half_width - 2, 1),
+                height = math.max(diff_pos.height, 1),
+            })
+        end
+    else
+        local diff_component = M.current.diff_view
+        if diff_component and vim.api.nvim_win_is_valid(diff_component.winid) then
+            vim.api.nvim_win_set_config(diff_component.winid, {
+                relative = "editor",
+                row = diff_pos.row,
+                col = diff_pos.col,
+                width = math.max(diff_pos.width, 1),
+                height = math.max(diff_pos.height, 1),
+            })
+        end
+    end
+end
+
 ---Reposition all layout windows after a resize
 function M.reposition()
     if not M.current then
@@ -323,42 +362,7 @@ function M.reposition()
         end
     end
 
-    if M.is_split_mode() then
-        local diff_pos = positions.diff_view
-        local half_width = math.floor(diff_pos.width / 2)
-        local old_component = M.current.diff_view_old
-        local new_component = M.current.diff_view_new
-        if old_component and vim.api.nvim_win_is_valid(old_component.winid) then
-            vim.api.nvim_win_set_config(old_component.winid, {
-                relative = "editor",
-                row = diff_pos.row,
-                col = diff_pos.col,
-                width = math.max(half_width, 1),
-                height = math.max(diff_pos.height, 1),
-            })
-        end
-        if new_component and vim.api.nvim_win_is_valid(new_component.winid) then
-            vim.api.nvim_win_set_config(new_component.winid, {
-                relative = "editor",
-                row = diff_pos.row,
-                col = diff_pos.col + half_width + 2,
-                width = math.max(diff_pos.width - half_width - 2, 1),
-                height = math.max(diff_pos.height, 1),
-            })
-        end
-    else
-        local diff_component = M.current.diff_view
-        if diff_component and vim.api.nvim_win_is_valid(diff_component.winid) then
-            local diff_pos = positions.diff_view
-            vim.api.nvim_win_set_config(diff_component.winid, {
-                relative = "editor",
-                row = diff_pos.row,
-                col = diff_pos.col,
-                width = math.max(diff_pos.width, 1),
-                height = math.max(diff_pos.height, 1),
-            })
-        end
-    end
+    reposition_diff_windows(positions.diff_view)
 end
 
 ---Check if a window belongs to the layout
@@ -399,9 +403,15 @@ function M.hide_file_tree()
         return
     end
 
-    local diff_win = M.current.diff_view.winid
-    if vim.api.nvim_win_is_valid(diff_win) then
-        vim.api.nvim_set_current_win(diff_win)
+    local focus_win = M.current.diff_view.winid
+    if M.is_split_mode() then
+        local new_component = M.current.diff_view_new
+        if new_component and vim.api.nvim_win_is_valid(new_component.winid) then
+            focus_win = new_component.winid
+        end
+    end
+    if vim.api.nvim_win_is_valid(focus_win) then
+        vim.api.nvim_set_current_win(focus_win)
     end
 
     for _, panel_def in ipairs(SIDEBAR_PANELS) do
@@ -413,16 +423,7 @@ function M.hide_file_tree()
     end
 
     local positions = calculate_positions(false)
-    local diff_pos = positions.diff_view
-    if vim.api.nvim_win_is_valid(diff_win) then
-        vim.api.nvim_win_set_config(diff_win, {
-            relative = "editor",
-            row = diff_pos.row,
-            col = diff_pos.col,
-            width = math.max(diff_pos.width, 1),
-            height = math.max(diff_pos.height, 1),
-        })
-    end
+    reposition_diff_windows(positions.diff_view)
 end
 
 ---Show the file tree panel (re-open the windows with existing buffers)
@@ -451,17 +452,7 @@ function M.show_file_tree()
         end
     end
 
-    local diff_pos = positions.diff_view
-    local diff_win = M.current.diff_view.winid
-    if vim.api.nvim_win_is_valid(diff_win) then
-        vim.api.nvim_win_set_config(diff_win, {
-            relative = "editor",
-            row = diff_pos.row,
-            col = diff_pos.col,
-            width = math.max(diff_pos.width, 1),
-            height = math.max(diff_pos.height, 1),
-        })
-    end
+    reposition_diff_windows(positions.diff_view)
 end
 
 ---Toggle the file tree panel visibility

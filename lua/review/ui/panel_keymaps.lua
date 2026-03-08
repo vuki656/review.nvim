@@ -68,7 +68,12 @@ function M.setup(bufnr, navigation, on_close, active_timers, map_function)
     vim.keymap.set("n", "<Right>", "<Nop>", { buffer = bufnr, nowait = true })
     vim.keymap.set("n", "<C-h>", "<Nop>", { buffer = bufnr, nowait = true })
     vim.keymap.set("n", "<C-l>", function()
-        navigate_to("get_diff_view")
+        local layout = require("review.ui.layout")
+        if layout.is_split_mode() then
+            navigate_to("get_diff_view_old")
+        else
+            navigate_to("get_diff_view")
+        end
     end, { buffer = bufnr, nowait = true })
     vim.keymap.set("n", "<C-j>", "<Nop>", { buffer = bufnr, nowait = true })
     vim.keymap.set("n", "<C-k>", "<Nop>", { buffer = bufnr, nowait = true })

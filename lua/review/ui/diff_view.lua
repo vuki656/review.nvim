@@ -1424,18 +1424,39 @@ local function setup_keymaps(bufnr, callbacks, old_bufnr)
             end,
         })
     end
-    for _, target_bufnr in ipairs(all_bufnrs) do
-        vim.keymap.set("n", "<C-h>", function()
-            local file_tree_component = layout.get_file_tree()
-            if
-                file_tree_component
-                and file_tree_component.winid
-                and vim.api.nvim_win_is_valid(file_tree_component.winid)
-            then
-                vim.api.nvim_set_current_win(file_tree_component.winid)
+    local function focus_file_tree()
+        local file_tree_component = layout.get_file_tree()
+        if
+            file_tree_component
+            and file_tree_component.winid
+            and vim.api.nvim_win_is_valid(file_tree_component.winid)
+        then
+            vim.api.nvim_set_current_win(file_tree_component.winid)
+        end
+    end
+
+    if old_bufnr then
+        vim.keymap.set("n", "<C-h>", focus_file_tree, { buffer = old_bufnr, nowait = true })
+        vim.keymap.set("n", "<C-l>", function()
+            local new_component = layout.get_diff_view_new()
+            if new_component and vim.api.nvim_win_is_valid(new_component.winid) then
+                vim.api.nvim_set_current_win(new_component.winid)
             end
-        end, { buffer = target_bufnr, nowait = true })
-        vim.keymap.set("n", "<C-l>", "<Nop>", { buffer = target_bufnr, nowait = true })
+        end, { buffer = old_bufnr, nowait = true })
+
+        vim.keymap.set("n", "<C-h>", function()
+            local old_component = layout.get_diff_view_old()
+            if old_component and vim.api.nvim_win_is_valid(old_component.winid) then
+                vim.api.nvim_set_current_win(old_component.winid)
+            end
+        end, { buffer = bufnr, nowait = true })
+        vim.keymap.set("n", "<C-l>", "<Nop>", { buffer = bufnr, nowait = true })
+    else
+        vim.keymap.set("n", "<C-h>", focus_file_tree, { buffer = bufnr, nowait = true })
+        vim.keymap.set("n", "<C-l>", "<Nop>", { buffer = bufnr, nowait = true })
+    end
+
+    for _, target_bufnr in ipairs(all_bufnrs) do
         vim.keymap.set("n", "<C-j>", "<Nop>", { buffer = target_bufnr, nowait = true })
         vim.keymap.set("n", "<C-k>", "<Nop>", { buffer = target_bufnr, nowait = true })
     end
