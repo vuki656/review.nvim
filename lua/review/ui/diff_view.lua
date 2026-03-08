@@ -41,6 +41,10 @@ local ns_diff = vim.api.nvim_create_namespace("review_diff")
 ---Namespace for comment markers
 local ns_comments = vim.api.nvim_create_namespace("review_comments")
 
+---Tracks which 0-indexed line currently has focus for comment border highlighting
+---@type number|nil
+local focused_comment_line = nil
+
 ---Namespace for treesitter syntax highlights
 local ns_syntax = vim.api.nvim_create_namespace("review_syntax")
 
@@ -883,18 +887,21 @@ local function render_comments(bufnr, file)
                 box_width = math.min(box_width, max_box_width)
             end
 
+            local is_focused = comment.line - 1 == focused_comment_line
+            local border_hl = is_focused and type_info.border_focus_hl or "ReviewCommentBorder"
+
             local header_padding = string.rep(" ", math.max(0, box_width - header_width))
 
             local virt_lines = {
                 {
-                    { "  ╭", "ReviewCommentBorder" },
-                    { string.rep("─", box_width), "ReviewCommentBorder" },
-                    { "╮", "ReviewCommentBorder" },
+                    { "  ╭", border_hl },
+                    { string.rep("─", box_width), border_hl },
+                    { "╮", border_hl },
                 },
                 {
-                    { "  │", "ReviewCommentBorder" },
+                    { "  │", border_hl },
                     { header .. header_padding, type_info.highlight },
-                    { "│", "ReviewCommentBorder" },
+                    { "│", border_hl },
                 },
             }
 
@@ -904,17 +911,17 @@ local function render_comments(bufnr, file)
                 local text_width = vim.api.nvim_strwidth(text_content)
                 local text_padding = string.rep(" ", math.max(0, box_width - text_width))
                 table.insert(virt_lines, {
-                    { "  │", "ReviewCommentBorder" },
+                    { "  │", border_hl },
                     { text_content .. text_padding, "ReviewCommentText" },
-                    { "│", "ReviewCommentBorder" },
+                    { "│", border_hl },
                 })
             end
 
             -- Bottom border
             table.insert(virt_lines, {
-                { "  ╰", "ReviewCommentBorder" },
-                { string.rep("─", box_width), "ReviewCommentBorder" },
-                { "╯", "ReviewCommentBorder" },
+                { "  ╰", border_hl },
+                { string.rep("─", box_width), border_hl },
+                { "╯", border_hl },
             })
 
             pcall(function()
@@ -1459,6 +1466,45 @@ local function apply_diff_view_win_options(winid, _bufnr)
     vim.wo[winid].linebreak = wrap
 end
 
+---Build a set of 0-indexed lines that have comments for a file
+---@param file string
+---@return table<number, boolean>
+local function get_commented_lines(file)
+    local commented = {}
+    local comments = state.get_comments_for_file(file)
+    for _, comment in ipairs(comments) do
+        commented[comment.line - 1] = true
+    end
+    return commented
+end
+
+---Set up CursorMoved autocommand to highlight focused comment borders
+---@param bufnrs number[] buffers to attach to
+---@param comment_bufnr number buffer where comments are rendered
+---@param file string
+local function setup_comment_focus_autocmd(bufnrs, comment_bufnr, file)
+    for _, target_bufnr in ipairs(bufnrs) do
+        vim.api.nvim_create_autocmd("CursorMoved", {
+            buffer = target_bufnr,
+            callback = function()
+                if not vim.api.nvim_buf_is_valid(comment_bufnr) then
+                    return true
+                end
+
+                local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
+                local zero_indexed = cursor_line - 1
+                local commented = get_commented_lines(file)
+                local new_focus = commented[zero_indexed] and zero_indexed or nil
+
+                if new_focus ~= focused_comment_line then
+                    focused_comment_line = new_focus
+                    render_comments(comment_bufnr, file)
+                end
+            end,
+        })
+    end
+end
+
 ---Create the diff view component
 ---@param layout_component table { bufnr: number, winid: number }
 ---@param file string
@@ -1503,9 +1549,15 @@ function M.create(layout_component, file, callbacks)
             ns_id = ns_diff,
         }
 
+        focused_comment_line = nil
         render_comments(new_component.bufnr, file)
 
         setup_keymaps(new_component.bufnr, callbacks, old_component.bufnr)
+        setup_comment_focus_autocmd(
+            { old_component.bufnr, new_component.bufnr },
+            new_component.bufnr,
+            file
+        )
 
         pcall(vim.api.nvim_buf_set_name, old_component.bufnr, "Review (old): " .. file)
         pcall(vim.api.nvim_buf_set_name, new_component.bufnr, "Review (new): " .. file)
@@ -1533,8 +1585,11 @@ function M.create(layout_component, file, callbacks)
     }
 
     setup_keymaps(bufnr, callbacks)
+    setup_comment_focus_autocmd({ bufnr }, bufnr, file)
     pcall(vim.api.nvim_buf_set_name, bufnr, "Review: " .. file)
     apply_diff_view_win_options(layout_component.winid, bufnr)
+
+    focused_comment_line = nil
 
     -- Bump generation and start async two-stage rendering
     diff_generation = diff_generation + 1
