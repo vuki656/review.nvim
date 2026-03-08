@@ -439,6 +439,33 @@ local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
         end
     end
 
+    -- Compact single-child directory chains (e.g., src/components/ui → one node)
+    local function compact_tree(node)
+        local compacted = {}
+        for key, value in pairs(node) do
+            if value.__file then
+                compacted[key] = value
+            else
+                -- Recursively compact children first
+                local child = compact_tree(value)
+                -- Count non-__file keys in child
+                local child_keys = {}
+                for child_key, _ in pairs(child) do
+                    table.insert(child_keys, child_key)
+                end
+                -- If child has exactly one entry and it's a directory (not a file), merge
+                if #child_keys == 1 and not child[child_keys[1]].__file then
+                    local merged_name = key .. "/" .. child_keys[1]
+                    compacted[merged_name] = child[child_keys[1]]
+                else
+                    compacted[key] = child
+                end
+            end
+        end
+        return compacted
+    end
+    tree = compact_tree(tree)
+
     local function count_dir_files(entry)
         local total = 0
         local staged = 0
