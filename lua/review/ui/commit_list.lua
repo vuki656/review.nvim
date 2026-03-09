@@ -55,20 +55,24 @@ local row_hl_ns = vim.api.nvim_create_namespace("review_commit_row_hl")
 
 local AUTHOR_COLOR_COUNT = 6
 
----Deterministic color index for an author name (1-based)
----@param author string|nil
----@return number
-local function author_color_index(author)
-    if not author or author == "" then
-        return 1
+---Build a mapping from author name to color index (1-based), assigning
+---sequential colors in the order authors first appear. This guarantees
+---different authors get different colors (up to AUTHOR_COLOR_COUNT).
+---@param commits CommitEntry[]
+---@return table<string, number>
+local function build_author_color_map(commits)
+    local color_map = {}
+    local next_index = 1
+
+    for _, entry in ipairs(commits) do
+        local author = entry.author
+        if author and author ~= "" and not color_map[author] then
+            color_map[author] = ((next_index - 1) % AUTHOR_COLOR_COUNT) + 1
+            next_index = next_index + 1
+        end
     end
 
-    local hash = 0
-    for char_index = 1, #author do
-        hash = (hash * 31 + string.byte(author, char_index)) % 2147483647
-    end
-
-    return (hash % AUTHOR_COLOR_COUNT) + 1
+    return color_map
 end
 
 ---Build the list of commit entries (HEAD + recent commits)
@@ -140,6 +144,7 @@ local function render(bufnr, commits, selected_index, _winid)
     local lines = {}
     local highlight_ranges = {}
     local date_entries = {}
+    local author_color_map = build_author_color_map(commits)
 
     local render_index = 0
     for index, entry in ipairs(commits) do
@@ -230,7 +235,7 @@ local function render(bufnr, commits, selected_index, _winid)
         vim.api.nvim_buf_add_highlight(bufnr, -1, hash_hl, range.line_index, range.hash[1], range.hash[2])
 
         if range.initials then
-            local author_hl = "ReviewCommitAuthor" .. author_color_index(range.author)
+            local author_hl = "ReviewCommitAuthor" .. (author_color_map[range.author] or 1)
             vim.api.nvim_buf_add_highlight(
                 bufnr,
                 -1,
