@@ -45,6 +45,9 @@ local ns_comments = vim.api.nvim_create_namespace("review_comments")
 ---@type number|nil
 local focused_comment_line = nil
 
+---Augroup for comment focus CursorMoved autocmds (cleared on each file switch)
+local comment_focus_augroup = vim.api.nvim_create_augroup("review_comment_focus", { clear = false })
+
 ---Namespace for treesitter syntax highlights
 local ns_syntax = vim.api.nvim_create_namespace("review_syntax")
 
@@ -1507,8 +1510,10 @@ end
 ---@param comment_bufnr number buffer where comments are rendered
 ---@param file string
 local function setup_comment_focus_autocmd(bufnrs, comment_bufnr, file)
+    vim.api.nvim_clear_autocmds({ group = comment_focus_augroup })
     for _, target_bufnr in ipairs(bufnrs) do
         vim.api.nvim_create_autocmd("CursorMoved", {
+            group = comment_focus_augroup,
             buffer = target_bufnr,
             callback = function()
                 if not vim.api.nvim_buf_is_valid(comment_bufnr) then
