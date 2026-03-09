@@ -90,6 +90,8 @@ function M.push(force)
             commit_list.refresh()
             local file_tree = require("review.ui.file_tree")
             file_tree.update_footer()
+            local branch_list = require("review.ui.branch_list")
+            branch_list.refresh()
         elseif not force and err and is_push_rejected(err) then
             ui_util.confirm("Push rejected (diverged). Force push with --force-with-lease?", function()
                 M.push(true)
