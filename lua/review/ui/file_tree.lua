@@ -1641,8 +1641,8 @@ function M.create(layout_component, callbacks)
     -- Disable spell check on file tree
     vim.wo[layout_component.winid].spell = false
 
-    -- Show loading state
-    update_winbar(layout_component.winid, 0, true)
+    -- Show initial state (no refreshing indicator — nothing is stale yet)
+    update_winbar(layout_component.winid, 0)
 
     generation = generation + 1
     local current_generation = generation
