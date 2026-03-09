@@ -580,7 +580,7 @@ local function setup_keymaps(bufnr)
         if callbacks.on_close then
             callbacks.on_close()
         end
-    end, active_timers, map)
+    end, active_timers, map, callbacks.on_escape)
 end
 
 ---Create the comment list component

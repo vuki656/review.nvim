@@ -1461,6 +1461,9 @@ local function setup_keymaps(bufnr, callbacks, old_bufnr)
         vim.keymap.set("n", "<C-k>", "<Nop>", { buffer = target_bufnr, nowait = true })
     end
     map("<Esc>", function()
+        if callbacks.on_escape then
+            callbacks.on_escape()
+        end
         local file_tree_component = layout.get_file_tree()
         if
             file_tree_component

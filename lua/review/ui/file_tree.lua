@@ -1419,7 +1419,7 @@ local function setup_keymaps(bufnr, callbacks)
         l_target = "get_branch_list",
         scroll_keys = { down = "J", up = "K" },
         keymap_group = "Navigation",
-    }, close_review, active_timers, map)
+    }, close_review, active_timers, map, callbacks.on_escape)
 
     -- Toggle stage with space
     map("<Space>", toggle_stage, { nowait = true, desc = "Toggle stage", group = "Review" })

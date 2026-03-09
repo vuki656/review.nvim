@@ -85,6 +85,9 @@ function M.open()
         on_close = function(send_comments)
             M.close(send_comments)
         end,
+        on_escape = function()
+            M.reset_to_head()
+        end,
         on_refresh = function()
             -- Refresh diff view if a file is selected
             if state.state.current_file then
@@ -106,6 +109,9 @@ function M.open()
         on_close = function()
             M.close()
         end,
+        on_escape = function()
+            M.reset_to_head()
+        end,
     })
 
     -- Initialize commit list
@@ -115,6 +121,9 @@ function M.open()
         end,
         on_commit_preview = function(entry)
             M.preview_commit(entry)
+        end,
+        on_escape = function()
+            M.reset_to_head()
         end,
         on_uncommit = function(entry)
             git.soft_reset_head(function(success, err)
@@ -159,6 +168,9 @@ function M.open()
         end,
         on_close = function()
             M.close()
+        end,
+        on_escape = function()
+            M.reset_to_head()
         end,
     })
 
@@ -261,6 +273,9 @@ function M.show_diff(path)
     diff_view.create(diff_split, path, {
         on_close = function(send_comments)
             M.close(send_comments)
+        end,
+        on_escape = function()
+            M.reset_to_head()
         end,
     })
 end
@@ -425,6 +440,23 @@ function M.select_branch(entry)
     end)
     branch_list.set_selected(entry)
     commit_list.refresh()
+end
+
+---Reset comparison back to HEAD (undo branch/commit selection)
+function M.reset_to_head()
+    if not state.is_history_mode() then
+        return
+    end
+
+    state.state.base = "HEAD"
+    state.state.base_end = nil
+
+    file_tree.refresh(function()
+        focus_first_file(true)
+    end)
+    branch_list.refresh()
+    commit_list.refresh()
+    commit_list.set_selected({ is_head = true })
 end
 
 ---Preview a commit's diff without updating state or file tree

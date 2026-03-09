@@ -23,7 +23,8 @@ end
 ---@param on_close function
 ---@param active_timers table
 ---@param map_function fun(lhs: string, rhs: string|function, opts: table, extra_bufnrs?: number[])
-function M.setup(bufnr, navigation, on_close, active_timers, map_function)
+---@param on_escape? function Called when Esc is pressed
+function M.setup(bufnr, navigation, on_close, active_timers, map_function, on_escape)
     local scroll_util = require("review.ui.util")
 
     local scroll_down = navigation.scroll_keys and navigation.scroll_keys.down or "<C-d>"
@@ -39,6 +40,10 @@ function M.setup(bufnr, navigation, on_close, active_timers, map_function)
     end, { nowait = true, desc = "Scroll diff up", group = group })
 
     map_function("q", on_close, { nowait = true, desc = "Close review", group = group })
+
+    if on_escape then
+        map_function("<Esc>", on_escape, { nowait = true, desc = "Reset to HEAD", group = group })
+    end
 
     map_function("P", function()
         require("review.ui.push").push()
