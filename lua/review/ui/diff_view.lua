@@ -1579,6 +1579,12 @@ function M.create(layout_component, file, callbacks)
         }
 
         focused_comment_line = nil
+
+        if not M.transitioning then
+            pcall(vim.api.nvim_win_set_cursor, old_component.winid, { 1, 0 })
+            pcall(vim.api.nvim_win_set_cursor, new_component.winid, { 1, 0 })
+        end
+
         render_comments(new_component.bufnr, file)
 
         setup_keymaps(new_component.bufnr, callbacks, old_component.bufnr)
@@ -1637,6 +1643,10 @@ function M.create(layout_component, file, callbacks)
 
         if M.current and M.current.bufnr == bufnr then
             M.current.render_lines = render_lines
+        end
+
+        if not M.transitioning and M.current and vim.api.nvim_win_is_valid(M.current.winid) then
+            vim.api.nvim_win_set_cursor(M.current.winid, { 1, 0 })
         end
 
         render_comments(bufnr, file)
