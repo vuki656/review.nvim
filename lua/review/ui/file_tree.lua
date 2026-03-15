@@ -1200,16 +1200,94 @@ local function setup_keymaps(bufnr, callbacks)
         end)
     end
 
+    local function find_node_line(match_fn)
+        if not M.current or not M.current.nodes then
+            return nil
+        end
+        for index, node in ipairs(M.current.nodes) do
+            if match_fn(node) then
+                return index
+            end
+        end
+        return nil
+    end
+
+    local function find_nearest_line_matching(from_line, predicate)
+        if not M.current or not M.current.nodes then
+            return nil
+        end
+        local total = #M.current.nodes
+        for offset = 0, total do
+            local forward = from_line + offset
+            if forward >= 1 and forward <= total then
+                local node = M.current.nodes[forward]
+                if predicate(node) then
+                    return forward
+                end
+            end
+            if offset > 0 then
+                local backward = from_line - offset
+                if backward >= 1 and backward <= total then
+                    local node = M.current.nodes[backward]
+                    if predicate(node) then
+                        return backward
+                    end
+                end
+            end
+        end
+        return nil
+    end
+
+    local function find_nearest_navigable_line(from_line)
+        return find_nearest_line_matching(from_line, function(node)
+            return node and not node.is_separator
+        end)
+    end
+
+    local function refresh_and_restore_cursor(match_fn, fallback_line, nearest_predicate)
+        M.refresh(function()
+            if callbacks.on_refresh then
+                callbacks.on_refresh()
+            end
+            local target_line = find_node_line(match_fn)
+            if not target_line and nearest_predicate then
+                target_line = find_nearest_line_matching(fallback_line, nearest_predicate)
+            end
+            if not target_line then
+                target_line = find_nearest_navigable_line(fallback_line)
+            end
+            if target_line and M.current and M.current.winid and vim.api.nvim_win_is_valid(M.current.winid) then
+                vim.api.nvim_win_set_cursor(M.current.winid, { target_line, 0 })
+            end
+            sync_diff_to_cursor()
+        end)
+    end
+
     local function stage_single_file(node)
+        local target_path = node.path
+        local current_line = vim.api.nvim_win_get_cursor(M.current.winid)[1]
         if node.reviewed then
             if git.unstage_file(node.path) then
                 state.set_reviewed(node.path, false)
-                refresh_and_sync()
+                refresh_and_restore_cursor(function(refreshed_node)
+                    return refreshed_node.is_file and refreshed_node.path == target_path
+                end, current_line)
             end
         else
             if git.stage_file(node.path) then
                 state.set_reviewed(node.path, true)
-                refresh_and_sync()
+                if M.view_mode == "list" then
+                    local function is_unstaged_file(refreshed_node)
+                        return refreshed_node and refreshed_node.is_file
+                            and not refreshed_node.reviewed
+                            and not refreshed_node.in_reviewed_section
+                    end
+                    refresh_and_restore_cursor(nil, current_line, is_unstaged_file)
+                else
+                    refresh_and_restore_cursor(function(refreshed_node)
+                        return refreshed_node.is_file and refreshed_node.path == target_path
+                    end, current_line)
+                end
             end
         end
     end
@@ -1219,6 +1297,8 @@ local function setup_keymaps(bufnr, callbacks)
         if #child_files == 0 then
             return
         end
+
+        local current_line = vim.api.nvim_win_get_cursor(M.current.winid)[1]
 
         local all_staged = true
         for _, file_node in ipairs(child_files) do
@@ -1241,13 +1321,17 @@ local function setup_keymaps(bufnr, callbacks)
             end
         end
 
-        refresh_and_sync()
+        refresh_and_restore_cursor(function(refreshed_node)
+            return refreshed_node.is_directory and refreshed_node.dir_path == dir_path
+        end, current_line)
     end
 
     local function stage_all_files()
         if not M.current or not M.current.files then
             return
         end
+
+        local current_line = vim.api.nvim_win_get_cursor(M.current.winid)[1]
 
         local all_staged = true
         for _, file in ipairs(M.current.files) do
@@ -1262,14 +1346,18 @@ local function setup_keymaps(bufnr, callbacks)
                 for _, file in ipairs(M.current.files) do
                     state.set_reviewed(file, false)
                 end
-                refresh_and_sync()
+                refresh_and_restore_cursor(function(refreshed_node)
+                    return refreshed_node.is_root
+                end, current_line)
             end
         else
             if git.stage_all() then
                 for _, file in ipairs(M.current.files) do
                     state.set_reviewed(file, true)
                 end
-                refresh_and_sync()
+                refresh_and_restore_cursor(function(refreshed_node)
+                    return refreshed_node.is_root
+                end, current_line)
             end
         end
     end
