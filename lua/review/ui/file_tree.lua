@@ -1201,7 +1201,7 @@ local function setup_keymaps(bufnr, callbacks)
     end
 
     local function find_node_line(match_fn)
-        if not M.current or not M.current.nodes then
+        if not match_fn or not M.current or not M.current.nodes then
             return nil
         end
         for index, node in ipairs(M.current.nodes) do
