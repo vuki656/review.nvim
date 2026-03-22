@@ -171,6 +171,12 @@ local function apply_highlights_from_source(
         end
         local snippet = table.concat(snippet_lines, "\n")
 
+        local php_offset = 0
+        if lang == "php" and not snippet:match("<%?php") then
+            snippet = "<?php\n" .. snippet
+            php_offset = -1
+        end
+
         local ok_parser, parser = pcall(vim.treesitter.get_string_parser, snippet, lang)
         if not ok_parser then
             return
@@ -181,7 +187,7 @@ local function apply_highlights_from_source(
             return
         end
 
-        local range_offset = range.start - 1
+        local range_offset = range.start - 1 + php_offset
 
         for _, tree in ipairs(trees) do
             for capture_id, node in query:iter_captures(tree:root(), snippet) do
