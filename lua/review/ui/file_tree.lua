@@ -1665,7 +1665,7 @@ local function setup_keymaps(bufnr, callbacks)
     end, { desc = "Open file at first change", group = "Navigation" })
 
     -- Revert file changes
-    map("D", function()
+    map("d", function()
         local line = vim.api.nvim_win_get_cursor(0)[1]
         local node = M.get_node_at_line(line)
 
