@@ -9,6 +9,7 @@ local highlights = require("review.ui.highlights")
 local layout = require("review.ui.layout")
 local persistence = require("review.core.persistence")
 local state = require("review.state")
+local ui_util = require("review.ui.util")
 local watcher = require("review.core.watcher")
 
 local M = {}
@@ -340,28 +341,21 @@ local function show_exit_popup()
     local all_comments = state.get_all_comments()
     local has_comments = #all_comments > 0
 
-    local items = {
-        { label = "Exit, Copy & Send to tmux", action = "copy_and_send" },
-        { label = "Exit & Copy", action = "copy" },
-        { label = "Exit", action = "exit" },
-    }
+    local actions = { "copy_and_send", "copy", "exit" }
+    local labels = { "Exit, Copy & Send to tmux", "Exit & Copy", "Exit" }
 
-    -- Add comment count hint
-    local prompt = "Close review"
+    local title = "Close review"
     if has_comments then
-        prompt = prompt .. string.format(" (%d comment%s)", #all_comments, #all_comments == 1 and "" or "s")
+        title = title .. string.format(" (%d comment%s)", #all_comments, #all_comments == 1 and "" or "s")
     end
 
-    vim.ui.select(items, {
-        prompt = prompt,
-        format_item = function(item)
-            return item.label
+    ui_util.select({
+        title = title,
+        items = labels,
+        on_select = function(index)
+            do_close(actions[index])
         end,
-    }, function(choice)
-        if choice then
-            do_close(choice.action)
-        end
-    end)
+    })
 end
 
 ---Close the review UI
@@ -503,39 +497,35 @@ function M.pick_commit(count)
     end
 
     -- Add HEAD option at the top
-    local items = {
-        { display = "HEAD (working changes)", hash = "HEAD" },
-    }
+    local hashes = { "HEAD" }
+    local labels = { "HEAD (working changes)" }
 
     for _, commit in ipairs(commits) do
-        table.insert(items, {
-            display = string.format("%s %s (%s)", commit.short_hash, commit.subject, commit.date),
-            hash = commit.hash,
-        })
+        table.insert(hashes, commit.hash)
+        table.insert(labels, string.format("%s %s (%s)", commit.short_hash, commit.subject, commit.date))
     end
 
-    vim.ui.select(items, {
-        prompt = "Select base commit to diff against:",
-        format_item = function(item)
-            return item.display
-        end,
-    }, function(choice)
-        if choice then
-            -- Close existing review if open
+    ui_util.select({
+        title = "Select base commit",
+        prompt = "Diff against:",
+        items = labels,
+        on_select = function(index)
+            local hash = hashes[index]
+
             if state.state.is_open then
                 M.close(false)
             end
-            -- Set base and open
-            if choice.hash == "HEAD" then
+
+            if hash == "HEAD" then
                 state.state.base = "HEAD"
                 state.state.base_end = nil
             else
-                state.state.base = choice.hash .. "~1"
-                state.state.base_end = choice.hash
+                state.state.base = hash .. "~1"
+                state.state.base_end = hash
             end
             M.open()
-        end
-    end)
+        end,
+    })
 end
 
 return M

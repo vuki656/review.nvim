@@ -421,7 +421,7 @@ local function setup_keymaps(bufnr)
             return
         end
 
-        ui_util.confirm("Uncommit '" .. entry.subject .. "'?", function()
+        ui_util.confirm("Uncommit?", function()
             if callbacks.on_uncommit then
                 callbacks.on_uncommit(entry)
             end

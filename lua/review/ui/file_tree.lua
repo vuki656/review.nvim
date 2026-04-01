@@ -1551,7 +1551,7 @@ local function setup_keymaps(bufnr, callbacks)
         local has_staged = next(staged_files) ~= nil
 
         if not has_staged then
-            ui_util.confirm("Nothing staged. Stage all and amend?", function()
+            ui_util.confirm("Stage all and amend?", function()
                 log.info("amend_flow: nothing staged, staging all changes")
                 if not git.stage_all() then
                     log.error("amend_flow: stage_all failed")
@@ -1698,7 +1698,7 @@ local function setup_keymaps(bufnr, callbacks)
             return
         end
 
-        ui_util.confirm("Revert all changes to " .. node.path .. "?", function()
+        ui_util.confirm("Revert changes?", function()
             if git.restore_file(node.path) then
                 state.set_reviewed(node.path, false)
                 refresh_and_sync()

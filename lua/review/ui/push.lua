@@ -93,7 +93,7 @@ function M.push(force)
             local branch_list = require("review.ui.branch_list")
             branch_list.refresh()
         elseif not force and err and is_push_rejected(err) then
-            ui_util.confirm("Push rejected (diverged). Force push with --force-with-lease?", function()
+            ui_util.confirm("Force push?", function()
                 M.push(true)
             end)
         else

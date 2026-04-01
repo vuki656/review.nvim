@@ -101,6 +101,9 @@ function M.setup()
         ReviewTemplateBorder = { fg = palette.muted },
         ReviewTemplateTitle = { fg = palette.accent, bold = true },
 
+        ReviewSelectItem = { fg = palette.accent, bold = true },
+        ReviewSelectHint = { fg = palette.muted },
+
         ReviewActiveRow = { bg = palette.surface },
         ReviewDiffCursorLine = { bg = palette.cursor_line },
 

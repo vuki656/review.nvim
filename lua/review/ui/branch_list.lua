@@ -463,7 +463,7 @@ local function setup_keymaps(bufnr)
             return
         end
 
-        ui_util.confirm("Delete branch '" .. entry.name .. "'?", function()
+        ui_util.confirm("Delete branch?", function()
             git.delete_branch(entry.name, function(success, err)
                 if success then
                     M.fetch_and_render()

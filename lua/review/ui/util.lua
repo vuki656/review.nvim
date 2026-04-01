@@ -153,20 +153,193 @@ function M.create_buffer_mapper(bufnr, registered_keymaps)
     end
 end
 
+---Custom floating select dialog that sizes to content
+---@param opts { title?: string, prompt?: string, items: string[], on_select: fun(index: number, item: string) }
+function M.select(opts)
+    local items = opts.items
+    local padding = 4
+    local hint_text = "<CR> select  <Esc> cancel"
+
+    local max_item_width = 0
+    for _, item in ipairs(items) do
+        max_item_width = math.max(max_item_width, #item)
+    end
+
+    local content_width = max_item_width + padding + 2
+    if opts.prompt then
+        content_width = math.max(content_width, #opts.prompt + padding)
+    end
+    if opts.title then
+        content_width = math.max(content_width, #opts.title + padding)
+    end
+    content_width = math.max(content_width, #hint_text + padding)
+
+    local max_width = math.floor(vim.o.columns * 0.8)
+    content_width = math.min(content_width, max_width)
+
+    local lines = {}
+    local namespace = vim.api.nvim_create_namespace("review_select")
+
+    table.insert(lines, "")
+
+    if opts.prompt then
+        table.insert(lines, "  " .. opts.prompt)
+        table.insert(lines, "")
+    end
+
+    local item_start_line = #lines
+    for index, item in ipairs(items) do
+        local prefix = index == 1 and "  > " or "    "
+        table.insert(lines, prefix .. item)
+    end
+
+    table.insert(lines, "")
+    table.insert(lines, "  " .. hint_text)
+    table.insert(lines, "")
+
+    local bufnr = vim.api.nvim_create_buf(false, true)
+    vim.bo[bufnr].buftype = "nofile"
+    vim.bo[bufnr].bufhidden = "wipe"
+
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+    vim.bo[bufnr].modifiable = false
+
+    local height = #lines
+    local row = math.floor((vim.o.lines - height) / 2) - 1
+    local col = math.floor((vim.o.columns - content_width) / 2)
+
+    local win_opts = {
+        relative = "editor",
+        row = row,
+        col = col,
+        width = content_width,
+        height = height,
+        style = "minimal",
+        border = "rounded",
+        focusable = true,
+    }
+
+    if opts.title then
+        win_opts.title = " " .. opts.title .. " "
+        win_opts.title_pos = "center"
+    end
+
+    local winid = vim.api.nvim_open_win(bufnr, true, win_opts)
+
+    vim.api.nvim_set_option_value(
+        "winhighlight",
+        "FloatBorder:ReviewFloatBorder,FloatTitle:ReviewFloatTitle,Normal:Normal",
+        { win = winid }
+    )
+    vim.wo[winid].cursorline = false
+
+    local saved_guicursor = vim.o.guicursor
+    vim.o.guicursor = "a:Cursor/lCursor-blinkwait0-blinkon0-blinkoff0"
+    vim.api.nvim_set_hl(0, "Cursor", { blend = 100 })
+    vim.schedule(function()
+        vim.cmd("redraw")
+    end)
+
+    local hint_line = #lines - 2
+    vim.api.nvim_buf_add_highlight(bufnr, namespace, "ReviewSelectHint", hint_line, 0, -1)
+
+    local selected = 1
+
+    local function render_items()
+        vim.bo[bufnr].modifiable = true
+        for index, item in ipairs(items) do
+            local line_index = item_start_line + index - 1
+            local prefix = index == selected and "  > " or "    "
+            vim.api.nvim_buf_set_lines(bufnr, line_index, line_index + 1, false, { prefix .. item })
+        end
+        vim.bo[bufnr].modifiable = false
+
+        vim.api.nvim_buf_clear_namespace(bufnr, namespace, item_start_line, item_start_line + #items)
+        local selected_line = item_start_line + selected - 1
+        vim.api.nvim_buf_add_highlight(bufnr, namespace, "ReviewSelectItem", selected_line, 0, -1)
+    end
+
+    render_items()
+
+    local closed = false
+
+    local function close_dialog()
+        if closed then
+            return
+        end
+        closed = true
+        vim.o.guicursor = saved_guicursor
+        vim.api.nvim_set_hl(0, "Cursor", { blend = 0 })
+        vim.cmd("redraw")
+        if vim.api.nvim_win_is_valid(winid) then
+            vim.api.nvim_win_close(winid, true)
+        end
+    end
+
+    local function select_item()
+        local index = selected
+        local item = items[index]
+        close_dialog()
+        vim.schedule(function()
+            opts.on_select(index, item)
+        end)
+    end
+
+    local keymap_opts = { buffer = bufnr, nowait = true, silent = true }
+
+    vim.keymap.set("n", "j", function()
+        if selected < #items then
+            selected = selected + 1
+            render_items()
+        end
+    end, keymap_opts)
+
+    vim.keymap.set("n", "<Down>", function()
+        if selected < #items then
+            selected = selected + 1
+            render_items()
+        end
+    end, keymap_opts)
+
+    vim.keymap.set("n", "k", function()
+        if selected > 1 then
+            selected = selected - 1
+            render_items()
+        end
+    end, keymap_opts)
+
+    vim.keymap.set("n", "<Up>", function()
+        if selected > 1 then
+            selected = selected - 1
+            render_items()
+        end
+    end, keymap_opts)
+
+    vim.keymap.set("n", "<CR>", select_item, keymap_opts)
+    vim.keymap.set("n", "<Esc>", close_dialog, keymap_opts)
+    vim.keymap.set("n", "q", close_dialog, keymap_opts)
+
+    vim.api.nvim_create_autocmd("BufLeave", {
+        buffer = bufnr,
+        once = true,
+        callback = close_dialog,
+    })
+end
+
 ---Show a Yes/No confirmation popup and invoke callback on "Yes"
 ---@param prompt string
 ---@param on_confirm function
 function M.confirm(prompt, on_confirm)
-    vim.ui.select({ { label = "Yes" }, { label = "No" } }, {
+    M.select({
+        title = "Confirm",
         prompt = prompt,
-        format_item = function(item)
-            return item.label
+        items = { "Yes", "No" },
+        on_select = function(index)
+            if index == 1 then
+                on_confirm()
+            end
         end,
-    }, function(choice)
-        if choice and choice.label == "Yes" then
-            on_confirm()
-        end
-    end)
+    })
 end
 
 return M
