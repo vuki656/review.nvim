@@ -1547,13 +1547,38 @@ local function setup_keymaps(bufnr, callbacks)
             return
         end
 
+        local staged_files = git.get_staged_files()
+        local has_staged = next(staged_files) ~= nil
+
+        if not has_staged then
+            ui_util.confirm("Nothing staged. Stage all and amend?", function()
+                log.info("amend_flow: nothing staged, staging all changes")
+                if not git.stage_all() then
+                    log.error("amend_flow: stage_all failed")
+                    vim.notify("Failed to stage changes", vim.log.levels.ERROR)
+                    return
+                end
+
+                local progress = create_commit_progress("Amending", "Amending...")
+
+                git.amend_no_edit_streaming(progress.add_line, function(success, err)
+                    progress.stop()
+
+                    if success then
+                        log.info("amend_flow: success")
+                        vim.notify("Amended all changes to last commit", vim.log.levels.INFO)
+                        refresh_and_sync()
+                    else
+                        log.error("amend_flow: failed:", err)
+                        vim.notify("Amend failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+                    end
+                end)
+            end)
+            return
+        end
+
         ui_util.confirm("Amend last commit?", function()
-            log.info("amend_flow: staging all changes")
-            if not git.stage_all() then
-                log.error("amend_flow: stage_all failed")
-                vim.notify("Failed to stage changes", vim.log.levels.ERROR)
-                return
-            end
+            log.info("amend_flow: amending staged changes")
 
             local progress = create_commit_progress("Amending", "Amending...")
 
@@ -1562,7 +1587,7 @@ local function setup_keymaps(bufnr, callbacks)
 
                 if success then
                     log.info("amend_flow: success")
-                    vim.notify("Amended all changes to last commit", vim.log.levels.INFO)
+                    vim.notify("Amended staged changes to last commit", vim.log.levels.INFO)
                     refresh_and_sync()
                 else
                     log.error("amend_flow: failed:", err)
@@ -1570,7 +1595,7 @@ local function setup_keymaps(bufnr, callbacks)
                 end
             end)
         end)
-    end, { desc = "Amend all changes to last commit", group = "Git" })
+    end, { desc = "Amend staged changes to last commit", group = "Git" })
 
 
     -- Toggle list/tree view
