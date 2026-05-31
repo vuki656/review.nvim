@@ -455,6 +455,9 @@ function M.show_file_tree()
                 vim.wo[winid].cursorline = false
             end
             component.winid = winid
+            if panel_def.name == "file_tree" then
+                require("review.ui.file_tree").set_winid(winid)
+            end
         end
     end
 

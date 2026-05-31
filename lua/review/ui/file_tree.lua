@@ -1941,6 +1941,14 @@ function M.get()
     return M.current
 end
 
+---Sync the cached window id after the layout recreates the panel window
+---@param winid number
+function M.set_winid(winid)
+    if M.current then
+        M.current.winid = winid
+    end
+end
+
 ---Destroy the component
 function M.destroy()
     -- Bump generation to discard any in-flight async results
