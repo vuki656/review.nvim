@@ -115,7 +115,7 @@ lua require("review").setup({})
 | `:Review` | Toggle the review UI |
 | `:Review close` | Close the review UI |
 | `:Review export` | Copy all comments to the clipboard as markdown |
-| `:Review send [target]` | Send comments to a tmux pane (defaults to `tmux.target`) |
+| `:Review send [target]` | Send comments to `export.on_export`, or to a tmux pane (defaults to `tmux.target`) |
 | `:Review commit <sha>` | Set the diff base to `<sha>` |
 | `:Review pick [count]` | Pick a base commit from the last `count` commits (default 20) |
 | `:Review qc` | Add a quick comment on the current line of the current buffer |
@@ -134,7 +134,7 @@ review.toggle()
 review.open()
 review.close()
 review.export()          -- to clipboard
-review.send(target)      -- to tmux, target optional
+review.send(target)      -- to export.on_export, else tmux; target optional
 review.is_open()         -- boolean
 review.get_state()       -- current state table
 review.reset()           -- reset state
@@ -315,6 +315,7 @@ require("review").setup({
     },
     export = {
         context_lines = 3,
+        on_export = nil,
     },
     auto_refresh = {
         enabled = true,
@@ -349,6 +350,7 @@ The `nil` entries are unset by default. No global keymaps are created unless you
 - `quick_comments.keymaps.add` / `.toggle_panel`: global keys for `:Review qc` and `:Review qp`.
 - `quick_comments.signs.enabled`: gutter signs for quick comments.
 - `export.context_lines`: lines of diff context included above and below each comment in the exported markdown.
+- `export.on_export`: your own delivery callback, `function(content, comments)`. `content` is the exported markdown, `comments` the comment tables it was built from. Return `false` (or raise) to say the hand-off failed. When it is set, `:Review send` and "Copy & Send" call it instead of pasting into tmux. The clipboard paths, `:Review export` and "Exit & Copy", still copy and then call it as well. A failed hand-off on close keeps the saved session instead of deleting it, so nothing is lost.
 - `auto_refresh`: a filesystem watcher re-renders the UI when files change on disk, debounced by `debounce_ms`. It walks the git root and watches each directory individually (libuv has no recursive watching on Linux), skipping `.git`, `node_modules`, `target`, `dist`, `build`, `.venv` and `vendor`, and stops at 2000 directories. Past that a warning goes to the log and the rest of the tree is not watched. The directory list is built when the UI opens, so directories created afterwards are picked up on the next open. Useful when an agent is writing while you read.
 - `persistence.enabled`: remembers comments across sessions. State lives in `.git/review-session.json` and `.git/review-comments.json`, so nothing needs gitignoring.
 - `log_level`: `"DEBUG"`, `"INFO"`, `"WARN"` or `"ERROR"`.
@@ -389,6 +391,23 @@ The generated markdown looks like:
 
 Handle a non-2xx response here.
 ````
+
+To hand the export to your own workflow instead of pasting it somewhere, set `export.on_export`:
+
+```lua
+require("review").setup({
+    export = {
+        on_export = function(content, comments)
+            local path = vim.fn.stdpath("state") .. "/review-latest.md"
+            if vim.fn.writefile(vim.split(content, "\n"), path) ~= 0 then
+                return false
+            end
+            vim.system({ "my-agent", "--file", path, "--count", tostring(#comments) })
+            return true
+        end,
+    },
+})
+```
 
 For the tmux path, `tmux.target` names where the markdown is pasted. The default `"!"` is tmux's last active pane, so the export lands in whatever pane you were in before Neovim, usually the one running your agent. If your agent lives somewhere fixed, set a name instead (`target = "CLAUDE"`, or a fully qualified `"session:window.pane"`), or pass one per call with `:Review send other-pane`. "Copy & Send" fails quietly outside tmux, you still get the clipboard copy.
 

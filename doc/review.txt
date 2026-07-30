@@ -151,9 +151,11 @@ with `S`, or by setting `ui.diff_view_mode` to "split".
 
 :Review export          Copy every comment to the clipboard as markdown.
 
-:Review send [{target}] Send comments to a tmux pane. {target} defaults to
-                        `tmux.target`. Fails if Neovim is not running inside
-                        tmux.
+:Review send [{target}] Send comments to `export.on_export` when it is set,
+                        otherwise paste them into a tmux pane. {target}
+                        defaults to `tmux.target` and applies to the tmux
+                        path only. The tmux path fails if Neovim is not
+                        running inside tmux.
 
 :Review commit {sha}    Set the diff base to {sha}. Reopens the UI if it is
                         already open.
@@ -180,7 +182,7 @@ with `S`, or by setting `ui.diff_view_mode` to "split".
     review.open()
     review.close()
     review.export()        -- markdown to clipboard
-    review.send(target)    -- markdown to tmux; target optional
+    review.send(target)    -- markdown to export.on_export, else tmux
     review.is_open()       -- boolean
     review.get_state()     -- current state table
     review.reset()         -- reset state
@@ -399,6 +401,7 @@ need the keys you want to change. The complete defaults: >lua
         },
         export = {
             context_lines = 3,
+            on_export = nil,
         },
         auto_refresh = {
             enabled = true,
@@ -473,6 +476,31 @@ export.context_lines ~
     Number of lines of diff context included above and below each comment in
     the exported markdown.
 
+export.on_export ~
+    Your own delivery callback, `function(content, comments)`. {content} is
+    the exported markdown, {comments} the comment tables it was built from.
+    Return `false`, or raise an error, to report that the hand-off failed.
+
+    When it is set, |:Review| send and the "Copy & Send" exit option call it
+    instead of pasting into tmux. The clipboard paths, |:Review| export and
+    "Exit & Copy", still copy and then call it as well. A failed hand-off on
+    close keeps the saved session rather than deleting it. >lua
+
+        require("review").setup({
+            export = {
+                on_export = function(content, comments)
+                    local path = vim.fn.stdpath("state") .. "/review.md"
+                    local lines = vim.split(content, "\n")
+                    if vim.fn.writefile(lines, path) ~= 0 then
+                        return false
+                    end
+                    vim.system({ "my-agent", "--file", path })
+                    return true
+                end,
+            },
+        })
+<
+
 auto_refresh.enabled ~
 auto_refresh.debounce_ms ~
     A filesystem watcher re-renders the UI when files change on disk,
@@ -521,7 +549,8 @@ The intended loop:
   4. Press `q`. If there are comments, an exit menu appears:
 
        Exit, Copy & Send to tmux   Copy to the clipboard and paste into the
-                                   configured tmux target.
+                                   configured tmux target, or hand off to
+                                   `export.on_export` when it is set.
        Exit & Copy                 Clipboard only.
        Exit                        Keep the saved session so the next
                                    |:Review| resumes where you left off.

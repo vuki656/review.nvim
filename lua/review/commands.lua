@@ -26,7 +26,7 @@ function M.setup()
             export.to_clipboard()
         elseif subcommand == "send" then
             local target = args[2] -- Optional custom target
-            export.to_tmux(target)
+            export.send(target)
         elseif subcommand == "commit" then
             local sha = args[2]
             if sha and not require("review.core.git").is_safe_rev(sha) then

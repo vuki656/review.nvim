@@ -129,6 +129,89 @@ T["to_clipboard sets both registers"] = function()
     expect.equality(star_content:find("clipboard test") ~= nil, true)
 end
 
+T["send calls on_export with content and comments"] = function()
+    local captured = {}
+    config.setup({
+        export = {
+            on_export = function(content, comments)
+                captured.content = content
+                captured.comments = comments
+            end,
+        },
+    })
+    state.add_comment("test.lua", 1, "note", "handler test")
+    state.get_file_state("test.lua").render_lines = { { type = "add", content = "x" } }
+
+    local success = markdown.send()
+
+    expect.equality(success, true)
+    expect.equality(captured.content:find("handler test") ~= nil, true)
+    expect.equality(#captured.comments, 1)
+end
+
+T["send reports failure when on_export returns false"] = function()
+    config.setup({
+        export = {
+            on_export = function()
+                return false
+            end,
+        },
+    })
+    state.add_comment("test.lua", 1, "note", "failed handoff")
+    state.get_file_state("test.lua").render_lines = { { type = "add", content = "x" } }
+
+    expect.equality(markdown.send(nil, true), false)
+end
+
+T["send reports failure when on_export errors"] = function()
+    config.setup({
+        export = {
+            on_export = function()
+                error("boom")
+            end,
+        },
+    })
+    state.add_comment("test.lua", 1, "note", "erroring handoff")
+    state.get_file_state("test.lua").render_lines = { { type = "add", content = "x" } }
+
+    expect.equality(markdown.send(nil, true), false)
+end
+
+T["send skips the callback when there are no comments"] = function()
+    local called = false
+    config.setup({
+        export = {
+            on_export = function()
+                called = true
+            end,
+        },
+    })
+
+    expect.equality(markdown.send(nil, true), false)
+    expect.equality(called, false)
+end
+
+T["to_clipboard also runs on_export"] = function()
+    local called = false
+    config.setup({
+        export = {
+            on_export = function()
+                called = true
+            end,
+        },
+    })
+    state.add_comment("test.lua", 1, "note", "clipboard handler")
+    state.get_file_state("test.lua").render_lines = { { type = "add", content = "x" } }
+
+    markdown.to_clipboard()
+
+    expect.equality(called, true)
+end
+
+T["has_handler is false by default"] = function()
+    expect.equality(markdown.has_handler(), false)
+end
+
 T["context boundary handling at start of render_lines"] = function()
     config.setup({ export = { context_lines = 3 } })
     state.add_comment("test.lua", 1, "note", "first line comment")

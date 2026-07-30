@@ -86,7 +86,7 @@ lua/review/
 │   ├── persistence.lua         # Quick comments persistence
 │   └── signs.lua               # Gutter signs for quick comments
 └── export/
-    └── markdown.lua            # Export comments to clipboard/file/tmux
+    └── markdown.lua            # Export comments to clipboard/file/tmux or export.on_export
 ```
 
 ### Data Flow
@@ -110,6 +110,10 @@ Everything the UI shows is derived from two fields in `state.lua`: `base` and `b
 ### Comment Anchoring
 
 `comment.line` is a display row in the current rendering, not a durable location — `diff_view.render_comments` overwrites it on every render via `display_row_for()`. The durable anchor is `original_line` plus `side` (`"old"` or `"new"`), captured from the source line when the comment is submitted; re-anchoring scans `render_lines` for the row whose source line matches on the matching side, and falls back to the old `comment.line` if the line no longer exists in the diff. Export prefers `original_line` when reporting a location. Anything that changes diff parsing or rendering must keep `original_line`/`side` intact, or comments silently drift onto the wrong lines.
+
+### Export Delivery
+
+`export/markdown.lua` separates generation from delivery: `generate()` builds the markdown, and `to_clipboard`, `to_file`, `to_tmux` are thin wrappers on it. `export.on_export` in config is a user delivery callback, `function(content, comments)`, and `M.send()` is the entry point every send path uses — it calls the callback when one is set and falls back to `to_tmux` when not. `to_clipboard` copies first and then also calls the callback. A callback returning `false` or raising counts as a failed hand-off, which makes the close path keep the saved session instead of deleting it (`has_handler()` gates that so tmux's optimistic `true` keeps its old behavior).
 
 ### Session Persistence
 
@@ -139,7 +143,7 @@ Autosave (`VimLeavePre`) is registered from `plugin/review.lua`, so sessions per
 - `:Review` – Toggle review UI
 - `:Review close` – Close review UI
 - `:Review export` – Export comments to clipboard
-- `:Review send [target]` – Send comments to tmux pane
+- `:Review send [target]` – Send comments to `export.on_export`, or a tmux pane when unset
 - `:Review commit <sha>` – Change git comparison base
 - `:Review pick [count]` – Interactive commit picker
 - `:Review qc` – Add a quick comment on the current line

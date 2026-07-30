@@ -1,4 +1,5 @@
 local format = require("review.core.format")
+local log = require("review.core.log")
 local paths = require("review.core.paths")
 local state = require("review.state")
 
@@ -149,6 +150,35 @@ function M.generate()
     return table.concat(lines, "\n")
 end
 
+---Whether a user export callback is configured
+---@return boolean
+function M.has_handler()
+    return type(require("review.config").get().export.on_export) == "function"
+end
+
+---Run the user export callback
+---@param content string
+---@param comments table[]
+---@param silent? boolean
+---@return boolean|nil success nil when no callback is configured
+function M.run_handler(content, comments, silent)
+    local handler = require("review.config").get().export.on_export
+    if type(handler) ~= "function" then
+        return nil
+    end
+
+    local ok, result = pcall(handler, content, comments)
+    if not ok then
+        log.error("export: on_export callback failed: ", tostring(result))
+        if not silent then
+            vim.notify("review.nvim: export.on_export failed: " .. tostring(result), vim.log.levels.ERROR)
+        end
+        return false
+    end
+
+    return result ~= false
+end
+
 ---Export comments to clipboard
 ---@return boolean success
 function M.to_clipboard()
@@ -157,8 +187,10 @@ function M.to_clipboard()
     vim.fn.setreg("+", content)
     vim.fn.setreg("*", content)
 
-    local comment_count = #state.get_all_comments()
-    vim.notify(string.format("Exported %d comment(s) to clipboard", comment_count), vim.log.levels.INFO)
+    local comments = state.get_all_comments()
+    vim.notify(string.format("Exported %d comment(s) to clipboard", #comments), vim.log.levels.INFO)
+
+    M.run_handler(content, comments, false)
 
     return true
 end
@@ -266,6 +298,31 @@ function M.to_tmux(target, silent)
     end)
 
     return true
+end
+
+---Send comments through the configured export callback, falling back to tmux
+---@param target? string Target window/pane, tmux only
+---@param silent? boolean Suppress notifications
+---@return boolean success
+function M.send(target, silent)
+    if not M.has_handler() then
+        return M.to_tmux(target, silent)
+    end
+
+    local comments = state.get_all_comments()
+    if #comments == 0 then
+        if not silent then
+            vim.notify("No comments to send", vim.log.levels.WARN)
+        end
+        return false
+    end
+
+    local success = M.run_handler(M.generate(), comments, silent) == true
+    if success and not silent then
+        vim.notify(string.format("Sent %d comment(s)", #comments), vim.log.levels.INFO)
+    end
+
+    return success
 end
 
 return M

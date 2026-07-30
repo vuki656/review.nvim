@@ -43,6 +43,7 @@
 
 ---@class ReviewExportConfig
 ---@field context_lines number Number of context lines to include around commented line
+---@field on_export fun(content: string, comments: table[]): boolean|nil User delivery callback
 
 ---@class ReviewAutoRefreshConfig
 ---@field enabled boolean Whether to auto-refresh on file changes
@@ -89,6 +90,7 @@ M.defaults = {
     },
     export = {
         context_lines = 3,
+        on_export = nil,
     },
     auto_refresh = {
         enabled = true,

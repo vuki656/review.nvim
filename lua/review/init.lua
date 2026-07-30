@@ -66,10 +66,10 @@ function M.export()
     export.to_clipboard()
 end
 
----Send comments to tmux pane
----@param target? string Optional target pane (defaults to config)
+---Send comments through the export callback, or to a tmux pane
+---@param target? string Optional target pane, tmux only (defaults to config)
 function M.send(target)
-    export.to_tmux(target)
+    export.send(target)
 end
 
 ---Check if UI is open

@@ -324,9 +324,19 @@ local function do_close(action)
                 log.error("ui: clipboard write did not land, preserving session file")
             end
 
+            local handed_off
             if action == "copy_and_send" then
-                -- Try to send to tmux
-                export.to_tmux(nil, false)
+                local sent = export.send(nil, false)
+                if export.has_handler() then
+                    handed_off = sent
+                end
+            else
+                handed_off = export.run_handler(content, all_comments, false)
+            end
+
+            if handed_off == false then
+                export_landed = false
+                log.error("ui: export.on_export did not succeed, preserving session file")
             end
         end
     end
