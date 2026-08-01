@@ -8,6 +8,7 @@ local git = require("review.core.git")
 local highlights = require("review.ui.highlights")
 local layout = require("review.ui.layout")
 local log = require("review.core.log")
+local panel_keymaps = require("review.ui.panel_keymaps")
 local persistence = require("review.core.persistence")
 local state = require("review.state")
 local ui_util = require("review.ui.util")
@@ -78,6 +79,10 @@ function M.open()
     -- Create and mount layout
     local l = layout.create()
     layout.mount()
+
+    -- Make section navigation available while the diff pane shows the welcome screen
+    local diff_map = ui_util.create_buffer_mapper(l.diff_view.bufnr)
+    panel_keymaps.setup_number_navigation(diff_map)
 
     state.state.is_open = true
     state.state.diff_mode = config.get().ui.diff_view_mode

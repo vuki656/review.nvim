@@ -97,6 +97,11 @@ lua/review/
 4. `file_tree.lua` renders the file list, `diff_view.lua` renders the selected file's diff, the other panels render branches, commits and comments
 5. Comments stored in `state.lua`, exported via `export/markdown.lua`
 
+Numeric section navigation is opt-in through `ui.number_navigation`. When
+enabled, `1`–`4` focus Files, Branches, Commits and Comments, while `0` focuses
+the diff pane. The mappings are buffer-local to the review UI and do not affect
+normal buffers; in side-by-side mode `0` focuses the new (right) pane.
+
 ### Comparison Model
 
 Everything the UI shows is derived from two fields in `state.lua`: `base` and `base_end`. They define the diff range, and every panel reads them rather than holding its own notion of what is being compared.

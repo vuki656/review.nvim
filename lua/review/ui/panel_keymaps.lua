@@ -1,12 +1,48 @@
 local M = {}
 
+local config = require("review.config")
+
+local NUMBER_NAVIGATION = {
+    { key = "1", target = "get_file_tree", desc = "Focus Files panel" },
+    { key = "2", target = "get_branch_list", desc = "Focus Branches panel" },
+    { key = "3", target = "get_commit_list", desc = "Focus Commits panel" },
+    { key = "4", target = "get_comment_list", desc = "Focus Comments panel" },
+    { key = "0", target = "get_diff_view", desc = "Focus diff pane" },
+}
+
 ---Navigate to a layout component by getter name
 ---@param getter_name string Layout getter method name (e.g. "get_file_tree")
 local function navigate_to(getter_name)
     local layout = require("review.ui.layout")
     local component = layout[getter_name]()
+
+    if
+        (not component or not component.winid or not vim.api.nvim_win_is_valid(component.winid))
+        and getter_name ~= "get_diff_view"
+        and layout.is_mounted()
+        and not layout.is_file_tree_visible()
+    then
+        layout.show_file_tree()
+        component = layout[getter_name]()
+    end
+
     if component and component.winid and vim.api.nvim_win_is_valid(component.winid) then
         vim.api.nvim_set_current_win(component.winid)
+    end
+end
+
+---Set up optional numeric navigation between review sections
+---@param map_function fun(lhs: string, rhs: string|function, opts: table, extra_bufnrs?: number[])
+---@param extra_bufnrs? number[] Buffers that should receive the same mappings
+function M.setup_number_navigation(map_function, extra_bufnrs)
+    if not config.get().ui.number_navigation then
+        return
+    end
+
+    for _, mapping in ipairs(NUMBER_NAVIGATION) do
+        map_function(mapping.key, function()
+            navigate_to(mapping.target)
+        end, { nowait = true, desc = mapping.desc, group = "Navigation" }, extra_bufnrs)
     end
 end
 
@@ -68,6 +104,8 @@ function M.setup(bufnr, navigation, on_close, active_timers, map_function, on_es
     else
         vim.keymap.set("n", "l", "<Nop>", { buffer = bufnr, nowait = true })
     end
+
+    M.setup_number_navigation(map_function)
 
     vim.keymap.set("n", "<Left>", "<Nop>", { buffer = bufnr, nowait = true })
     vim.keymap.set("n", "<Right>", "<Nop>", { buffer = bufnr, nowait = true })
