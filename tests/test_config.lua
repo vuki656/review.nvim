@@ -15,6 +15,7 @@ T["setup with no args uses defaults"] = function()
     config.setup()
     expect.equality(config.get().diff.base, "HEAD")
     expect.equality(config.get().ui.file_tree_width, 33)
+    expect.equality(config.get().ui.number_navigation, false)
     expect.equality(config.get().tmux.auto_enter, false)
 end
 
@@ -31,7 +32,13 @@ T["partial override merges correctly"] = function()
     expect.equality(config.get().diff.base, "main")
     expect.equality(config.get().ui.file_tree_width, 40)
     expect.equality(config.get().ui.diff_view_mode, "unified")
+    expect.equality(config.get().ui.number_navigation, false)
     expect.equality(config.get().tmux.target, "!")
+end
+
+T["numeric section navigation can be enabled"] = function()
+    config.setup({ ui = { number_navigation = true } })
+    expect.equality(config.get().ui.number_navigation, true)
 end
 
 T["deep nested override preserves siblings"] = function()

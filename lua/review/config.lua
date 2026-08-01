@@ -20,6 +20,7 @@
 ---@class ReviewUIConfig
 ---@field file_tree_width number Width of file tree panel (percentage)
 ---@field diff_view_mode "unified"|"split" Default diff view mode
+---@field number_navigation boolean Whether to enable numeric section navigation
 
 ---@class ReviewTmuxConfig
 ---@field target string Target window/pane (e.g., "!" for last active pane, or a window name)
@@ -70,6 +71,7 @@ M.defaults = {
     ui = {
         file_tree_width = 33,
         diff_view_mode = "unified",
+        number_navigation = false,
     },
     tmux = {
         target = "!",

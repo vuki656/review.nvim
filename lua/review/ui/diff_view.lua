@@ -3,6 +3,7 @@ local comment_types_module = require("review.comment_types")
 local diff_parser = require("review.core.diff")
 local git = require("review.core.git")
 local layout = require("review.ui.layout")
+local panel_keymaps = require("review.ui.panel_keymaps")
 local state = require("review.state")
 local ui_util = require("review.ui.util")
 
@@ -1569,6 +1570,7 @@ local function setup_keymaps(bufnr, callbacks, old_bufnr)
     end, { nowait = true, desc = "Focus file tree", group = "Navigation" }, all_bufnrs)
     map("q", close_review, { nowait = true, desc = "Close review", group = "General" }, all_bufnrs)
     map("?", show_help, { desc = "Show help", group = "General" }, all_bufnrs)
+    panel_keymaps.setup_number_navigation(map, all_bufnrs)
 end
 
 ---Apply common window options to a diff view window
@@ -1862,6 +1864,13 @@ end
 function M.create_commit_preview(layout_component, base, base_end, preview_callbacks)
     local bufnr = layout_component.bufnr
 
+    local function setup_number_navigation()
+        local map = ui_util.create_buffer_mapper(bufnr)
+        panel_keymaps.setup_number_navigation(map)
+    end
+
+    setup_number_navigation()
+
     if layout.is_split_mode() then
         layout.exit_split_mode()
     end
@@ -2126,6 +2135,7 @@ function M.create_commit_preview(layout_component, base, base_end, preview_callb
         pcall(vim.api.nvim_buf_del_keymap, bufnr, "n", keymap.lhs)
     end
     vim.keymap.set("n", "q", close_review, { buffer = bufnr, nowait = true })
+    setup_number_navigation()
 
     pcall(vim.api.nvim_buf_set_name, bufnr, "Review: commit preview")
 
