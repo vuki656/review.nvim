@@ -119,6 +119,38 @@ T["context lines from render_lines"] = function()
     expect.equality(result:find("%+line two") ~= nil, true)
 end
 
+T["range comment header shows start and end line"] = function()
+    state.add_comment("src/api/client.ts", 1, "fix", "extract this", 42, "new", 5, 50)
+    state.get_file_state("src/api/client.ts").render_lines = { { type = "add", content = "x" } }
+    local result = markdown.generate()
+    expect.equality(result:find("### %[FIX%] src/api/client%.ts:42%-50") ~= nil, true)
+end
+
+T["single line comment header has no range"] = function()
+    state.add_comment("src/api/client.ts", 1, "fix", "single", 42, "new")
+    state.get_file_state("src/api/client.ts").render_lines = { { type = "add", content = "x" } }
+    local result = markdown.generate()
+    expect.equality(result:find("### %[FIX%] src/api/client%.ts:42") ~= nil, true)
+    expect.equality(result:find("client%.ts:42%-"), nil)
+end
+
+T["range comment context spans the whole range"] = function()
+    config.setup({ export = { context_lines = 0 } })
+    state.add_comment("test.lua", 2, "note", "range context", 2, "new", 4, 4)
+    state.get_file_state("test.lua").render_lines = {
+        { type = "context", content = "line one" },
+        { type = "add", content = "line two" },
+        { type = "add", content = "line three" },
+        { type = "add", content = "line four" },
+        { type = "context", content = "line five" },
+    }
+    local result = markdown.generate()
+    expect.equality(result:find("%+line two") ~= nil, true)
+    expect.equality(result:find("%+line three") ~= nil, true)
+    expect.equality(result:find("%+line four") ~= nil, true)
+    expect.equality(result:find("line five") == nil, true)
+end
+
 T["to_clipboard sets both registers"] = function()
     state.add_comment("test.lua", 1, "note", "clipboard test")
     state.get_file_state("test.lua").render_lines = { { type = "add", content = "x" } }

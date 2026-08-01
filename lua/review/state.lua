@@ -2,7 +2,9 @@
 ---@field id string Unique identifier
 ---@field file string File path
 ---@field line number Display row in the current rendering, re-anchored on render
+---@field end_line number|nil Last display row of a multi-line comment, re-anchored on render
 ---@field original_line number|nil Original line in source file
+---@field original_end_line number|nil Last original line of a multi-line comment
 ---@field side "old"|"new"|nil Which side of the diff original_line refers to
 ---@field type "note"|"fix"|"question"
 ---@field text string Comment text
@@ -89,14 +91,24 @@ end
 ---@param text string
 ---@param original_line number|nil
 ---@param side "old"|"new"|nil
+---@param end_line number|nil
+---@param original_end_line number|nil
 ---@return ReviewComment
-function M.add_comment(file, line, type, text, original_line, side)
+function M.add_comment(file, line, type, text, original_line, side, end_line, original_end_line)
     local file_state = M.get_file_state(file)
+    if end_line and end_line <= line then
+        end_line = nil
+    end
+    if original_end_line and original_line and original_end_line <= original_line then
+        original_end_line = nil
+    end
     local comment = {
         id = M.generate_comment_id(),
         file = file,
         line = line,
+        end_line = end_line,
         original_line = original_line,
+        original_end_line = original_end_line,
         side = side,
         type = type,
         text = text,
@@ -134,7 +146,7 @@ function M.get_comment_at_line(file, line)
     end
 
     for _, comment in ipairs(file_state.comments) do
-        if comment.line == line then
+        if line >= comment.line and line <= (comment.end_line or comment.line) then
             return comment
         end
     end

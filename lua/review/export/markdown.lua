@@ -14,9 +14,10 @@ local type_labels = {
 ---Extract context lines from render_lines around a comment
 ---@param render_lines table[]|nil
 ---@param comment_line number
+---@param comment_end_line number|nil
 ---@param context_count number
 ---@return string[]|nil
-local function get_diff_context(render_lines, comment_line, context_count)
+local function get_diff_context(render_lines, comment_line, comment_end_line, context_count)
     if not render_lines or #render_lines == 0 then
         return nil
     end
@@ -25,8 +26,9 @@ local function get_diff_context(render_lines, comment_line, context_count)
         return nil
     end
 
+    local last_line = math.max(comment_end_line or comment_line, comment_line)
     local start_idx = math.max(1, comment_line - context_count)
-    local end_idx = math.min(#render_lines, comment_line + context_count)
+    local end_idx = math.min(#render_lines, last_line + context_count)
 
     local context = {}
     for index = start_idx, end_idx do
@@ -48,9 +50,10 @@ end
 ---Read source file lines for context when no diff is available
 ---@param file string
 ---@param line number
+---@param end_line number|nil
 ---@param context_count number
 ---@return string[]|nil
-local function get_source_context(file, line, context_count)
+local function get_source_context(file, line, end_line, context_count)
     local git = require("review.core.git")
     local git_root = git.get_root()
     if not git_root then
@@ -63,8 +66,9 @@ local function get_source_context(file, line, context_count)
         return nil
     end
 
+    local last_line = math.max(end_line or line, line)
     local start_idx = math.max(1, line - context_count)
-    local end_idx = math.min(#content, line + context_count)
+    local end_idx = math.min(#content, last_line + context_count)
 
     local context = {}
     for index = start_idx, end_idx do
@@ -110,8 +114,17 @@ function M.generate()
         for _, comment in ipairs(comments) do
             local type_label = type_labels[comment.type] or "NOTE"
             local display_line = comment.original_line or comment.line
+            local display_end_line = comment.original_end_line
+            if not display_end_line and comment.end_line and not comment.original_line then
+                display_end_line = comment.end_line
+            end
 
-            table.insert(lines, string.format("### [%s] %s:%d", type_label, file, display_line))
+            local location = string.format("%s:%d", file, display_line)
+            if display_end_line and display_end_line > display_line then
+                location = string.format("%s:%d-%d", file, display_line, display_end_line)
+            end
+
+            table.insert(lines, string.format("### [%s] %s", type_label, location))
             table.insert(lines, "")
 
             if not language_cache[file] then
@@ -119,7 +132,7 @@ function M.generate()
             end
             local language = language_cache[file]
 
-            local context = get_diff_context(render_lines_data, comment.line, context_count)
+            local context = get_diff_context(render_lines_data, comment.line, comment.end_line, context_count)
             if context then
                 local fence = format.build_fence(context)
                 table.insert(lines, fence .. language)
@@ -129,7 +142,7 @@ function M.generate()
                 table.insert(lines, fence)
                 table.insert(lines, "")
             else
-                local source_context = get_source_context(file, display_line, context_count)
+                local source_context = get_source_context(file, display_line, display_end_line, context_count)
                 if source_context then
                     local fence = format.build_fence(source_context)
                     table.insert(lines, "*(no changes)*")

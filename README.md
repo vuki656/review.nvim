@@ -118,7 +118,7 @@ lua require("review").setup({})
 | `:Review send [target]` | Send comments to `export.on_export`, or to a tmux pane (defaults to `tmux.target`) |
 | `:Review commit <sha>` | Set the diff base to `<sha>` |
 | `:Review pick [count]` | Pick a base commit from the last `count` commits (default 20) |
-| `:Review qc` | Add a quick comment on the current line of the current buffer |
+| `:Review qc` | Add a quick comment on the current line of the current buffer, or on a range with `:'<,'>Review qc` |
 | `:Review qp` | Toggle the quick comments panel |
 | `:Review log` | Open the plugin log file in a new tab |
 
@@ -146,6 +146,8 @@ Quick comments have their own module:
 local qc = require("review.quick_comments")
 
 qc.add()            -- comment on the current line
+qc.add(42, 50)      -- comment on lines 42 to 50
+qc.add_visual()     -- comment on the current visual selection
 qc.toggle_panel()
 qc.export()         -- copy to clipboard
 qc.copy()           -- copy to clipboard, then clear all quick comments
@@ -187,7 +189,7 @@ Numeric section navigation is disabled by default. When `ui.number_navigation` i
 
 | Key | Action |
 | --- | --- |
-| `c` | Add a comment on the current line |
+| `c` | Add a comment on the current line, or on the selection in visual mode |
 | `dc` | Delete the comment on the current line |
 | `]c` / `[c` | Next / previous hunk |
 | `]f` / `[f` | Next / previous file |
@@ -270,7 +272,7 @@ Submitting an empty input also discards the comment. The quick comment input has
 
 ### Quick comments panel
 
-Quick comments are separate from review comments: they attach to any line of any buffer, outside the review UI, and show up as gutter signs. `:Review qc` adds one, `:Review qp` toggles the panel.
+Quick comments are separate from review comments: they attach to any line of any buffer, outside the review UI, and show up as gutter signs. `:Review qc` adds one, `:Review qp` toggles the panel. Selecting lines first and running `:'<,'>Review qc` attaches the comment to the whole range, which exports as `**Lines 42-50**` with all the selected lines as context. If `quick_comments.keymaps.add` is set, that key works in visual mode too.
 
 | Key | Action |
 | --- | --- |

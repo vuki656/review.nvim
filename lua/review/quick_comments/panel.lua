@@ -118,7 +118,9 @@ function M.render()
                         )
 
                         for _, comment in ipairs(group) do
-                            local line_prefix = string.format("  L%-4d ", comment.line)
+                            local location = comment.end_line and string.format("%d-%d", comment.line, comment.end_line)
+                                or tostring(comment.line)
+                            local line_prefix = string.format("  L%-4s ", location)
                             local text = comment.text:gsub("\n", " ")
                             local comment_line = line_prefix .. text
                             if #comment_line > panel_width then
@@ -204,7 +206,9 @@ local function setup_keymaps(bufnr)
         end
 
         local type_info = comment_types[comment.type]
-        local header = type_info.icon .. " " .. type_info.label .. "  (L" .. comment.line .. ")"
+        local location = comment.end_line and string.format("%d-%d", comment.line, comment.end_line)
+            or tostring(comment.line)
+        local header = type_info.icon .. " " .. type_info.label .. "  (L" .. location .. ")"
         local popup_lines = { header, string.rep("─", #header + 2), "" }
         for _, text_line in ipairs(vim.split(comment.text, "\n")) do
             table.insert(popup_lines, text_line)

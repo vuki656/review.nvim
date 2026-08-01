@@ -140,6 +140,9 @@ function M.create_buffer_mapper(bufnr, registered_keymaps)
         local group = opts.group
         opts.group = nil
 
+        local mode = opts.mode or "n"
+        opts.mode = nil
+
         if registered_keymaps and opts.desc then
             table.insert(registered_keymaps, { lhs = lhs, desc = opts.desc, group = group or "General" })
         end
@@ -147,11 +150,11 @@ function M.create_buffer_mapper(bufnr, registered_keymaps)
         if extra_bufnrs then
             for _, target_bufnr in ipairs(extra_bufnrs) do
                 local keymap_opts = vim.tbl_extend("force", opts, { buffer = target_bufnr })
-                vim.keymap.set("n", lhs, rhs, keymap_opts)
+                vim.keymap.set(mode, lhs, rhs, keymap_opts)
             end
         else
             opts.buffer = bufnr
-            vim.keymap.set("n", lhs, rhs, opts)
+            vim.keymap.set(mode, lhs, rhs, opts)
         end
     end
 end

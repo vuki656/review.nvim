@@ -177,6 +177,42 @@ get_at_line_tests["returns nil for missing file"] = function()
     expect.equality(state.get_comment_at_line("nonexistent.lua", 1), nil)
 end
 
+get_at_line_tests["matches any line inside a range"] = function()
+    state.add_comment("test.lua", 5, "note", "range", 42, "new", 9, 46)
+    expect.equality(state.get_comment_at_line("test.lua", 5).text, "range")
+    expect.equality(state.get_comment_at_line("test.lua", 7).text, "range")
+    expect.equality(state.get_comment_at_line("test.lua", 9).text, "range")
+    expect.equality(state.get_comment_at_line("test.lua", 10), nil)
+end
+
+local range_tests = new_set()
+T["add_comment ranges"] = range_tests
+
+range_tests["stores range fields"] = function()
+    local comment = state.add_comment("test.lua", 5, "fix", "range", 42, "new", 9, 46)
+    expect.equality(comment.end_line, 9)
+    expect.equality(comment.original_end_line, 46)
+    expect.equality(comment.side, "new")
+end
+
+range_tests["drops end fields that do not extend the start"] = function()
+    local comment = state.add_comment("test.lua", 5, "fix", "same", 42, "new", 5, 42)
+    expect.equality(comment.end_line, nil)
+    expect.equality(comment.original_end_line, nil)
+end
+
+range_tests["drops end fields pointing backwards"] = function()
+    local comment = state.add_comment("test.lua", 5, "fix", "backwards", 42, "new", 3, 40)
+    expect.equality(comment.end_line, nil)
+    expect.equality(comment.original_end_line, nil)
+end
+
+range_tests["single line comments have no range"] = function()
+    local comment = state.add_comment("test.lua", 5, "note", "single", 42, "new")
+    expect.equality(comment.end_line, nil)
+    expect.equality(comment.original_end_line, nil)
+end
+
 local get_all_tests = new_set()
 T["get_all_comments"] = get_all_tests
 
