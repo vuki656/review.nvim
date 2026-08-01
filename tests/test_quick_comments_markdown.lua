@@ -116,4 +116,40 @@ T["multiple files get separate headers"] = function()
     expect.equality(result:find("## b.lua") ~= nil, true)
 end
 
+T["range comment reports both lines"] = function()
+    local comments = {
+        {
+            id = "qc_1_1",
+            file = vim.fn.getcwd() .. "/src/main.lua",
+            line = 42,
+            end_line = 50,
+            type = "fix",
+            text = "extract this",
+            created_at = 1000000,
+            context = "local a = 1\nlocal b = 2",
+        },
+    }
+    local result = qc_markdown.build(comments)
+    expect.equality(result:find("Lines 42%-50") ~= nil, true)
+    expect.equality(result:find("local b = 2") ~= nil, true)
+end
+
+T["end line equal to start renders as a single line"] = function()
+    local comments = {
+        {
+            id = "qc_1_1",
+            file = vim.fn.getcwd() .. "/src/main.lua",
+            line = 42,
+            end_line = 42,
+            type = "fix",
+            text = "single",
+            created_at = 1000000,
+            context = nil,
+        },
+    }
+    local result = qc_markdown.build(comments)
+    expect.equality(result:find("Line 42") ~= nil, true)
+    expect.equality(result:find("Lines"), nil)
+end
+
 return T

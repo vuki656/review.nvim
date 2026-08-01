@@ -300,4 +300,91 @@ function M.get_source_line(rendered_line_num, render_lines)
     return line.new_line, "new"
 end
 
+---Resolve the source lines a display row range covers
+---The range is anchored to the first row that has a source line, and only rows on that
+---same side contribute, so a selection spanning both sides never mixes them
+---@param start_row number
+---@param end_row number
+---@param render_lines DiffLine[]|SplitLine[]|nil
+---@return table|nil range { line, end_line, original_line, original_end_line, side }
+function M.get_source_range(start_row, end_row, render_lines)
+    if not render_lines then
+        return nil
+    end
+
+    local anchor_row, first, side
+    for row = start_row, end_row do
+        local source, row_side = M.get_source_line(row, render_lines)
+        if source then
+            anchor_row, first, side = row, source, row_side
+            break
+        end
+    end
+
+    if not first then
+        return nil
+    end
+
+    local last_row, last
+    for row = anchor_row + 1, end_row do
+        local source, row_side = M.get_source_line(row, render_lines)
+        if source and row_side == side then
+            last_row, last = row, source
+        end
+    end
+
+    return {
+        line = anchor_row,
+        end_line = last_row,
+        original_line = first,
+        original_end_line = last,
+        side = side,
+    }
+end
+
+---Resolve the display row a source line sits on in the current rendering
+---@param source_line number|nil
+---@param side "old"|"new"|nil
+---@param render_lines DiffLine[]|SplitLine[]|nil
+---@return number|nil
+function M.find_display_row(source_line, side, render_lines)
+    if not source_line or not render_lines then
+        return nil
+    end
+
+    local want_old = side == "old"
+
+    for index, line in ipairs(render_lines) do
+        local is_old = line.type == "delete"
+        if is_old == want_old then
+            local source = line.source_line or (is_old and line.old_line or line.new_line)
+            if source == source_line then
+                return index
+            end
+        end
+    end
+
+    return nil
+end
+
+---Re-anchor a comment's display rows against the current rendering
+---Falls back to the existing display row when the start line is gone, and degrades to a
+---single-line comment when the end line is gone, keeping original_end_line for export
+---@param comment ReviewComment
+---@param render_lines DiffLine[]|SplitLine[]
+function M.reanchor_comment(comment, render_lines)
+    comment.line = M.find_display_row(comment.original_line, comment.side, render_lines) or comment.line
+
+    if not comment.end_line and not comment.original_end_line then
+        return
+    end
+
+    local end_row = M.find_display_row(comment.original_end_line, comment.side, render_lines)
+    if end_row and end_row > comment.line then
+        comment.end_line = end_row
+    else
+        comment.end_line = nil
+    end
+end
+
 return M

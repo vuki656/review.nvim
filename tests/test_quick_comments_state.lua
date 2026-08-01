@@ -131,6 +131,31 @@ get_at_line_tests["returns nil when not found"] = function()
     expect.equality(qc_state.get_at_line("/test.lua", 999), nil)
 end
 
+get_at_line_tests["matches any line inside a range"] = function()
+    qc_state.add("/test.lua", 5, "note", "range", "ctx", 9)
+    expect.equality(qc_state.get_at_line("/test.lua", 5).text, "range")
+    expect.equality(qc_state.get_at_line("/test.lua", 7).text, "range")
+    expect.equality(qc_state.get_at_line("/test.lua", 9).text, "range")
+    expect.equality(qc_state.get_at_line("/test.lua", 10), nil)
+end
+
+local range_tests = new_set()
+T["add ranges"] = range_tests
+
+range_tests["stores end line"] = function()
+    local comment = qc_state.add("/test.lua", 5, "fix", "range", "ctx", 9)
+    expect.equality(comment.end_line, 9)
+end
+
+range_tests["drops end line that does not extend the start"] = function()
+    expect.equality(qc_state.add("/test.lua", 5, "fix", "same", "ctx", 5).end_line, nil)
+    expect.equality(qc_state.add("/test.lua", 6, "fix", "backwards", "ctx", 2).end_line, nil)
+end
+
+range_tests["single line comments have no end line"] = function()
+    expect.equality(qc_state.add("/test.lua", 5, "note", "single", "ctx").end_line, nil)
+end
+
 local get_for_file_tests = new_set()
 T["get_for_file"] = get_for_file_tests
 

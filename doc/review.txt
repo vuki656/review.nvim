@@ -170,6 +170,9 @@ with `S`, or by setting `ui.diff_view_mode` to "split".
 
 :Review qc              Add a quick comment on the current line of the
                         current buffer. Works outside the review UI.
+                        Accepts a range, so `:'<,'>Review qc` attaches the
+                        comment to the selected lines and exports it as
+                        `**Lines 42-50**`.
 
 :Review qp              Toggle the quick comments panel.
 
@@ -196,6 +199,8 @@ Quick comments have their own module: >lua
     local qc = require("review.quick_comments")
 
     qc.add()               -- comment on the current line
+    qc.add(42, 50)         -- comment on lines 42 to 50
+    qc.add_visual()        -- comment on the current visual selection
     qc.toggle_panel()
     qc.open_panel()
     qc.close_panel()
@@ -252,8 +257,11 @@ the base; the plugin reports this rather than acting.
 ------------------------------------------------------------------------------
 7.2 Diff pane                                           *review-mappings-diff*
 
-    c             Add a comment on the current line.
-    dc            Delete the comment on the current line.
+    c             Add a comment on the current line. In visual mode, the
+                  comment covers the selected lines and exports as a range
+                  such as `file.ts:42-50`.
+    dc            Delete the comment on the current line, or on any line
+                  covered by a multi-line comment.
     ]c / [c       Next / previous hunk, wrapping at the ends.
     ]f / [f       Next / previous changed file, wrapping at the ends.
     e             Open the real file at the current line, closing the
@@ -360,7 +368,10 @@ file diffs longer than 1000 lines are elided in the preview.
 Quick comments are separate from review comments. They attach to any line of
 any buffer outside the review UI, show as gutter signs once `setup()` has
 defined them, and persist in `.git/review-comments.json`. Add one with
-|:Review| qc, toggle the panel with |:Review| qp.
+|:Review| qc, toggle the panel with |:Review| qp. A quick comment can cover a
+range: select lines and run `:'<,'>Review qc`, or press the
+`quick_comments.keymaps.add` key in visual mode. Ranged comments place a sign
+on every covered line and the panel lists them as `L42-50`.
 
     <CR>          Jump to the comment's file and line in the previous window,
                   leaving the panel open.

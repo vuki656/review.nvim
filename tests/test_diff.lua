@@ -445,4 +445,89 @@ T["crlf diff strips carriage returns"] = function()
     expect.equality(parsed.hunks[1].lines[2].content, "b")
 end
 
+local function mixed_render_lines()
+    return {
+        { type = "filepath", content = "f.lua" },
+        { type = "context", old_line = 40, new_line = 40, content = "keep" },
+        { type = "delete", old_line = 41, content = "old one" },
+        { type = "delete", old_line = 42, content = "old two" },
+        { type = "add", new_line = 41, content = "new one" },
+        { type = "add", new_line = 42, content = "new two" },
+        { type = "context", old_line = 43, new_line = 43, content = "tail" },
+    }
+end
+
+local source_range_tests = new_set()
+T["get_source_range"] = source_range_tests
+
+source_range_tests["selection starting on a delete stays on the old side"] = function()
+    local range = diff.get_source_range(3, 6, mixed_render_lines())
+    expect.equality(range.side, "old")
+    expect.equality(range.line, 3)
+    expect.equality(range.original_line, 41)
+    expect.equality(range.end_line, 4)
+    expect.equality(range.original_end_line, 42)
+end
+
+source_range_tests["selection starting on context stays on the new side"] = function()
+    local range = diff.get_source_range(2, 6, mixed_render_lines())
+    expect.equality(range.side, "new")
+    expect.equality(range.original_line, 40)
+    expect.equality(range.end_line, 6)
+    expect.equality(range.original_end_line, 42)
+end
+
+source_range_tests["anchors to the first row that has a source line"] = function()
+    local range = diff.get_source_range(1, 3, mixed_render_lines())
+    expect.equality(range.line, 2)
+    expect.equality(range.original_line, 40)
+    expect.equality(range.side, "new")
+    expect.equality(range.end_line, nil)
+end
+
+source_range_tests["single row selection has no end"] = function()
+    local range = diff.get_source_range(5, 5, mixed_render_lines())
+    expect.equality(range.original_line, 41)
+    expect.equality(range.end_line, nil)
+    expect.equality(range.original_end_line, nil)
+end
+
+source_range_tests["nil when no row has a source line"] = function()
+    expect.equality(diff.get_source_range(1, 1, mixed_render_lines()), nil)
+end
+
+source_range_tests["nil without render lines"] = function()
+    expect.equality(diff.get_source_range(1, 3, nil), nil)
+end
+
+local reanchor_tests = new_set()
+T["reanchor_comment"] = reanchor_tests
+
+reanchor_tests["moves display rows to the current rendering"] = function()
+    local comment = { line = 99, end_line = 100, original_line = 41, original_end_line = 42, side = "new" }
+    diff.reanchor_comment(comment, mixed_render_lines())
+    expect.equality(comment.line, 5)
+    expect.equality(comment.end_line, 6)
+end
+
+reanchor_tests["degrades to single line when the end row is gone"] = function()
+    local comment = { line = 5, end_line = 6, original_line = 41, original_end_line = 99, side = "new" }
+    diff.reanchor_comment(comment, mixed_render_lines())
+    expect.equality(comment.line, 5)
+    expect.equality(comment.end_line, nil)
+    expect.equality(comment.original_end_line, 99)
+end
+
+reanchor_tests["keeps the old display row when the start row is gone"] = function()
+    local comment = { line = 7, original_line = 99, side = "new" }
+    diff.reanchor_comment(comment, mixed_render_lines())
+    expect.equality(comment.line, 7)
+end
+
+reanchor_tests["does not match the wrong side"] = function()
+    local comment = { line = 1, original_line = 41, side = "old" }
+    diff.reanchor_comment(comment, mixed_render_lines())
+    expect.equality(comment.line, 3)
+end
+
 return T

@@ -50,7 +50,11 @@ function M.setup()
             ui.pick_commit(count)
         elseif subcommand == "qc" then
             local quick_comments = require("review.quick_comments")
-            quick_comments.add()
+            if opts.range > 0 then
+                quick_comments.add(opts.line1, opts.line2)
+            else
+                quick_comments.add()
+            end
         elseif subcommand == "qp" then
             local quick_comments = require("review.quick_comments")
             quick_comments.toggle_panel()
@@ -62,6 +66,7 @@ function M.setup()
         end
     end, {
         nargs = "*",
+        range = true,
         complete = function(arg_lead, cmdline, _)
             if #vim.split(cmdline, "%s+") ~= 2 then
                 return {}

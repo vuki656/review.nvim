@@ -114,6 +114,10 @@ Everything the UI shows is derived from two fields in `state.lua`: `base` and `b
 
 ### Comment Anchoring
 
+Quick comments carry the same idea with far less machinery: `end_line` on a `QuickComment`, no re-anchoring (they point at real buffer lines), `context` holding every covered line joined by newlines, and a sign on each covered row. The `:Review` command is declared `range = true` so `:'<,'>Review qc` works, and `quick_comments.keymaps.add` is bound in both normal and visual mode.
+
+Comments can cover a range of lines: selecting lines in visual mode and pressing `c` stores `end_line` (display row) and `original_end_line` alongside the single-line fields, and export renders the location as `file:42-50`. A selection is anchored to the side of the first row in it that has a source line, and only rows on that same side contribute to the range, so a selection spanning both `-` and `+` lines in unified mode never mixes sides. If the end row no longer exists after a re-render, the comment degrades to a single-line display while keeping `original_end_line` for export.
+
 `comment.line` is a display row in the current rendering, not a durable location — `diff_view.render_comments` overwrites it on every render via `display_row_for()`. The durable anchor is `original_line` plus `side` (`"old"` or `"new"`), captured from the source line when the comment is submitted; re-anchoring scans `render_lines` for the row whose source line matches on the matching side, and falls back to the old `comment.line` if the line no longer exists in the diff. Export prefers `original_line` when reporting a location. Anything that changes diff parsing or rendering must keep `original_line`/`side` intact, or comments silently drift onto the wrong lines.
 
 ### Export Delivery

@@ -898,30 +898,6 @@ end
 ---Render comment markers
 ---@param bufnr number
 ---@param file string
----Resolve the display row a comment belongs on in the current rendering
----@param comment table
----@param render_lines table[]|nil
----@return number
-local function display_row_for(comment, render_lines)
-    if not comment.original_line or not render_lines then
-        return comment.line
-    end
-
-    local want_old = comment.side == "old"
-
-    for index, line in ipairs(render_lines) do
-        local is_old = line.type == "delete"
-        if is_old == want_old then
-            local source = line.source_line or (is_old and line.old_line or line.new_line)
-            if source == comment.original_line then
-                return index
-            end
-        end
-    end
-
-    return comment.line
-end
-
 local function render_comments(bufnr, file)
     vim.api.nvim_buf_clear_namespace(bufnr, ns_comments, 0, -1)
 
@@ -930,7 +906,7 @@ local function render_comments(bufnr, file)
     local render_lines = M.current and M.current.bufnr == bufnr and M.current.render_lines or nil
     if render_lines then
         for _, comment in ipairs(comments) do
-            comment.line = display_row_for(comment, render_lines)
+            diff_parser.reanchor_comment(comment, render_lines)
         end
     end
 
@@ -948,6 +924,15 @@ local function render_comments(bufnr, file)
         local type_info = comment_types[comment.type]
         if type_info then
             local header = string.format(" %s %s ", type_info.icon, type_info.label)
+            if comment.original_end_line and comment.original_line then
+                header = string.format(
+                    " %s %s %d-%d ",
+                    type_info.icon,
+                    type_info.label,
+                    comment.original_line,
+                    comment.original_end_line
+                )
+            end
             -- Use display width (not byte length) for proper alignment with multi-byte icons
             local header_width = vim.api.nvim_strwidth(header)
 
@@ -965,7 +950,10 @@ local function render_comments(bufnr, file)
                 box_width = math.min(box_width, max_box_width)
             end
 
-            local is_focused = comment.line - 1 == focused_comment_line
+            local anchor_row = comment.end_line or comment.line
+            local is_focused = focused_comment_line
+                and focused_comment_line >= comment.line - 1
+                and focused_comment_line <= anchor_row - 1
             local border_hl = is_focused and type_info.border_focus_hl or "ReviewCommentBorder"
 
             local header_padding = string.rep(" ", math.max(0, box_width - header_width))
@@ -1003,18 +991,20 @@ local function render_comments(bufnr, file)
             })
 
             pcall(function()
-                -- Show comment as boxed virtual lines below
+                -- Show comment as boxed virtual lines below the last commented row
                 -- Each segment has its own highlight
-                vim.api.nvim_buf_set_extmark(bufnr, ns_comments, comment.line - 1, 0, {
+                vim.api.nvim_buf_set_extmark(bufnr, ns_comments, anchor_row - 1, 0, {
                     virt_lines = virt_lines,
                     virt_lines_above = false,
                 })
 
-                -- Add sign in gutter
-                vim.api.nvim_buf_set_extmark(bufnr, ns_comments, comment.line - 1, 0, {
-                    sign_text = type_info.icon,
-                    sign_hl_group = type_info.highlight,
-                })
+                -- Add sign in gutter on every row the comment covers
+                for row = comment.line, anchor_row do
+                    vim.api.nvim_buf_set_extmark(bufnr, ns_comments, row - 1, 0, {
+                        sign_text = type_info.icon,
+                        sign_hl_group = type_info.highlight,
+                    })
+                end
             end)
         end
     end
@@ -1177,7 +1167,9 @@ local function goto_prev_file()
 end
 
 ---Add comment with inline input (Tab to cycle type)
-local function add_comment()
+---@param start_row? number First display row of a selection, defaults to the cursor row
+---@param end_row? number Last display row of a selection
+local function add_comment(start_row, end_row)
     if not M.current or not M.current.file then
         return
     end
@@ -1185,19 +1177,33 @@ local function add_comment()
     local original_winid = vim.api.nvim_get_current_win()
     local original_cursor = vim.api.nvim_win_get_cursor(original_winid)
 
-    local cursor = vim.api.nvim_win_get_cursor(0)
-    local line_num = cursor[1]
+    local line_num = start_row or vim.api.nvim_win_get_cursor(0)[1]
+    end_row = end_row and math.max(end_row, line_num) or line_num
 
     if M.split_state then
-        local new_line = M.split_state.new_lines[line_num]
-        if new_line and new_line.type == "padding" then
+        local has_content = false
+        for row = line_num, end_row do
+            local new_line = M.split_state.new_lines[row]
+            if not new_line or new_line.type ~= "padding" then
+                has_content = true
+                break
+            end
+        end
+        if not has_content then
             vim.notify("Cannot comment on this line", vim.log.levels.WARN)
             return
         end
     end
 
-    local source_line, source_side = get_current_source_line()
-    local original_line = source_line or line_num
+    local range = diff_parser.get_source_range(line_num, end_row, M.current.render_lines)
+    local original_line = range and range.original_line or line_num
+    local source_side = range and range.side or nil
+    local original_end_line = range and range.original_end_line or nil
+    if range then
+        line_num = range.line
+    end
+    local comment_end_line = range and range.end_line or (end_row > line_num and end_row or nil)
+
     local file = M.current.file
     local bufnr = M.current.bufnr
 
@@ -1286,7 +1292,16 @@ local function add_comment()
 
         local text = table.concat(lines, "\n")
         if text ~= "" then
-            state.add_comment(file, line_num, get_current_type(), text, original_line, source_side)
+            state.add_comment(
+                file,
+                line_num,
+                get_current_type(),
+                text,
+                original_line,
+                source_side,
+                comment_end_line,
+                original_end_line
+            )
         end
 
         close_input()
@@ -1393,6 +1408,16 @@ local function add_comment()
     vim.cmd("startinsert")
 end
 
+---Add comment spanning the current visual selection
+local function add_comment_visual()
+    local anchor_row = vim.fn.getpos("v")[2]
+    local cursor_row = vim.api.nvim_win_get_cursor(0)[1]
+
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
+
+    add_comment(math.min(anchor_row, cursor_row), math.max(anchor_row, cursor_row))
+end
+
 ---Delete comment at current line
 local function delete_comment()
     if not M.current then
@@ -1444,6 +1469,7 @@ local function setup_keymaps(bufnr, callbacks, old_bufnr)
     local all_bufnrs = old_bufnr and { bufnr, old_bufnr } or { bufnr }
 
     map("c", add_comment, { desc = "Add comment", group = "Comments" }, { bufnr })
+    map("c", add_comment_visual, { desc = "Add comment on selection", group = "Comments", mode = "x" }, { bufnr })
     map("dc", delete_comment, { desc = "Delete comment", group = "Comments" }, { bufnr })
     map("]c", goto_next_hunk, { desc = "Next hunk", group = "Navigation" }, all_bufnrs)
     map("[c", goto_prev_hunk, { desc = "Previous hunk", group = "Navigation" }, all_bufnrs)
@@ -1597,7 +1623,9 @@ local function get_commented_lines(file)
     local commented = {}
     local comments = state.get_comments_for_file(file)
     for _, comment in ipairs(comments) do
-        commented[comment.line - 1] = true
+        for row = comment.line, comment.end_line or comment.line do
+            commented[row - 1] = true
+        end
     end
     return commented
 end

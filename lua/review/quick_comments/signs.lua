@@ -41,12 +41,14 @@ function M.update(bufnr)
     -- Get comments for this file
     local comments = qc_state.get_for_file(file)
 
-    -- Place signs
+    -- Place signs on every line a comment covers
     for _, comment in ipairs(comments) do
-        vim.fn.sign_place(0, SIGN_GROUP, SIGN_NAME, bufnr, {
-            lnum = comment.line,
-            priority = 10,
-        })
+        for lnum = comment.line, comment.end_line or comment.line do
+            vim.fn.sign_place(0, SIGN_GROUP, SIGN_NAME, bufnr, {
+                lnum = lnum,
+                priority = 10,
+            })
+        end
     end
 end
 

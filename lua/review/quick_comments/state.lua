@@ -2,6 +2,7 @@
 ---@field id string Unique identifier
 ---@field file string Absolute file path
 ---@field line number Source file line number
+---@field end_line number|nil Last source line of a multi-line comment
 ---@field type "note"|"fix"|"question"
 ---@field text string Comment text
 ---@field created_at number Timestamp
@@ -36,16 +37,22 @@ end
 ---@param type "note"|"fix"|"question"
 ---@param text string Comment text
 ---@param context string|nil Line content at creation time
+---@param end_line number|nil Last line of a multi-line comment
 ---@return QuickComment
-function M.add(file, line, type, text, context)
+function M.add(file, line, type, text, context, end_line)
     if not M.state.comments[file] then
         M.state.comments[file] = {}
+    end
+
+    if end_line and end_line <= line then
+        end_line = nil
     end
 
     local comment = {
         id = M.generate_id(),
         file = file,
         line = line,
+        end_line = end_line,
         type = type,
         text = text,
         created_at = os.time(),
@@ -137,7 +144,7 @@ function M.get_at_line(file, line)
     end
 
     for _, comment in ipairs(comments) do
-        if comment.line == line then
+        if line >= comment.line and line <= (comment.end_line or comment.line) then
             return comment
         end
     end

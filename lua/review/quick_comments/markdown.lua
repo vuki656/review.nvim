@@ -22,8 +22,16 @@ function M.build(comments)
 
         local type_info = comment_types[comment.type] or comment_types.note
         local line_number = tonumber(comment.line) or 0
+        local end_line_number = tonumber(comment.end_line)
         table.insert(lines, "")
-        table.insert(lines, string.format("**Line %d** - %s %s", line_number, type_info.icon, type_info.label))
+        if end_line_number and end_line_number > line_number then
+            table.insert(
+                lines,
+                string.format("**Lines %d-%d** - %s %s", line_number, end_line_number, type_info.icon, type_info.label)
+            )
+        else
+            table.insert(lines, string.format("**Line %d** - %s %s", line_number, type_info.icon, type_info.label))
+        end
         if comment.context then
             local fence = format.build_fence(comment.context)
             table.insert(lines, fence)

@@ -13,7 +13,9 @@ local comment_types = comment_types_module.TYPES
 local comment_type_order = comment_types_module.ORDER
 
 ---Add a quick comment at the current cursor position
-function M.add()
+---@param start_line? number First line of a selection, defaults to the cursor line
+---@param end_line? number Last line of a selection
+function M.add(start_line, end_line)
     local bufnr = vim.api.nvim_get_current_buf()
     local file = vim.api.nvim_buf_get_name(bufnr)
 
@@ -22,12 +24,15 @@ function M.add()
         return
     end
 
-    local cursor = vim.api.nvim_win_get_cursor(0)
-    local line_num = cursor[1]
+    local line_num = start_line or vim.api.nvim_win_get_cursor(0)[1]
+    local last_line = end_line and math.max(end_line, line_num) or line_num
+    if last_line == line_num then
+        last_line = nil
+    end
 
     -- Get line content for context
-    local lines = vim.api.nvim_buf_get_lines(bufnr, line_num - 1, line_num, false)
-    local context = lines[1] or ""
+    local lines = vim.api.nvim_buf_get_lines(bufnr, line_num - 1, last_line or line_num, false)
+    local context = table.concat(lines, "\n")
 
     -- Create floating input window
     local type_info = comment_types[comment_type_order[1]]
@@ -83,7 +88,7 @@ function M.add()
 
         local text = table.concat(input_lines, "\n")
         if text ~= "" then
-            qc_state.add(file, line_num, get_current_type(), text, context)
+            qc_state.add(file, line_num, get_current_type(), text, context, last_line)
             persistence.save()
             signs.update(bufnr)
 
@@ -108,6 +113,16 @@ function M.add()
     vim.keymap.set("i", "<S-CR>", "<CR>", { buffer = input_buf, nowait = true })
 
     vim.cmd("startinsert")
+end
+
+---Add a quick comment spanning the current visual selection
+function M.add_visual()
+    local anchor_row = vim.fn.getpos("v")[2]
+    local cursor_row = vim.api.nvim_win_get_cursor(0)[1]
+
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
+
+    M.add(math.min(anchor_row, cursor_row), math.max(anchor_row, cursor_row))
 end
 
 ---Toggle the quick comments panel
@@ -201,6 +216,10 @@ function M.setup()
             vim.keymap.set("n", keymaps.add, function()
                 M.add()
             end, { desc = "Add quick comment" })
+
+            vim.keymap.set("x", keymaps.add, function()
+                M.add_visual()
+            end, { desc = "Add quick comment on selection" })
         end
 
         if keymaps.toggle_panel then
