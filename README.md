@@ -29,7 +29,7 @@
 - Session persistence, so comments survive a restart
 - Auto refresh while an agent writes files
 
-<img src="https://github.com/user-attachments/assets/dbc3be03-bc70-4bf5-bc5c-e108b2e4f1fc">
+<img src="https://github.com/user-attachments/assets/3a645c54-9aa7-4ac0-88b0-64b8c74985c6">
 
 ## ⚡️ Requirements
 
