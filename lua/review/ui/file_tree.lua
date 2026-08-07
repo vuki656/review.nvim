@@ -1370,6 +1370,9 @@ local function setup_keymaps(bufnr, callbacks)
         elseif node.is_file then
             stage_single_file(node)
         end
+
+        while vim.fn.getchar(0) ~= 0 do
+        end
     end
 
     -- Debounced file selection (uses module-level timer for cleanup)
