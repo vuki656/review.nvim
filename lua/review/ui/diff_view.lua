@@ -1447,6 +1447,42 @@ local function show_help()
     help.show("Diff View", registered_keymaps)
 end
 
+---Focus the file tree window if it is valid
+local function focus_file_tree()
+    local file_tree_component = layout.get_file_tree()
+    if file_tree_component and file_tree_component.winid and vim.api.nvim_win_is_valid(file_tree_component.winid) then
+        vim.api.nvim_set_current_win(file_tree_component.winid)
+    end
+end
+
+---Setup keymaps that stay valid without a rendered diff
+---@param bufnr number
+---@param callbacks? table
+---@param keymap_registry? table
+function M.setup_base_keymaps(bufnr, callbacks, keymap_registry)
+    local map = ui_util.create_buffer_mapper(bufnr, keymap_registry)
+
+    map("<C-n>", function()
+        local ui = require("review.ui")
+        ui.toggle_file_tree()
+    end, { desc = "Toggle file tree", group = "View" })
+
+    map("q", function()
+        if callbacks and callbacks.on_close then
+            callbacks.on_close()
+        else
+            require("review.ui").close()
+        end
+    end, { nowait = true, desc = "Close review", group = "General" })
+
+    vim.keymap.set("n", "<C-h>", focus_file_tree, { buffer = bufnr, nowait = true })
+    vim.keymap.set("n", "<C-l>", "<Nop>", { buffer = bufnr, nowait = true })
+    vim.keymap.set("n", "<C-j>", "<Nop>", { buffer = bufnr, nowait = true })
+    vim.keymap.set("n", "<C-k>", "<Nop>", { buffer = bufnr, nowait = true })
+
+    panel_keymaps.setup_number_navigation(map)
+end
+
 ---Setup keymaps for diff view
 ---@param bufnr number
 ---@param callbacks table
@@ -1455,12 +1491,6 @@ local function setup_keymaps(bufnr, callbacks, old_bufnr)
     registered_keymaps = {}
 
     local map = ui_util.create_buffer_mapper(bufnr, registered_keymaps)
-
-    local function close_review()
-        if callbacks.on_close then
-            callbacks.on_close()
-        end
-    end
 
     local function toggle_mode()
         M.toggle_diff_mode(callbacks)
@@ -1491,10 +1521,6 @@ local function setup_keymaps(bufnr, callbacks, old_bufnr)
         end
     end, { desc = "Open file at line", group = "Navigation" }, all_bufnrs)
     map("S", toggle_mode, { desc = "Toggle split/unified diff", group = "View" }, all_bufnrs)
-    map("<C-n>", function()
-        local ui = require("review.ui")
-        ui.toggle_file_tree()
-    end, { desc = "Toggle file tree", group = "View" }, all_bufnrs)
     map("}", function()
         state.state.diff_context = state.state.diff_context + 1
         local ui = require("review.ui")
@@ -1545,19 +1571,9 @@ local function setup_keymaps(bufnr, callbacks, old_bufnr)
             end,
         })
     end
-    local function focus_file_tree()
-        local file_tree_component = layout.get_file_tree()
-        if
-            file_tree_component
-            and file_tree_component.winid
-            and vim.api.nvim_win_is_valid(file_tree_component.winid)
-        then
-            vim.api.nvim_set_current_win(file_tree_component.winid)
-        end
-    end
-
+    M.setup_base_keymaps(bufnr, callbacks, registered_keymaps)
     if old_bufnr then
-        vim.keymap.set("n", "<C-h>", focus_file_tree, { buffer = old_bufnr, nowait = true })
+        M.setup_base_keymaps(old_bufnr, callbacks)
         vim.keymap.set("n", "<C-l>", function()
             local new_component = layout.get_diff_view_new()
             if new_component and vim.api.nvim_win_is_valid(new_component.winid) then
@@ -1571,16 +1587,8 @@ local function setup_keymaps(bufnr, callbacks, old_bufnr)
                 vim.api.nvim_set_current_win(old_component.winid)
             end
         end, { buffer = bufnr, nowait = true })
-        vim.keymap.set("n", "<C-l>", "<Nop>", { buffer = bufnr, nowait = true })
-    else
-        vim.keymap.set("n", "<C-h>", focus_file_tree, { buffer = bufnr, nowait = true })
-        vim.keymap.set("n", "<C-l>", "<Nop>", { buffer = bufnr, nowait = true })
     end
 
-    for _, target_bufnr in ipairs(all_bufnrs) do
-        vim.keymap.set("n", "<C-j>", "<Nop>", { buffer = target_bufnr, nowait = true })
-        vim.keymap.set("n", "<C-k>", "<Nop>", { buffer = target_bufnr, nowait = true })
-    end
     map("<Esc>", function()
         if callbacks.on_escape then
             callbacks.on_escape()
@@ -1594,9 +1602,7 @@ local function setup_keymaps(bufnr, callbacks, old_bufnr)
             vim.api.nvim_set_current_win(file_tree_component.winid)
         end
     end, { nowait = true, desc = "Focus file tree", group = "Navigation" }, all_bufnrs)
-    map("q", close_review, { nowait = true, desc = "Close review", group = "General" }, all_bufnrs)
     map("?", show_help, { desc = "Show help", group = "General" }, all_bufnrs)
-    panel_keymaps.setup_number_navigation(map, all_bufnrs)
 end
 
 ---Apply common window options to a diff view window

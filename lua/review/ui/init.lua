@@ -8,7 +8,6 @@ local git = require("review.core.git")
 local highlights = require("review.ui.highlights")
 local layout = require("review.ui.layout")
 local log = require("review.core.log")
-local panel_keymaps = require("review.ui.panel_keymaps")
 local persistence = require("review.core.persistence")
 local state = require("review.state")
 local ui_util = require("review.ui.util")
@@ -80,24 +79,8 @@ function M.open()
     local l = layout.create()
     layout.mount()
 
-    -- Make section navigation available while the diff pane shows the welcome screen
-    local diff_map = ui_util.create_buffer_mapper(l.diff_view.bufnr)
-    panel_keymaps.setup_number_navigation(diff_map)
-    vim.keymap.set("n", "<C-h>", function()
-        local file_tree_component = layout.get_file_tree()
-        if file_tree_component and vim.api.nvim_win_is_valid(file_tree_component.winid) then
-            vim.api.nvim_set_current_win(file_tree_component.winid)
-        end
-    end, { buffer = l.diff_view.bufnr, nowait = true })
-    vim.keymap.set("n", "q", function()
-        M.close()
-    end, { buffer = l.diff_view.bufnr, nowait = true })
-    diff_map("<C-n>", function()
-        M.toggle_file_tree()
-    end, { nowait = true, desc = "Toggle file tree", group = "View" })
-    diff_map("q", function()
-        M.close()
-    end, { nowait = true, desc = "Close review", group = "General" })
+    -- Keep the diff pane navigable while it still shows the welcome screen
+    diff_view.setup_base_keymaps(l.diff_view.bufnr)
 
     state.state.is_open = true
     state.state.diff_mode = config.get().ui.diff_view_mode
