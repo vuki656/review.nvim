@@ -83,6 +83,12 @@ function M.open()
     -- Make section navigation available while the diff pane shows the welcome screen
     local diff_map = ui_util.create_buffer_mapper(l.diff_view.bufnr)
     panel_keymaps.setup_number_navigation(diff_map)
+    diff_map("<C-n>", function()
+        M.toggle_file_tree()
+    end, { nowait = true, desc = "Toggle file tree", group = "View" })
+    diff_map("q", function()
+        M.close()
+    end, { nowait = true, desc = "Close review", group = "General" })
 
     state.state.is_open = true
     state.state.diff_mode = config.get().ui.diff_view_mode
