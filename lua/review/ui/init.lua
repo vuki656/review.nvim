@@ -83,6 +83,15 @@ function M.open()
     -- Make section navigation available while the diff pane shows the welcome screen
     local diff_map = ui_util.create_buffer_mapper(l.diff_view.bufnr)
     panel_keymaps.setup_number_navigation(diff_map)
+    vim.keymap.set("n", "<C-h>", function()
+        local file_tree_component = layout.get_file_tree()
+        if file_tree_component and vim.api.nvim_win_is_valid(file_tree_component.winid) then
+            vim.api.nvim_set_current_win(file_tree_component.winid)
+        end
+    end, { buffer = l.diff_view.bufnr, nowait = true })
+    vim.keymap.set("n", "q", function()
+        M.close()
+    end, { buffer = l.diff_view.bufnr, nowait = true })
     diff_map("<C-n>", function()
         M.toggle_file_tree()
     end, { nowait = true, desc = "Toggle file tree", group = "View" })
