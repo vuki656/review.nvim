@@ -21,6 +21,7 @@
 ---@field file_tree_width number Width of file tree panel (percentage)
 ---@field diff_view_mode "unified"|"split" Default diff view mode
 ---@field number_navigation boolean Whether to enable numeric section navigation
+---@field panels (string[]|table<string, boolean>)|nil Panels to show in sidebar
 
 ---@class ReviewTmuxConfig
 ---@field target string Target window/pane (e.g., "!" for last active pane, or a window name)
@@ -60,6 +61,76 @@
 
 local M = {}
 
+local PANEL_ALIASES = {
+    branch_info = "branch_info",
+    branch = "branch_info",
+    file_tree = "file_tree",
+    files = "file_tree",
+    tree = "file_tree",
+    branch_list = "branch_list",
+    branches = "branch_list",
+    commit_list = "commit_list",
+    commits = "commit_list",
+    comment_list = "comment_list",
+    comments = "comment_list",
+}
+
+local CANONICAL_PANEL_ORDER = { "branch_info", "file_tree", "branch_list", "commit_list", "comment_list" }
+local DEFAULT_PANEL_ORDER = { "file_tree", "comment_list" }
+
+---Resolve configured panels option into an ordered list of canonical panel names
+---@param panels? string[]|table<string, boolean>
+---@return string[]
+function M.get_enabled_panels(panels)
+    if panels == nil or (type(panels) == "table" and next(panels) == nil) then
+        return vim.deepcopy(DEFAULT_PANEL_ORDER)
+    end
+
+    local result = {}
+    local seen = {}
+
+    if type(panels) == "table" then
+        local is_array = false
+        if vim.isarray then
+            is_array = vim.isarray(panels)
+        else
+            is_array = (#panels > 0)
+        end
+
+        if is_array then
+            for _, name in ipairs(panels) do
+                local canonical = PANEL_ALIASES[name]
+                if canonical and not seen[canonical] then
+                    seen[canonical] = true
+                    table.insert(result, canonical)
+                end
+            end
+        else
+            for _, canonical in ipairs(CANONICAL_PANEL_ORDER) do
+                local enabled = true
+                for k, v in pairs(panels) do
+                    if PANEL_ALIASES[k] == canonical and v == false then
+                        enabled = false
+                        break
+                    end
+                end
+                if enabled then
+                    seen[canonical] = true
+                    table.insert(result, canonical)
+                end
+            end
+        end
+    end
+
+    if #result == 0 or not seen["file_tree"] then
+        if not seen["file_tree"] then
+            table.insert(result, 1, "file_tree")
+        end
+    end
+
+    return result
+end
+
 ---@type ReviewConfig
 M.defaults = {
     keymaps = {
@@ -72,6 +143,7 @@ M.defaults = {
         file_tree_width = 33,
         diff_view_mode = "unified",
         number_navigation = false,
+        panels = { "file_tree", "comment_list" },
     },
     tmux = {
         target = "!",

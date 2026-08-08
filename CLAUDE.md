@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-review.nvim is a Neovim plugin for reviewing AI-generated code changes. `:Review` opens a dedicated tab of floating windows: a sidebar of five stacked floats (Branch, Files, Branches, Commits, Comments) on the left and a diff pane on the right. It browses git diffs, attaches typed comments to lines, and exports review feedback to the clipboard or tmux (designed for Claude Code workflows).
+review.nvim is a Neovim plugin for reviewing AI-generated code changes. `:Review` opens a dedicated tab of floating windows: a sidebar of floats (Files and Comments by default, configurable via `ui.panels`) on the left and a diff pane on the right. It browses git diffs, attaches typed comments to lines, and exports review feedback to the clipboard or tmux (designed for Claude Code workflows).
 
 ## Commands
 

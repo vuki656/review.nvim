@@ -47,7 +47,8 @@ function M.setup_number_navigation(map_function, extra_bufnrs)
 end
 
 ---@class PanelNavigation
----@field tab_target string Layout getter name for Tab cycling
+---@field panel_name string|nil Name of the current panel (e.g. "file_tree")
+---@field tab_target string|nil Layout getter name for Tab cycling
 ---@field h_target string|nil Layout getter name for h key (nil = Nop)
 ---@field l_target string|nil Layout getter name for l key (nil = Nop)
 ---@field scroll_keys? {down: string, up: string} Scroll keys (default "<C-d>"/"<C-u>")
@@ -86,24 +87,31 @@ function M.setup(bufnr, navigation, on_close, active_timers, map_function, on_es
     end, { nowait = true, desc = "Push to remote", group = group })
 
     map_function("<Tab>", function()
-        navigate_to(navigation.tab_target)
+        local layout = require("review.ui.layout")
+        local target = navigation.panel_name and layout.get_adjacent_panel_getter(navigation.panel_name, "next")
+            or navigation.tab_target
+        if target then
+            navigate_to(target)
+        end
     end, { nowait = true, desc = "Next pane", group = group })
 
-    if navigation.h_target then
-        map_function("h", function()
-            navigate_to(navigation.h_target)
-        end, { nowait = true, desc = "Previous panel", group = group })
-    else
-        vim.keymap.set("n", "h", "<Nop>", { buffer = bufnr, nowait = true })
-    end
+    map_function("h", function()
+        local layout = require("review.ui.layout")
+        local target = navigation.panel_name and layout.get_adjacent_panel_getter(navigation.panel_name, "prev")
+            or navigation.h_target
+        if target then
+            navigate_to(target)
+        end
+    end, { nowait = true, desc = "Previous panel", group = group })
 
-    if navigation.l_target then
-        map_function("l", function()
-            navigate_to(navigation.l_target)
-        end, { nowait = true, desc = "Next panel", group = group })
-    else
-        vim.keymap.set("n", "l", "<Nop>", { buffer = bufnr, nowait = true })
-    end
+    map_function("l", function()
+        local layout = require("review.ui.layout")
+        local target = navigation.panel_name and layout.get_adjacent_panel_getter(navigation.panel_name, "next")
+            or navigation.l_target
+        if target then
+            navigate_to(target)
+        end
+    end, { nowait = true, desc = "Next panel", group = group })
 
     M.setup_number_navigation(map_function)
 

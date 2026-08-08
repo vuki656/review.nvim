@@ -66,4 +66,22 @@ T["numeric navigation registers all section targets"] = function()
     end
 end
 
+T["adjacent panel getter cycles through active interactive panels"] = function()
+    local layout = require("review.ui.layout")
+    config.setup({ ui = { panels = { "files", "comments" } } })
+
+    expect.equality(layout.get_adjacent_panel_getter("file_tree", "next"), "get_comment_list")
+    expect.equality(layout.get_adjacent_panel_getter("file_tree", "prev"), "get_comment_list")
+    expect.equality(layout.get_adjacent_panel_getter("comment_list", "next"), "get_file_tree")
+    expect.equality(layout.get_adjacent_panel_getter("comment_list", "prev"), "get_file_tree")
+end
+
+T["adjacent panel getter with single panel navigates to diff view on next"] = function()
+    local layout = require("review.ui.layout")
+    config.setup({ ui = { panels = { "files" } } })
+
+    expect.equality(layout.get_adjacent_panel_getter("file_tree", "next"), "get_diff_view")
+    expect.equality(layout.get_adjacent_panel_getter("file_tree", "prev"), "get_file_tree")
+end
+
 return T

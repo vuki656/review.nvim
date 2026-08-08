@@ -402,6 +402,7 @@ need the keys you want to change. The complete defaults: >lua
             file_tree_width = 33,
             diff_view_mode = "unified",
             number_navigation = false,
+            panels = { "file_tree", "comment_list" },
         },
         tmux = {
             target = "!",
@@ -472,6 +473,12 @@ ui.number_navigation ~
     `1` focuses Files, `2` Branches, `3` Commits, `4` Comments and `0` the diff
     pane. Disabled by default so normal-mode counts and `0` retain their usual
     behavior unless explicitly enabled.
+
+ui.panels ~
+    Sidebar panels to display. Accepts a list of panel names/aliases (e.g.,
+    `{ "file_tree", "comment_list" }` or `{ "files", "comments" }`) or a table of
+    boolean flags (e.g., `{ branch = false, branches = false, commits = false }`).
+    Defaults to `{ "file_tree", "comment_list" }` (showing Files changed and Comments).
 
 tmux.target ~
     Where the export is pasted. The default "!" is tmux's last active pane,
