@@ -168,6 +168,8 @@ with `S`, or by setting `ui.diff_view_mode` to "split".
                         20) and reopen the review against the chosen one.
                         Choosing "HEAD" returns to reviewing the worktree.
 
+:Review clear           Clear all review comments across all files.
+
 :Review qc              Add a quick comment on the current line of the
                         current buffer. Works outside the review UI.
                         Accepts a range, so `:'<,'>Review qc` attaches the

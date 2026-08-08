@@ -61,6 +61,8 @@ function M.setup()
         elseif subcommand == "log" then
             local log = require("review.core.log")
             vim.cmd("tabedit " .. vim.fn.fnameescape(log.get_log_path()))
+        elseif subcommand == "clear" then
+            ui.clear_comments()
         else
             vim.notify("Unknown subcommand: " .. subcommand, vim.log.levels.ERROR)
         end
@@ -73,7 +75,7 @@ function M.setup()
             end
             return vim.tbl_filter(function(item)
                 return vim.startswith(item, arg_lead)
-            end, { "close", "export", "send", "commit", "pick", "qc", "qp", "log" })
+            end, { "close", "export", "send", "commit", "pick", "qc", "qp", "log", "clear" })
         end,
         desc = "Review AI-generated code changes",
     })

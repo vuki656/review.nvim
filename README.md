@@ -118,6 +118,7 @@ lua require("review").setup({})
 | `:Review send [target]` | Send comments to `export.on_export`, or to a tmux pane (defaults to `tmux.target`) |
 | `:Review commit <sha>` | Set the diff base to `<sha>` |
 | `:Review pick [count]` | Pick a base commit from the last `count` commits (default 20) |
+| `:Review clear` | Clear all review comments |
 | `:Review qc` | Add a quick comment on the current line of the current buffer, or on a range with `:'<,'>Review qc` |
 | `:Review qp` | Toggle the quick comments panel |
 | `:Review log` | Open the plugin log file in a new tab |
@@ -133,6 +134,7 @@ review.setup(opts)
 review.toggle()
 review.open()
 review.close()
+review.clear_comments()  -- clear all review comments
 review.export()          -- to clipboard
 review.send(target)      -- to export.on_export, else tmux; target optional
 review.is_open()         -- boolean

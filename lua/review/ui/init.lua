@@ -590,4 +590,31 @@ function M.pick_commit(count)
     })
 end
 
+---Clear all review comments
+---@return number count Number of comments cleared
+function M.clear_comments()
+    local count = state.clear_all_comments()
+    if count == 0 then
+        vim.notify("No comments to clear", vim.log.levels.INFO)
+        return 0
+    end
+
+    if state.state.is_open then
+        if state.state.current_file then
+            diff_view.render()
+        end
+        local comment_list_comp = layout.get_comment_list()
+        if comment_list_comp and vim.api.nvim_win_is_valid(comment_list_comp.winid) then
+            require("review.ui.comment_list").refresh()
+        end
+    end
+
+    if config.get().persistence.enabled then
+        persistence.save()
+    end
+
+    vim.notify(string.format("Cleared %d comment%s", count, count == 1 and "" or "s"), vim.log.levels.INFO)
+    return count
+end
+
 return M
