@@ -77,7 +77,7 @@ end
 
 T["get_enabled_panels resolves defaults"] = function()
     local panels = config.get_enabled_panels(nil)
-    expect.equality(panels, { "file_tree", "comment_list" })
+    expect.equality(panels, { "branch_info", "file_tree", "branch_list", "commit_list", "comment_list" })
 end
 
 T["get_enabled_panels handles array of aliases"] = function()
@@ -95,7 +95,7 @@ end
 
 T["get_enabled_panels fallback ensures file_tree is present"] = function()
     local panels = config.get_enabled_panels({})
-    expect.equality(panels, { "file_tree", "comment_list" })
+    expect.equality(panels, { "branch_info", "file_tree", "branch_list", "commit_list", "comment_list" })
 
     local empty_panels = config.get_enabled_panels({ "invalid_panel_name" })
     expect.equality(empty_panels, { "file_tree" })

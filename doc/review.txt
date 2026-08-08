@@ -404,7 +404,7 @@ need the keys you want to change. The complete defaults: >lua
             file_tree_width = 33,
             diff_view_mode = "unified",
             number_navigation = false,
-            panels = { "file_tree", "comment_list" },
+            panels = { "branch_info", "file_tree", "branch_list", "commit_list", "comment_list" },
         },
         tmux = {
             target = "!",
@@ -480,7 +480,8 @@ ui.panels ~
     Sidebar panels to display. Accepts a list of panel names/aliases (e.g.,
     `{ "file_tree", "comment_list" }` or `{ "files", "comments" }`) or a table of
     boolean flags (e.g., `{ branch = false, branches = false, commits = false }`).
-    Defaults to `{ "file_tree", "comment_list" }` (showing Files changed and Comments).
+    Defaults to showing all panels ("branch_info", "file_tree", "branch_list",
+    "commit_list", "comment_list").
 
 tmux.target ~
     Where the export is pasted. The default "!" is tmux's last active pane,

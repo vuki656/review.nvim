@@ -76,7 +76,7 @@ local PANEL_ALIASES = {
 }
 
 local CANONICAL_PANEL_ORDER = { "branch_info", "file_tree", "branch_list", "commit_list", "comment_list" }
-local DEFAULT_PANEL_ORDER = { "file_tree", "comment_list" }
+local DEFAULT_PANEL_ORDER = { "branch_info", "file_tree", "branch_list", "commit_list", "comment_list" }
 
 ---Resolve configured panels option into an ordered list of canonical panel names
 ---@param panels? string[]|table<string, boolean>
@@ -143,7 +143,7 @@ M.defaults = {
         file_tree_width = 33,
         diff_view_mode = "unified",
         number_navigation = false,
-        panels = { "file_tree", "comment_list" },
+        panels = { "branch_info", "file_tree", "branch_list", "commit_list", "comment_list" },
     },
     tmux = {
         target = "!",
