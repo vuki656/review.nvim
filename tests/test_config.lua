@@ -75,4 +75,30 @@ T["get returns current options"] = function()
     expect.equality(result.diff.base, "test")
 end
 
+T["get_enabled_panels resolves defaults"] = function()
+    local panels = config.get_enabled_panels(nil)
+    expect.equality(panels, { "branch_info", "file_tree", "branch_list", "commit_list", "comment_list" })
+end
+
+T["get_enabled_panels handles array of aliases"] = function()
+    local panels = config.get_enabled_panels({ "files", "comments" })
+    expect.equality(panels, { "file_tree", "comment_list" })
+end
+
+T["get_enabled_panels handles boolean flags to disable branch and commits"] = function()
+    local panels = config.get_enabled_panels({ branch_info = false, branch_list = false, commit_list = false })
+    expect.equality(panels, { "file_tree", "comment_list" })
+
+    local alias_panels = config.get_enabled_panels({ branch = false, branches = false, commits = false })
+    expect.equality(alias_panels, { "file_tree", "comment_list" })
+end
+
+T["get_enabled_panels fallback ensures file_tree is present"] = function()
+    local panels = config.get_enabled_panels({})
+    expect.equality(panels, { "branch_info", "file_tree", "branch_list", "commit_list", "comment_list" })
+
+    local empty_panels = config.get_enabled_panels({ "invalid_panel_name" })
+    expect.equality(empty_panels, { "file_tree" })
+end
+
 return T

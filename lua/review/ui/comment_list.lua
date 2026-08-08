@@ -586,6 +586,7 @@ local function setup_keymaps(bufnr)
 
     local panel_keymaps = require("review.ui.panel_keymaps")
     panel_keymaps.setup(bufnr, {
+        panel_name = "comment_list",
         tab_target = "get_file_tree",
         h_target = "get_commit_list",
         l_target = nil,

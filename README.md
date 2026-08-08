@@ -118,6 +118,7 @@ lua require("review").setup({})
 | `:Review send [target]` | Send comments to `export.on_export`, or to a tmux pane (defaults to `tmux.target`) |
 | `:Review commit <sha>` | Set the diff base to `<sha>` |
 | `:Review pick [count]` | Pick a base commit from the last `count` commits (default 20) |
+| `:Review clear` | Clear all review comments |
 | `:Review qc` | Add a quick comment on the current line of the current buffer, or on a range with `:'<,'>Review qc` |
 | `:Review qp` | Toggle the quick comments panel |
 | `:Review log` | Open the plugin log file in a new tab |
@@ -133,6 +134,7 @@ review.setup(opts)
 review.toggle()
 review.open()
 review.close()
+review.clear_comments()  -- clear all review comments
 review.export()          -- to clipboard
 review.send(target)      -- to export.on_export, else tmux; target optional
 review.is_open()         -- boolean
@@ -300,6 +302,7 @@ require("review").setup({
         file_tree_width = 33,
         diff_view_mode = "unified",
         number_navigation = false,
+        panels = { "branch_info", "file_tree", "branch_list", "commit_list", "comment_list" },
     },
     tmux = {
         target = "!",
@@ -351,6 +354,7 @@ The `nil` entries are unset by default. No global keymaps are created unless you
 - `ui.file_tree_width`: sidebar width as a **percentage** of total columns, not a column count.
 - `ui.diff_view_mode`: `"unified"` or `"split"` (side-by-side) on open. `S` toggles at runtime.
 - `ui.number_navigation`: enable `1`–`4` to focus the sidebar sections and `0` to focus the diff. Disabled by default so normal-mode counts and `0` retain their usual behavior unless you opt in.
+- `ui.panels`: sidebar panels to display. Can be a list of panel names (e.g. `{ "file_tree", "comment_list" }` or `{ "files", "comments" }`) or a table of boolean toggles (e.g. `{ branch = false, branches = false, commits = false }`). Defaults to showing all panels (`branch_info`, `file_tree`, `branch_list`, `commit_list`, `comment_list`).
 - `tmux.target`: tmux target that `:Review send` pastes into. The default `"!"` is tmux's last active pane, which is normally the pane you came from, usually the one running your agent. Any target `tmux paste-buffer -t` accepts works instead, e.g. a named window `"CLAUDE"`, `"CLAUDE.0"` or a fully qualified `"session:window.pane"`.
 - `tmux.auto_enter`: send `Enter` after pasting. Off by default so you can read the prompt before submitting it.
 - `quick_comments.keymaps.add` / `.toggle_panel`: global keys for `:Review qc` and `:Review qp`.

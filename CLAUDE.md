@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-review.nvim is a Neovim plugin for reviewing AI-generated code changes. `:Review` opens a dedicated tab of floating windows: a sidebar of five stacked floats (Branch, Files, Branches, Commits, Comments) on the left and a diff pane on the right. It browses git diffs, attaches typed comments to lines, and exports review feedback to the clipboard or tmux (designed for Claude Code workflows).
+review.nvim is a Neovim plugin for reviewing AI-generated code changes. `:Review` opens a dedicated tab of floating windows: a sidebar of five stacked floats (Branch, Files, Branches, Commits, Comments — configurable via `ui.panels`) on the left and a diff pane on the right. It browses git diffs, attaches typed comments to lines, and exports review feedback to the clipboard or tmux (designed for Claude Code workflows).
 
 ## Commands
 
@@ -155,6 +155,7 @@ Autosave (`VimLeavePre`) is registered from `plugin/review.lua`, so sessions per
 - `:Review send [target]` – Send comments to `export.on_export`, or a tmux pane when unset
 - `:Review commit <sha>` – Change git comparison base
 - `:Review pick [count]` – Interactive commit picker
+- `:Review clear` – Clear all review comments
 - `:Review qc` – Add a quick comment on the current line
 - `:Review qp` – Toggle the quick comments panel
 - `:Review log` – Open the log file in a new tab
