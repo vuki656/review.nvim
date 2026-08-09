@@ -66,6 +66,29 @@ T["numeric navigation registers all section targets"] = function()
     end
 end
 
+T["numeric navigation dynamically binds active interactive panels top to bottom"] = function()
+    config.setup({ ui = { number_navigation = true, panels = { "files", "comments" } } })
+
+    local mappings = capture_mappings()
+
+    expect.equality(
+        vim.tbl_map(function(mapping)
+            return mapping.lhs
+        end, mappings),
+        { "1", "2", "0" }
+    )
+    expect.equality(
+        vim.tbl_map(function(mapping)
+            return mapping.desc
+        end, mappings),
+        {
+            "Focus Files panel",
+            "Focus Comments panel",
+            "Focus diff pane",
+        }
+    )
+end
+
 T["adjacent panel getter cycles through active interactive panels"] = function()
     local layout = require("review.ui.layout")
     config.setup({ ui = { panels = { "files", "comments" } } })

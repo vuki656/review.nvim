@@ -109,8 +109,16 @@ function M.load()
 end
 
 ---Save session to disk
+---@param opts? table|boolean Options table (e.g. { force_empty = true }) or boolean force_empty flag
 ---@return boolean success
-function M.save()
+function M.save(opts)
+    local force_empty = false
+    if type(opts) == "table" then
+        force_empty = opts.force_empty == true
+    elseif type(opts) == "boolean" then
+        force_empty = opts
+    end
+
     local config = require("review.config").get()
     if not config.persistence.enabled then
         return true
@@ -135,7 +143,7 @@ function M.save()
 
     local all_comments = state.get_all_comments()
     if #all_comments == 0 then
-        if conflicted then
+        if conflicted and not force_empty then
             log.warn("persistence: another session wrote", path, "-- leaving it in place")
             return true
         end

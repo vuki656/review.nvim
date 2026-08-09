@@ -187,6 +187,62 @@ M.defaults = {
     },
 }
 
+---Validate `ui.panels` setting in setup()
+---@param panels any
+---@return any validated_panels
+local function validate_panels(panels)
+    if panels == nil then
+        return nil
+    end
+
+    if type(panels) ~= "table" then
+        vim.notify("ui.panels must be a table, using defaults", vim.log.levels.WARN)
+        return vim.deepcopy(M.defaults.ui.panels)
+    end
+
+    local is_array
+    if vim.isarray then
+        is_array = vim.isarray(panels)
+    else
+        is_array = (#panels > 0)
+    end
+
+    local file_tree_enabled = false
+
+    if is_array then
+        for _, name in ipairs(panels) do
+            local canonical = PANEL_ALIASES[name]
+            if not canonical then
+                vim.notify(string.format("Unknown panel name '%s', skipping", tostring(name)), vim.log.levels.WARN)
+            elseif canonical == "file_tree" then
+                file_tree_enabled = true
+            end
+        end
+    else
+        for k in pairs(panels) do
+            local canonical = PANEL_ALIASES[k]
+            if not canonical then
+                vim.notify(string.format("Unknown panel name '%s', skipping", tostring(k)), vim.log.levels.WARN)
+            end
+        end
+
+        local enabled = true
+        for k, v in pairs(panels) do
+            if PANEL_ALIASES[k] == "file_tree" and v == false then
+                enabled = false
+                break
+            end
+        end
+        file_tree_enabled = enabled
+    end
+
+    if not file_tree_enabled then
+        vim.notify("Files panel cannot be disabled", vim.log.levels.WARN)
+    end
+
+    return panels
+end
+
 ---@type ReviewConfig
 M.options = vim.deepcopy(M.defaults)
 
@@ -198,7 +254,11 @@ function M.setup(opts)
         vim.notify("review.nvim: setup() expects a table, got " .. type(opts), vim.log.levels.ERROR)
         opts = nil
     end
-    M.options = vim.tbl_deep_extend("force", {}, M.defaults, opts or {})
+    local merged = vim.tbl_deep_extend("force", {}, M.defaults, opts or {})
+    if opts and opts.ui and opts.ui.panels ~= nil then
+        merged.ui.panels = validate_panels(opts.ui.panels)
+    end
+    M.options = merged
     M.did_setup = true
 end
 

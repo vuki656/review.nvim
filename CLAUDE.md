@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-review.nvim is a Neovim plugin for reviewing AI-generated code changes. `:Review` opens a dedicated tab of floating windows: a sidebar of five stacked floats (Branch, Files, Branches, Commits, Comments — configurable via `ui.panels`) on the left and a diff pane on the right. It browses git diffs, attaches typed comments to lines, and exports review feedback to the clipboard or tmux (designed for Claude Code workflows).
+review.nvim is a Neovim plugin for reviewing AI-generated code changes. `:Review` opens a dedicated tab of floating windows: a sidebar of stacked floats (Branch, Files, Branches, Commits, Comments — configurable via `ui.panels`, though Files cannot be disabled) on the left and a diff pane on the right. It browses git diffs, attaches typed comments to lines, and exports review feedback to the clipboard or tmux (designed for Claude Code workflows).
 
 ## Commands
 
@@ -40,9 +40,9 @@ Test files live in `tests/` and follow the naming convention `test_<module>.lua`
 
 Shared fixtures and factories are in `tests/helpers.lua`.
 
-Tested modules: `comment_types`, `config`, `core/diff`, `core/format`, `core/json_persistence`, `core/paths`, `export/markdown`, `quick_comments/markdown`, `quick_comments/state`, `state`. `core/git` is tested only for its pure parsers (`tests/test_git_parse.lua` covers name-status and commit-line parsing); everything in it that shells out to git is not.
+Tested modules: `comment_types`, `config`, `core/diff`, `core/format`, `core/json_persistence`, `core/paths`, `export/markdown`, `quick_comments/markdown`, `quick_comments/state`, `state`, `ui/panel_keymaps`. `core/git` is tested only for its pure parsers (`tests/test_git_parse.lua` covers name-status and commit-line parsing); everything in it that shells out to git is not.
 
-Not tested (integration-heavy): `core/async`, `core/log`, `core/persistence`, `core/watcher`, `commands`, `health`, `quick_comments/init`, `quick_comments/panel`, `quick_comments/persistence`, `quick_comments/signs`, `ui/*`.
+Not tested (integration-heavy): `core/async`, `core/log`, `core/persistence`, `core/watcher`, `commands`, `health`, `quick_comments/init`, `quick_comments/panel`, `quick_comments/persistence`, `quick_comments/signs`, `ui/*` (except `ui/panel_keymaps`).
 
 ## Architecture
 
@@ -98,7 +98,7 @@ lua/review/
 5. Comments stored in `state.lua`, exported via `export/markdown.lua`
 
 Numeric section navigation is opt-in through `ui.number_navigation`. When
-enabled, `1`–`4` focus Files, Branches, Commits and Comments, while `0` focuses
+enabled, `1`–`n` focus the sidebar panels top to bottom, while `0` focuses
 the diff pane. The mappings are buffer-local to the review UI and do not affect
 normal buffers; in side-by-side mode `0` focuses the new (right) pane.
 

@@ -593,27 +593,49 @@ end
 ---Clear all review comments
 ---@return number count Number of comments cleared
 function M.clear_comments()
-    local count = state.clear_all_comments()
+    if not state.state.is_open and config.get().persistence.enabled and persistence.exists() then
+        persistence.load()
+    end
+
+    local count = #state.get_all_comments()
     if count == 0 then
+        if not state.state.is_open and config.get().persistence.enabled and persistence.exists() then
+            if not persistence.delete() then
+                vim.notify("Failed to clear saved review session", vim.log.levels.WARN)
+                return 0
+            end
+            vim.notify("Cleared saved review session", vim.log.levels.INFO)
+            return 0
+        end
         vim.notify("No comments to clear", vim.log.levels.INFO)
         return 0
     end
 
-    if state.state.is_open then
-        if state.state.current_file then
-            diff_view.render()
-        end
-        local comment_list_comp = layout.get_comment_list()
-        if comment_list_comp and vim.api.nvim_win_is_valid(comment_list_comp.winid) then
-            require("review.ui.comment_list").refresh()
-        end
-    end
+    local prompt = string.format("Clear %d comment%s?", count, count == 1 and "" or "s")
+    ui_util.confirm(prompt, function()
+        state.clear_all_comments()
 
-    if config.get().persistence.enabled then
-        persistence.save()
-    end
+        if state.state.is_open then
+            if state.state.current_file then
+                diff_view.render()
+            end
+            local comment_list_comp = layout.get_comment_list()
+            if comment_list_comp and vim.api.nvim_win_is_valid(comment_list_comp.winid) then
+                require("review.ui.comment_list").refresh()
+            end
+        end
 
-    vim.notify(string.format("Cleared %d comment%s", count, count == 1 and "" or "s"), vim.log.levels.INFO)
+        if config.get().persistence.enabled then
+            local ok = persistence.save({ force_empty = true })
+            if not ok then
+                vim.notify("Failed to clear saved review session", vim.log.levels.WARN)
+                return
+            end
+        end
+
+        vim.notify(string.format("Cleared %d comment%s", count, count == 1 and "" or "s"), vim.log.levels.INFO)
+    end)
+
     return count
 end
 
