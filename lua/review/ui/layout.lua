@@ -226,7 +226,7 @@ local function calculate_positions(sidebar_visible)
         local panel_heights = {}
         local allocated = 0
         if total_weight > 0 then
-            for panel_index, panel in ipairs(interactive_panels) do
+            for _, panel in ipairs(interactive_panels) do
                 local weight = panel.height_weight or 1.0
                 local height = math.floor(available_content * weight / total_weight)
                 panel_heights[panel.name] = height

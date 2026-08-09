@@ -90,7 +90,7 @@ function M.get_enabled_panels(panels)
     local seen = {}
 
     if type(panels) == "table" then
-        local is_array = false
+        local is_array
         if vim.isarray then
             is_array = vim.isarray(panels)
         else
