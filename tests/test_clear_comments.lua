@@ -29,8 +29,11 @@ clear_tests["notifies when count is 0 and UI is open"] = function()
     local captured, restore = helpers.capture_notifications()
     state.state.is_open = true
 
-    local count = ui.clear_comments()
+    local ok, count = pcall(ui.clear_comments)
     restore()
+    if not ok then
+        error(count)
+    end
 
     expect.equality(count, 0)
     expect.equality(#captured, 1)
@@ -46,8 +49,11 @@ clear_tests["notifies when count is 0, UI closed, and no session file exists"] =
     local captured, restore = helpers.capture_notifications()
     state.state.is_open = false
 
-    local count = ui.clear_comments()
+    local ok, count = pcall(ui.clear_comments)
     restore()
+    if not ok then
+        error(count)
+    end
 
     expect.equality(count, 0)
     expect.equality(#captured, 1)
@@ -70,8 +76,11 @@ clear_tests["deletes session file and notifies when count is 0, UI closed, and s
     local captured, restore = helpers.capture_notifications()
     state.state.is_open = false
 
-    local count = ui.clear_comments()
+    local ok, count = pcall(ui.clear_comments)
     restore()
+    if not ok then
+        error(count)
+    end
 
     expect.equality(count, 0)
     expect.equality(persistence.exists(), false)
@@ -93,9 +102,12 @@ clear_tests["prompts for confirmation and clears comments when count > 0"] = fun
     local captured, restore = helpers.capture_notifications()
     state.state.is_open = false
 
-    local count = ui.clear_comments()
+    local ok, count = pcall(ui.clear_comments)
     restore()
     ui_util.confirm = orig_confirm
+    if not ok then
+        error(count)
+    end
 
     expect.equality(count, 2)
     expect.equality(captured_prompt, "Clear 2 comments?")
@@ -113,10 +125,13 @@ clear_tests["does not clear comments if confirmation is declined"] = function()
         -- Do not call on_confirm (simulating "No" or Esc)
     end
 
-    local count = ui.clear_comments()
+    local ok, count = pcall(ui.clear_comments)
     ui_util.confirm = orig_confirm
+    if not ok then
+        error(count)
+    end
 
-    expect.equality(count, 1)
+    expect.equality(count, 0)
     expect.equality(#state.get_all_comments(), 1)
 end
 
@@ -144,6 +159,28 @@ clear_tests["deletes file despite conflict guard when force_empty is true"] = fu
     expect.equality(persistence.exists(), false)
 end
 
+clear_tests["retains file when conflicted and force_empty is false"] = function()
+    local path = persistence.get_path()
+    if not path then
+        return
+    end
+
+    persistence.load()
+
+    os.execute("sleep 1")
+    local file = io.open(path, "w")
+    file:write('{"version":1,"files":{}}')
+    file:close()
+
+    state.add_comment("file.lua", 1, "note", "comment 1")
+    state.clear_all_comments()
+
+    -- Call save without force_empty (regular save)
+    local save_ok = persistence.save()
+    expect.equality(save_ok, true)
+    expect.equality(persistence.exists(), true)
+end
+
 clear_tests["shows warning when save returns false"] = function()
     state.add_comment("file.lua", 1, "note", "comment 1")
 
@@ -159,10 +196,13 @@ clear_tests["shows warning when save returns false"] = function()
     end
 
     local captured, restore = helpers.capture_notifications()
-    local count = ui.clear_comments()
+    local ok, count = pcall(ui.clear_comments)
     restore()
     persistence.save = original_save
     ui_util.confirm = orig_confirm
+    if not ok then
+        error(count)
+    end
 
     expect.equality(count, 1)
     expect.equality(#captured, 1)

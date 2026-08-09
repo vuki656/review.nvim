@@ -612,8 +612,10 @@ function M.clear_comments()
     end
 
     local prompt = string.format("Clear %d comment%s?", count, count == 1 and "" or "s")
+    local cleared = 0
     ui_util.confirm(prompt, function()
         state.clear_all_comments()
+        cleared = count
 
         if state.state.is_open then
             if state.state.current_file then
@@ -636,7 +638,7 @@ function M.clear_comments()
         vim.notify(string.format("Cleared %d comment%s", count, count == 1 and "" or "s"), vim.log.levels.INFO)
     end)
 
-    return count
+    return cleared
 end
 
 return M
