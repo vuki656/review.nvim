@@ -2,6 +2,7 @@ local new_set = MiniTest.new_set
 local expect = MiniTest.expect
 
 local config = require("review.config")
+local helpers = require("tests.helpers")
 
 local T = new_set({
     hooks = {
@@ -99,6 +100,44 @@ T["get_enabled_panels fallback ensures file_tree is present"] = function()
 
     local empty_panels = config.get_enabled_panels({ "invalid_panel_name" })
     expect.equality(empty_panels, { "file_tree" })
+end
+
+T["get_enabled_panels({ files = false }) still contains file_tree"] = function()
+    local panels = config.get_enabled_panels({ files = false })
+    expect.equality(vim.tbl_contains(panels, "file_tree"), true)
+end
+
+T["setup warns on non-table ui.panels and uses defaults"] = function()
+    local captured, restore = helpers.capture_notifications()
+    config.setup({ ui = { panels = "files" } })
+    restore()
+
+    expect.equality(#captured, 1)
+    expect.equality(captured[1].message, "ui.panels must be a table, using defaults")
+    expect.equality(captured[1].level, vim.log.levels.WARN)
+    expect.equality(config.get().ui.panels, config.defaults.ui.panels)
+end
+
+T["setup warns on unknown panel names and disabled files panel"] = function()
+    local captured, restore = helpers.capture_notifications()
+    config.setup({ ui = { panels = { "invalid_name" } } })
+    restore()
+
+    expect.equality(#captured, 2)
+    expect.equality(captured[1].message, "Unknown panel name 'invalid_name', skipping")
+    expect.equality(captured[1].level, vim.log.levels.WARN)
+    expect.equality(captured[2].message, "Files panel cannot be disabled")
+    expect.equality(captured[2].level, vim.log.levels.WARN)
+end
+
+T["setup warns when files panel disabled via map"] = function()
+    local captured, restore = helpers.capture_notifications()
+    config.setup({ ui = { panels = { files = false } } })
+    restore()
+
+    expect.equality(#captured, 1)
+    expect.equality(captured[1].message, "Files panel cannot be disabled")
+    expect.equality(captured[1].level, vim.log.levels.WARN)
 end
 
 return T
