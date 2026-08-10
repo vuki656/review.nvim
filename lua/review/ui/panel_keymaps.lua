@@ -2,14 +2,6 @@ local M = {}
 
 local config = require("review.config")
 
-local NUMBER_NAVIGATION = {
-    { key = "1", target = "get_file_tree", desc = "Focus Files panel" },
-    { key = "2", target = "get_branch_list", desc = "Focus Branches panel" },
-    { key = "3", target = "get_commit_list", desc = "Focus Commits panel" },
-    { key = "4", target = "get_comment_list", desc = "Focus Comments panel" },
-    { key = "0", target = "get_diff_view", desc = "Focus diff pane" },
-}
-
 ---Navigate to a layout component by getter name
 ---@param getter_name string Layout getter method name (e.g. "get_file_tree")
 local function navigate_to(getter_name)
@@ -39,17 +31,25 @@ function M.setup_number_navigation(map_function, extra_bufnrs)
         return
     end
 
-    for _, mapping in ipairs(NUMBER_NAVIGATION) do
-        map_function(mapping.key, function()
-            navigate_to(mapping.target)
-        end, { nowait = true, desc = mapping.desc, group = "Navigation" }, extra_bufnrs)
+    local layout = require("review.ui.layout")
+    local panels = layout.get_active_interactive_panels()
+
+    for i, panel in ipairs(panels) do
+        local key = tostring(i)
+        local target = "get_" .. panel.name
+        local desc = "Focus " .. panel.title .. " panel"
+        map_function(key, function()
+            navigate_to(target)
+        end, { nowait = true, desc = desc, group = "Navigation" }, extra_bufnrs)
     end
+
+    map_function("0", function()
+        navigate_to("get_diff_view")
+    end, { nowait = true, desc = "Focus diff pane", group = "Navigation" }, extra_bufnrs)
 end
 
 ---@class PanelNavigation
----@field tab_target string Layout getter name for Tab cycling
----@field h_target string|nil Layout getter name for h key (nil = Nop)
----@field l_target string|nil Layout getter name for l key (nil = Nop)
+---@field panel_name string Name of the current panel (e.g. "file_tree")
 ---@field scroll_keys? {down: string, up: string} Scroll keys (default "<C-d>"/"<C-u>")
 ---@field keymap_group? string Group name for help overlay tracking
 
@@ -86,24 +86,28 @@ function M.setup(bufnr, navigation, on_close, active_timers, map_function, on_es
     end, { nowait = true, desc = "Push to remote", group = group })
 
     map_function("<Tab>", function()
-        navigate_to(navigation.tab_target)
+        local layout = require("review.ui.layout")
+        local target = layout.get_adjacent_panel_getter(navigation.panel_name, "next")
+        if target then
+            navigate_to(target)
+        end
     end, { nowait = true, desc = "Next pane", group = group })
 
-    if navigation.h_target then
-        map_function("h", function()
-            navigate_to(navigation.h_target)
-        end, { nowait = true, desc = "Previous panel", group = group })
-    else
-        vim.keymap.set("n", "h", "<Nop>", { buffer = bufnr, nowait = true })
-    end
+    map_function("h", function()
+        local layout = require("review.ui.layout")
+        local target = layout.get_adjacent_panel_getter(navigation.panel_name, "prev")
+        if target then
+            navigate_to(target)
+        end
+    end, { nowait = true, desc = "Previous panel", group = group })
 
-    if navigation.l_target then
-        map_function("l", function()
-            navigate_to(navigation.l_target)
-        end, { nowait = true, desc = "Next panel", group = group })
-    else
-        vim.keymap.set("n", "l", "<Nop>", { buffer = bufnr, nowait = true })
-    end
+    map_function("l", function()
+        local layout = require("review.ui.layout")
+        local target = layout.get_adjacent_panel_getter(navigation.panel_name, "next")
+        if target then
+            navigate_to(target)
+        end
+    end, { nowait = true, desc = "Next panel", group = group })
 
     M.setup_number_navigation(map_function)
 

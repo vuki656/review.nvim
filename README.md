@@ -106,7 +106,7 @@ lua require("review").setup({})
 └─────────────────┘└───────────────────────────────┘
 ```
 
-**Branch** is a read-only line showing the current branch. **Files**, **Branches**, **Commits** and **Comments** are focusable. `<Tab>` cycles Files → Branches → Commits → Comments → Files; `h`/`l` walk the same chain; `<C-l>` jumps from any sidebar panel to the diff, `<C-h>` from the diff back to Files. Set `ui.number_navigation = true` to use `1`–`4` for Files, Branches, Commits and Comments, and `0` for the diff.
+**Branch** is a read-only line showing the current branch. **Files**, **Branches**, **Commits** and **Comments** are focusable. `<Tab>` cycles Files → Branches → Commits → Comments → Files; `h`/`l` walk the same chain with wrapping; `<C-l>` jumps from any sidebar panel to the diff, `<C-h>` from the diff back to Files. Set `ui.number_navigation = true` to use `1`–`n` to focus the sidebar panels top to bottom, and `0` for the diff.
 
 ## 🤖 Commands
 
@@ -118,6 +118,7 @@ lua require("review").setup({})
 | `:Review send [target]` | Send comments to `export.on_export`, or to a tmux pane (defaults to `tmux.target`) |
 | `:Review commit <sha>` | Set the diff base to `<sha>` |
 | `:Review pick [count]` | Pick a base commit from the last `count` commits (default 20) |
+| `:Review clear` | Clear all review comments |
 | `:Review qc` | Add a quick comment on the current line of the current buffer, or on a range with `:'<,'>Review qc` |
 | `:Review qp` | Toggle the quick comments panel |
 | `:Review log` | Open the plugin log file in a new tab |
@@ -133,6 +134,7 @@ review.setup(opts)
 review.toggle()
 review.open()
 review.close()
+review.clear_comments()  -- clear all review comments
 review.export()          -- to clipboard
 review.send(target)      -- to export.on_export, else tmux; target optional
 review.is_open()         -- boolean
@@ -157,7 +159,7 @@ qc.copy()           -- copy to clipboard, then clear all quick comments
 
 All keymaps are buffer-local to the review UI. Press `?` in the Files, Branches, Commits or Comments panel, or in the diff pane, for the in-plugin help overlay listing that panel's keymaps.
 
-Numeric section navigation is disabled by default. When `ui.number_navigation` is enabled, `1` focuses Files, `2` Branches, `3` Commits, `4` Comments and `0` the diff pane. These mappings are only active inside the review UI; in side-by-side mode, `0` focuses the new (right) diff pane.
+Numeric section navigation is disabled by default. When `ui.number_navigation` is enabled, `1`–`n` focus the sidebar panels top to bottom and `0` focuses the diff pane. These mappings are only active inside the review UI; in side-by-side mode, `0` focuses the new (right) diff pane.
 
 ### Files panel
 
@@ -300,6 +302,7 @@ require("review").setup({
         file_tree_width = 33,
         diff_view_mode = "unified",
         number_navigation = false,
+        panels = { "branch_info", "file_tree", "branch_list", "commit_list", "comment_list" },
     },
     tmux = {
         target = "!",
@@ -350,7 +353,8 @@ The `nil` entries are unset by default. No global keymaps are created unless you
 - `diff.base`: git revision the diff compares against. `"HEAD"` means "everything in the worktree".
 - `ui.file_tree_width`: sidebar width as a **percentage** of total columns, not a column count.
 - `ui.diff_view_mode`: `"unified"` or `"split"` (side-by-side) on open. `S` toggles at runtime.
-- `ui.number_navigation`: enable `1`–`4` to focus the sidebar sections and `0` to focus the diff. Disabled by default so normal-mode counts and `0` retain their usual behavior unless you opt in.
+- `ui.number_navigation`: enable `1`–`n` to focus the sidebar panels top to bottom and `0` to focus the diff. Disabled by default so normal-mode counts and `0` retain their usual behavior unless you opt in.
+- `ui.panels`: sidebar panels to display. Can be a list of panel names (e.g. `{ "file_tree", "comment_list" }` or `{ "files", "comments" }`) or a table of boolean toggles (e.g. `{ branch = false, branches = false, commits = false }`). Defaults to showing all panels (`branch_info`, `file_tree`, `branch_list`, `commit_list`, `comment_list`). Note that the Files panel (`file_tree`) cannot be disabled.
 - `tmux.target`: tmux target that `:Review send` pastes into. The default `"!"` is tmux's last active pane, which is normally the pane you came from, usually the one running your agent. Any target `tmux paste-buffer -t` accepts works instead, e.g. a named window `"CLAUDE"`, `"CLAUDE.0"` or a fully qualified `"session:window.pane"`.
 - `tmux.auto_enter`: send `Enter` after pasting. Off by default so you can read the prompt before submitting it.
 - `quick_comments.keymaps.add` / `.toggle_panel`: global keys for `:Review qc` and `:Review qp`.

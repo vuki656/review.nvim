@@ -72,6 +72,11 @@ function M.send(target)
     export.send(target)
 end
 
+---Clear all review comments, asking for confirmation when any exist
+function M.clear_comments()
+    ui.clear_comments()
+end
+
 ---Check if UI is open
 ---@return boolean
 function M.is_open()

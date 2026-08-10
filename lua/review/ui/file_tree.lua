@@ -1493,9 +1493,7 @@ local function setup_keymaps(bufnr, callbacks)
         end
     end
     panel_keymaps.setup(bufnr, {
-        tab_target = "get_branch_list",
-        h_target = nil,
-        l_target = "get_branch_list",
+        panel_name = "file_tree",
         scroll_keys = { down = "J", up = "K" },
         keymap_group = "Navigation",
     }, close_review, active_timers, map, callbacks.on_escape)

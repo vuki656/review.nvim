@@ -39,7 +39,7 @@ local resize_autocmd_id = nil
 ---@field is_interactive boolean Whether this panel gets cursorline/active highlight
 ---@field height_weight number|nil Weight for height calculation (default 1.0)
 
-local SIDEBAR_PANELS = {
+local ALL_SIDEBAR_PANELS = {
     { name = "branch_info", title = "Branch", filetype = "review-branch-info", is_interactive = false },
     { name = "file_tree", title = "Files", filetype = "review-tree", is_interactive = true },
     { name = "branch_list", title = "Branches", filetype = "review-branches", is_interactive = true },
@@ -53,23 +53,84 @@ local SIDEBAR_PANELS = {
     },
 }
 
+local PANEL_DEFS_BY_NAME = {}
+for _, panel_def in ipairs(ALL_SIDEBAR_PANELS) do
+    PANEL_DEFS_BY_NAME[panel_def.name] = panel_def
+end
+
 local PANEL_MODULES = {
     branch_list = "review.ui.branch_list",
     commit_list = "review.ui.commit_list",
     comment_list = "review.ui.comment_list",
 }
 
-local INTERACTIVE_SIDEBAR_PANELS = {}
-for _, panel in ipairs(SIDEBAR_PANELS) do
-    if panel.is_interactive then
-        table.insert(INTERACTIVE_SIDEBAR_PANELS, panel)
+---Get active sidebar panels based on user configuration
+---@return SidebarPanelDef[]
+local function get_active_sidebar_panels()
+    local opts = config.get()
+    local enabled_names = config.get_enabled_panels(opts.ui and opts.ui.panels)
+    local active = {}
+    for _, name in ipairs(enabled_names) do
+        local def = PANEL_DEFS_BY_NAME[name]
+        if def then
+            table.insert(active, def)
+        end
     end
+    return active
 end
 
-local SIDEBAR_PANEL_COUNT = #INTERACTIVE_SIDEBAR_PANELS
-local BRANCH_INFO_HEIGHT = 1
-local BRANCH_INFO_OUTER_HEIGHT = BRANCH_INFO_HEIGHT + 2
-local SIDEBAR_BORDER_ROWS = (SIDEBAR_PANEL_COUNT + 1) * 2
+---Get list of active interactive sidebar panels
+---@return SidebarPanelDef[]
+function M.get_active_interactive_panels()
+    local active = get_active_sidebar_panels()
+    local interactive = {}
+    for _, panel in ipairs(active) do
+        if panel.is_interactive then
+            table.insert(interactive, panel)
+        end
+    end
+    return interactive
+end
+
+---Get adjacent panel getter for navigation (<Tab>, h, l)
+---@param current_panel_name string
+---@param direction "next"|"prev"
+---@return string getter_name
+function M.get_adjacent_panel_getter(current_panel_name, direction)
+    local interactive = M.get_active_interactive_panels()
+    if #interactive == 0 then
+        return "get_diff_view"
+    end
+
+    local current_idx = nil
+    for idx, panel in ipairs(interactive) do
+        if panel.name == current_panel_name then
+            current_idx = idx
+            break
+        end
+    end
+
+    if not current_idx then
+        return "get_file_tree"
+    end
+
+    if #interactive == 1 then
+        if direction == "next" then
+            return "get_diff_view"
+        else
+            return "get_" .. current_panel_name
+        end
+    end
+
+    local next_idx
+    if direction == "next" then
+        next_idx = (current_idx % #interactive) + 1
+    else
+        next_idx = ((current_idx - 2 + #interactive) % #interactive) + 1
+    end
+
+    return "get_" .. interactive[next_idx].name
+end
 
 ---@type number|nil
 local focus_autocmd_id = nil
@@ -87,7 +148,8 @@ local function update_border_highlights()
         return
     end
     local current_win = vim.api.nvim_get_current_win()
-    for _, panel_def in ipairs(INTERACTIVE_SIDEBAR_PANELS) do
+    local interactive_panels = M.get_active_interactive_panels()
+    for _, panel_def in ipairs(interactive_panels) do
         local component = M.current[panel_def.name]
         if component and vim.api.nvim_win_is_valid(component.winid) then
             if component.winid == current_win then
@@ -133,53 +195,68 @@ local function calculate_positions(sidebar_visible)
     local positions = {}
 
     if sidebar_visible then
+        local active_panels = get_active_sidebar_panels()
+        local interactive_panels = {}
+        local branch_info_def = nil
+
+        for _, panel in ipairs(active_panels) do
+            if panel.is_interactive then
+                table.insert(interactive_panels, panel)
+            elseif panel.name == "branch_info" then
+                branch_info_def = panel
+            end
+        end
+
         local sidebar_outer_width = sidebar_content_width + 2
         local diff_content_width = columns - sidebar_outer_width - 2
         local diff_col = sidebar_outer_width
 
-        local available_content = total_height - SIDEBAR_BORDER_ROWS - BRANCH_INFO_HEIGHT
+        local has_branch_info = (branch_info_def ~= nil)
+        local branch_info_height = has_branch_info and 1 or 0
+        local branch_info_outer_height = has_branch_info and 3 or 0
+
+        local sidebar_border_rows = #active_panels * 2
+        local available_content = total_height - sidebar_border_rows - branch_info_height
 
         local total_weight = 0
-        for _, panel in ipairs(INTERACTIVE_SIDEBAR_PANELS) do
+        for _, panel in ipairs(interactive_panels) do
             total_weight = total_weight + (panel.height_weight or 1.0)
         end
 
         local panel_heights = {}
         local allocated = 0
-        for panel_index, panel in ipairs(INTERACTIVE_SIDEBAR_PANELS) do
-            local weight = panel.height_weight or 1.0
-            local height
-            if panel_index == 1 then
-                local base = math.floor(available_content * weight / total_weight)
-                height = base
-            else
-                height = math.floor(available_content * weight / total_weight)
+        if total_weight > 0 then
+            for _, panel in ipairs(interactive_panels) do
+                local weight = panel.height_weight or 1.0
+                local height = math.floor(available_content * weight / total_weight)
+                panel_heights[panel.name] = height
+                allocated = allocated + height
             end
-            panel_heights[panel.name] = height
-            allocated = allocated + height
+
+            local remainder = available_content - allocated
+            if remainder > 0 and #interactive_panels > 0 then
+                local first_name = interactive_panels[1].name
+                panel_heights[first_name] = panel_heights[first_name] + remainder
+            end
         end
 
-        local remainder = available_content - allocated
-        if remainder > 0 then
-            panel_heights[INTERACTIVE_SIDEBAR_PANELS[1].name] = panel_heights[INTERACTIVE_SIDEBAR_PANELS[1].name]
-                + remainder
+        if has_branch_info then
+            positions.branch_info = {
+                row = 0,
+                col = 0,
+                width = sidebar_content_width,
+                height = 1,
+            }
         end
 
-        positions.branch_info = {
-            row = 0,
-            col = 0,
-            width = sidebar_content_width,
-            height = BRANCH_INFO_HEIGHT,
-        }
-
-        local current_row = BRANCH_INFO_OUTER_HEIGHT
-        for _, panel in ipairs(INTERACTIVE_SIDEBAR_PANELS) do
-            local height = panel_heights[panel.name]
+        local current_row = branch_info_outer_height
+        for _, panel in ipairs(interactive_panels) do
+            local height = panel_heights[panel.name] or available_content
             positions[panel.name] = {
                 row = current_row,
                 col = 0,
                 width = sidebar_content_width,
-                height = height,
+                height = math.max(height, 1),
             }
             current_row = current_row + height + 2
         end
@@ -289,7 +366,7 @@ function M.create()
 
     M.current = {}
 
-    for _, panel_def in ipairs(SIDEBAR_PANELS) do
+    for _, panel_def in ipairs(get_active_sidebar_panels()) do
         local bufnr = create_panel_buffer(panel_def.filetype)
         local winid = open_float(bufnr, positions[panel_def.name], " " .. panel_def.title)
         apply_tree_win_options(winid)
@@ -387,7 +464,7 @@ function M.reposition()
     log.debug("layout: reposition", vim.o.columns .. "x" .. vim.o.lines, "sidebar=" .. tostring(sidebar_visible))
 
     if sidebar_visible then
-        for _, panel_def in ipairs(SIDEBAR_PANELS) do
+        for _, panel_def in ipairs(get_active_sidebar_panels()) do
             local component = M.current[panel_def.name]
             local pos = positions[panel_def.name]
             if component and pos and vim.api.nvim_win_is_valid(component.winid) then
@@ -463,7 +540,7 @@ function M.is_layout_window(winid)
         return false
     end
     local component_names = { "diff_view", "diff_view_old", "diff_view_new" }
-    for _, panel_def in ipairs(SIDEBAR_PANELS) do
+    for _, panel_def in ipairs(get_active_sidebar_panels()) do
         table.insert(component_names, panel_def.name)
     end
     for _, name in ipairs(component_names) do
@@ -501,7 +578,7 @@ function M.hide_file_tree()
         vim.api.nvim_set_current_win(focus_win)
     end
 
-    for _, panel_def in ipairs(SIDEBAR_PANELS) do
+    for _, panel_def in ipairs(get_active_sidebar_panels()) do
         local name = panel_def.name
         local component = M.current[name]
         if component and vim.api.nvim_win_is_valid(component.winid) then
@@ -526,7 +603,7 @@ function M.show_file_tree()
 
     local positions = calculate_positions(true)
 
-    for _, panel_def in ipairs(SIDEBAR_PANELS) do
+    for _, panel_def in ipairs(get_active_sidebar_panels()) do
         local component = M.current[panel_def.name]
         local pos = positions[panel_def.name]
         if component and pos then
@@ -736,7 +813,7 @@ function M.unmount()
 
         local float_wins = {}
         local panel_buffers = {}
-        for _, panel_def in ipairs(SIDEBAR_PANELS) do
+        for _, panel_def in ipairs(get_active_sidebar_panels()) do
             local component = M.current[panel_def.name]
             if component then
                 if vim.api.nvim_win_is_valid(component.winid) then

@@ -99,101 +99,119 @@ function M.open()
     end
 
     -- Initialize file tree
-    file_tree.create(l.file_tree, {
-        on_file_select = function(path)
-            M.show_diff(path)
-        end,
-        on_close = function(send_comments)
-            M.close(send_comments)
-        end,
-        on_escape = function()
-            M.reset_to_head()
-        end,
-        on_refresh = function()
-            -- Refresh diff view if a file is selected
-            if state.state.current_file then
-                M.show_diff(state.state.current_file)
-            end
-            commit_list.refresh()
-            branch_list.refresh()
-        end,
-    })
+    if l.file_tree then
+        file_tree.create(l.file_tree, {
+            on_file_select = function(path)
+                M.show_diff(path)
+            end,
+            on_close = function(send_comments)
+                M.close(send_comments)
+            end,
+            on_escape = function()
+                M.reset_to_head()
+            end,
+            on_refresh = function()
+                -- Refresh diff view if a file is selected
+                if state.state.current_file then
+                    M.show_diff(state.state.current_file)
+                end
+                if l.commit_list then
+                    commit_list.refresh()
+                end
+                if l.branch_list then
+                    branch_list.refresh()
+                end
+            end,
+        })
+    end
 
     -- Initialize branch list
-    branch_list.create(l.branch_list, {
-        on_branch_select = function(entry)
-            M.select_branch(entry)
-        end,
-        on_checkout = function(entry)
-            update_branch_info(entry.name)
-        end,
-        on_close = function()
-            M.close()
-        end,
-        on_escape = function()
-            M.reset_to_head()
-        end,
-    })
+    if l.branch_list then
+        branch_list.create(l.branch_list, {
+            on_branch_select = function(entry)
+                M.select_branch(entry)
+            end,
+            on_checkout = function(entry)
+                update_branch_info(entry.name)
+            end,
+            on_close = function()
+                M.close()
+            end,
+            on_escape = function()
+                M.reset_to_head()
+            end,
+        })
+    end
 
     -- Initialize commit list
-    commit_list.create(l.commit_list, {
-        on_commit_select = function(entry)
-            M.select_commit(entry)
-        end,
-        on_commit_preview = function(entry)
-            M.preview_commit(entry)
-        end,
-        on_escape = function()
-            M.reset_to_head()
-        end,
-        on_uncommit = function(entry)
-            git.soft_reset_head(function(success, err)
-                if not success then
-                    vim.notify("Uncommit failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
-                    return
-                end
+    if l.commit_list then
+        commit_list.create(l.commit_list, {
+            on_commit_select = function(entry)
+                M.select_commit(entry)
+            end,
+            on_commit_preview = function(entry)
+                M.preview_commit(entry)
+            end,
+            on_escape = function()
+                M.reset_to_head()
+            end,
+            on_uncommit = function(entry)
+                git.soft_reset_head(function(success, err)
+                    if not success then
+                        vim.notify("Uncommit failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+                        return
+                    end
 
-                vim.notify("Uncommitted: " .. entry.subject, vim.log.levels.INFO)
+                    vim.notify("Uncommitted: " .. entry.subject, vim.log.levels.INFO)
 
-                state.state.base = "HEAD"
-                state.state.base_end = nil
+                    state.state.base = "HEAD"
+                    state.state.base_end = nil
 
-                commit_list.refresh()
-                commit_list.set_selected({ is_head = true })
-                branch_list.refresh()
+                    if l.commit_list then
+                        commit_list.refresh()
+                        commit_list.set_selected({ is_head = true })
+                    end
+                    if l.branch_list then
+                        branch_list.refresh()
+                    end
 
-                file_tree.refresh(function()
-                    focus_first_file(true)
+                    if l.file_tree then
+                        file_tree.refresh(function()
+                            focus_first_file(true)
+                        end)
+                    end
                 end)
-            end)
-        end,
-        on_close = function()
-            M.close()
-        end,
-    })
+            end,
+            on_close = function()
+                M.close()
+            end,
+        })
+    end
 
     -- Initialize comment list
-    comment_list.create(l.comment_list, {
-        on_comment_select = function(comment)
-            M.show_diff(comment.file)
-            vim.schedule(function()
-                local diff_split = layout.get_diff_view()
-                if diff_split and vim.api.nvim_win_is_valid(diff_split.winid) then
-                    pcall(vim.api.nvim_win_set_cursor, diff_split.winid, { comment.line, 0 })
-                end
-            end)
-        end,
-        on_comment_delete = function(comment)
-            state.remove_comment(comment.file, comment.id)
-            diff_view.render()
-        end,
-        on_close = function()
-            M.close()
-        end,
-        on_escape = function()
-            M.reset_to_head()
-        end,
-    })
+    if l.comment_list then
+        comment_list.create(l.comment_list, {
+            on_comment_select = function(comment)
+                M.show_diff(comment.file)
+                vim.schedule(function()
+                    local diff_split = layout.get_diff_view()
+                    if diff_split and vim.api.nvim_win_is_valid(diff_split.winid) then
+                        pcall(vim.api.nvim_win_set_cursor, diff_split.winid, { comment.line, 0 })
+                    end
+                end)
+            end,
+            on_comment_delete = function(comment)
+                state.remove_comment(comment.file, comment.id)
+                diff_view.render()
+            end,
+            on_close = function()
+                M.close()
+            end,
+            on_escape = function()
+                M.reset_to_head()
+            end,
+        })
+    end
 
     -- Populate branch info
     if l.branch_info then
@@ -570,6 +588,52 @@ function M.pick_commit(count)
             M.open()
         end,
     })
+end
+
+---Clear all review comments
+function M.clear_comments()
+    if not state.state.is_open and config.get().persistence.enabled and persistence.exists() then
+        persistence.load()
+    end
+
+    local count = #state.get_all_comments()
+    if count == 0 then
+        if not state.state.is_open and config.get().persistence.enabled and persistence.exists() then
+            if not persistence.delete() then
+                vim.notify("Failed to clear saved review session", vim.log.levels.WARN)
+                return
+            end
+            vim.notify("Cleared saved review session", vim.log.levels.INFO)
+            return
+        end
+        vim.notify("No comments to clear", vim.log.levels.INFO)
+        return
+    end
+
+    local prompt = string.format("Clear %d comment%s?", count, count == 1 and "" or "s")
+    ui_util.confirm(prompt, function()
+        state.clear_all_comments()
+
+        if state.state.is_open then
+            if state.state.current_file then
+                diff_view.render()
+            end
+            local comment_list_comp = layout.get_comment_list()
+            if comment_list_comp and vim.api.nvim_win_is_valid(comment_list_comp.winid) then
+                require("review.ui.comment_list").refresh()
+            end
+        end
+
+        if config.get().persistence.enabled then
+            local ok = persistence.save({ force_empty = true })
+            if not ok then
+                vim.notify("Failed to clear saved review session", vim.log.levels.WARN)
+                return
+            end
+        end
+
+        vim.notify(string.format("Cleared %d comment%s", count, count == 1 and "" or "s"), vim.log.levels.INFO)
+    end)
 end
 
 return M

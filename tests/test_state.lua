@@ -260,4 +260,17 @@ grouped_tests["returns deep copy"] = function()
     expect.equality(original[1].text, "original")
 end
 
+local clear_tests = new_set()
+T["clear_all_comments"] = clear_tests
+
+clear_tests["clears all comments across files"] = function()
+    state.add_comment("a.lua", 1, "note", "first")
+    state.add_comment("b.lua", 5, "fix", "second")
+    expect.equality(#state.get_all_comments(), 2)
+
+    local count = state.clear_all_comments()
+    expect.equality(count, 2)
+    expect.equality(#state.get_all_comments(), 0)
+end
+
 return T

@@ -197,4 +197,15 @@ function M.get_comments_grouped_by_file()
     return grouped
 end
 
+---Clear all comments across all files
+---@return number count Number of comments cleared
+function M.clear_all_comments()
+    local count = 0
+    for _, file_state in pairs(M.state.files) do
+        count = count + #file_state.comments
+        file_state.comments = {}
+    end
+    return count
+end
+
 return M

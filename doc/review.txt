@@ -134,13 +134,13 @@ Commits and Comments are focusable panels. The sidebar takes a percentage of
 the screen width set by `ui.file_tree_width`.
 
 <Tab> cycles Files -> Branches -> Commits -> Comments -> Files. `h` and `l`
-walk the same chain without wrapping. <C-l> jumps from any sidebar panel to
+walk the same chain with wrapping. <C-l> jumps from any sidebar panel to
 the diff pane; <C-h> jumps from the diff pane back to Files. <C-n> hides and
 restores the entire sidebar.
 
-Set `ui.number_navigation` to enable numeric section navigation: `1` focuses
-Files, `2` Branches, `3` Commits, `4` Comments and `0` the diff pane. It is
-disabled by default. In side-by-side mode, `0` focuses the new (right) pane.
+Set `ui.number_navigation` to enable numeric section navigation: `1`-`n` focus
+the sidebar panels top to bottom and `0` the diff pane. It is disabled by
+default. In side-by-side mode, `0` focuses the new (right) pane.
 
 The diff pane renders unified by default and can be flipped to side-by-side
 with `S`, or by setting `ui.diff_view_mode` to "split".
@@ -168,6 +168,8 @@ with `S`, or by setting `ui.diff_view_mode` to "split".
                         20) and reopen the review against the chosen one.
                         Choosing "HEAD" returns to reviewing the worktree.
 
+:Review clear           Clear all review comments across all files.
+
 :Review qc              Add a quick comment on the current line of the
                         current buffer. Works outside the review UI.
                         Accepts a range, so `:'<,'>Review qc` attaches the
@@ -188,6 +190,7 @@ with `S`, or by setting `ui.diff_view_mode` to "split".
     review.toggle()
     review.open()
     review.close()
+    review.clear_comments() -- clear all review comments
     review.export()        -- markdown to clipboard
     review.send(target)    -- markdown to export.on_export, else tmux
     review.is_open()       -- boolean
@@ -214,8 +217,8 @@ Every mapping below is buffer-local to the review UI; none of them touch your
 normal buffers. Press `?` in the Files, Branches, Commits or Comments panel,
 or in the diff pane, for a help overlay listing that panel's mappings.
 
-When `ui.number_navigation` is enabled, `1`-`4` focus the corresponding
-sidebar panel and `0` focuses the diff pane. These mappings are not installed
+When `ui.number_navigation` is enabled, `1`-`n` focus the sidebar panels top to
+bottom and `0` focuses the diff pane. These mappings are not installed
 when the option is disabled, preserving normal-mode counts and the usual `0`
 movement inside the review UI.
 
@@ -402,6 +405,7 @@ need the keys you want to change. The complete defaults: >lua
             file_tree_width = 33,
             diff_view_mode = "unified",
             number_navigation = false,
+            panels = { "branch_info", "file_tree", "branch_list", "commit_list", "comment_list" },
         },
         tmux = {
             target = "!",
@@ -469,9 +473,17 @@ ui.diff_view_mode ~
 
 ui.number_navigation ~
     Enable numeric section navigation inside the review UI. When enabled,
-    `1` focuses Files, `2` Branches, `3` Commits, `4` Comments and `0` the diff
+    `1`-`n` focus the sidebar panels top to bottom and `0` focuses the diff
     pane. Disabled by default so normal-mode counts and `0` retain their usual
     behavior unless explicitly enabled.
+
+ui.panels ~
+    Sidebar panels to display. Accepts a list of panel names/aliases (e.g.,
+    `{ "file_tree", "comment_list" }` or `{ "files", "comments" }`) or a table of
+    boolean flags (e.g., `{ branch = false, branches = false, commits = false }`).
+    Defaults to showing all panels ("branch_info", "file_tree", "branch_list",
+    "commit_list", "comment_list"). Note that the Files panel (`file_tree`)
+    cannot be disabled.
 
 tmux.target ~
     Where the export is pasted. The default "!" is tmux's last active pane,
