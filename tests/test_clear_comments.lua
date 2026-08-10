@@ -1,11 +1,11 @@
 local new_set = MiniTest.new_set
 local expect = MiniTest.expect
 
+local helpers = require("tests.helpers")
+local persistence = require("review.core.persistence")
 local state = require("review.state")
 local ui = require("review.ui")
 local ui_util = require("review.ui.util")
-local persistence = require("review.core.persistence")
-local helpers = require("tests.helpers")
 
 local T = new_set({
     hooks = {
@@ -29,13 +29,12 @@ clear_tests["notifies when count is 0 and UI is open"] = function()
     local captured, restore = helpers.capture_notifications()
     state.state.is_open = true
 
-    local ok, count = pcall(ui.clear_comments)
+    local ok, err = pcall(ui.clear_comments)
     restore()
     if not ok then
-        error(count)
+        error(err)
     end
 
-    expect.equality(count, 0)
     expect.equality(#captured, 1)
     expect.equality(captured[1].message, "No comments to clear")
 end
@@ -49,13 +48,12 @@ clear_tests["notifies when count is 0, UI closed, and no session file exists"] =
     local captured, restore = helpers.capture_notifications()
     state.state.is_open = false
 
-    local ok, count = pcall(ui.clear_comments)
+    local ok, err = pcall(ui.clear_comments)
     restore()
     if not ok then
-        error(count)
+        error(err)
     end
 
-    expect.equality(count, 0)
     expect.equality(#captured, 1)
     expect.equality(captured[1].message, "No comments to clear")
 end
@@ -76,13 +74,12 @@ clear_tests["deletes session file and notifies when count is 0, UI closed, and s
     local captured, restore = helpers.capture_notifications()
     state.state.is_open = false
 
-    local ok, count = pcall(ui.clear_comments)
+    local ok, err = pcall(ui.clear_comments)
     restore()
     if not ok then
-        error(count)
+        error(err)
     end
 
-    expect.equality(count, 0)
     expect.equality(persistence.exists(), false)
     expect.equality(#captured, 1)
     expect.equality(captured[1].message, "Cleared saved review session")
@@ -102,14 +99,13 @@ clear_tests["prompts for confirmation and clears comments when count > 0"] = fun
     local captured, restore = helpers.capture_notifications()
     state.state.is_open = false
 
-    local ok, count = pcall(ui.clear_comments)
+    local ok, err = pcall(ui.clear_comments)
     restore()
     ui_util.confirm = orig_confirm
     if not ok then
-        error(count)
+        error(err)
     end
 
-    expect.equality(count, 2)
     expect.equality(captured_prompt, "Clear 2 comments?")
     expect.equality(#captured, 1)
     expect.equality(captured[1].message, "Cleared 2 comments")
@@ -125,13 +121,12 @@ clear_tests["does not clear comments if confirmation is declined"] = function()
         -- Do not call on_confirm (simulating "No" or Esc)
     end
 
-    local ok, count = pcall(ui.clear_comments)
+    local ok, err = pcall(ui.clear_comments)
     ui_util.confirm = orig_confirm
     if not ok then
-        error(count)
+        error(err)
     end
 
-    expect.equality(count, 0)
     expect.equality(#state.get_all_comments(), 1)
 end
 
@@ -196,15 +191,14 @@ clear_tests["shows warning when save returns false"] = function()
     end
 
     local captured, restore = helpers.capture_notifications()
-    local ok, count = pcall(ui.clear_comments)
+    local ok, err = pcall(ui.clear_comments)
     restore()
     persistence.save = original_save
     ui_util.confirm = orig_confirm
     if not ok then
-        error(count)
+        error(err)
     end
 
-    expect.equality(count, 1)
     expect.equality(#captured, 1)
     expect.equality(captured[1].message, "Failed to clear saved review session")
     expect.equality(captured[1].level, vim.log.levels.WARN)

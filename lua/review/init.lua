@@ -72,10 +72,9 @@ function M.send(target)
     export.send(target)
 end
 
----Clear all review comments
----@return number count Number of comments cleared
+---Clear all review comments, asking for confirmation when any exist
 function M.clear_comments()
-    return ui.clear_comments()
+    ui.clear_comments()
 end
 
 ---Check if UI is open

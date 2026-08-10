@@ -591,7 +591,6 @@ function M.pick_commit(count)
 end
 
 ---Clear all review comments
----@return number count Number of comments cleared
 function M.clear_comments()
     if not state.state.is_open and config.get().persistence.enabled and persistence.exists() then
         persistence.load()
@@ -602,20 +601,18 @@ function M.clear_comments()
         if not state.state.is_open and config.get().persistence.enabled and persistence.exists() then
             if not persistence.delete() then
                 vim.notify("Failed to clear saved review session", vim.log.levels.WARN)
-                return 0
+                return
             end
             vim.notify("Cleared saved review session", vim.log.levels.INFO)
-            return 0
+            return
         end
         vim.notify("No comments to clear", vim.log.levels.INFO)
-        return 0
+        return
     end
 
     local prompt = string.format("Clear %d comment%s?", count, count == 1 and "" or "s")
-    local cleared = 0
     ui_util.confirm(prompt, function()
         state.clear_all_comments()
-        cleared = count
 
         if state.state.is_open then
             if state.state.current_file then
@@ -637,8 +634,6 @@ function M.clear_comments()
 
         vim.notify(string.format("Cleared %d comment%s", count, count == 1 and "" or "s"), vim.log.levels.INFO)
     end)
-
-    return cleared
 end
 
 return M
