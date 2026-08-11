@@ -1229,8 +1229,9 @@ local function add_comment(start_row, end_row)
 
     local win_width = 60
     local win_opts = {
-        relative = "cursor",
-        row = 1,
+        relative = "win",
+        win = original_winid,
+        row = vim.fn.winline(),
         col = 0,
         width = win_width,
         height = 5,
