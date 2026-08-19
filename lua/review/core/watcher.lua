@@ -20,6 +20,30 @@ local fs_events = {}
 ---@type uv.uv_timer_t|nil
 local debounce_timer = nil
 
+---Whether libuv can watch a whole tree with one recursive handle on this platform
+---@return boolean
+local function supports_recursive()
+    local sysname = vim.uv.os_uname().sysname
+    return sysname == "Darwin" or sysname == "Windows_NT"
+end
+
+---Whether a path reported by a recursive watcher lives inside an ignored directory
+---@param filename string|nil
+---@return boolean
+local function is_ignored_path(filename)
+    if not filename then
+        return false
+    end
+    for segment in string.gmatch(filename, "[^/\\]+") do
+        if IGNORED_DIRS[segment] then
+            return true
+        end
+    end
+    return false
+end
+
+M.is_ignored_path = is_ignored_path
+
 ---Collect directories to watch, skipping ignored trees
 ---@param root string
 ---@return string[]
@@ -68,8 +92,8 @@ function M.start(git_root, callback)
     local debounce_ms = config.auto_refresh.debounce_ms
     debounce_timer = vim.uv.new_timer()
 
-    local function on_change(error)
-        if error or not debounce_timer then
+    local function on_change(error, filename)
+        if error or not debounce_timer or is_ignored_path(filename) then
             return
         end
         debounce_timer:stop()
@@ -78,18 +102,29 @@ function M.start(git_root, callback)
         end)
     end
 
-    for _, dir in ipairs(collect_directories(git_root)) do
+    local function watch(path, opts)
         local handle = vim.uv.new_fs_event()
-        if handle then
-            local ok = pcall(function()
-                handle:start(dir, {}, on_change)
-            end)
-            if ok then
-                table.insert(fs_events, handle)
-            else
-                handle:close()
-            end
+        if not handle then
+            return false
         end
+        local ok = pcall(function()
+            handle:start(path, opts, on_change)
+        end)
+        if ok then
+            table.insert(fs_events, handle)
+        else
+            handle:close()
+        end
+        return ok
+    end
+
+    if supports_recursive() and watch(git_root, { recursive = true }) then
+        log.info("watcher: watching", git_root, "recursively debounce=", debounce_ms)
+        return
+    end
+
+    for _, dir in ipairs(collect_directories(git_root)) do
+        watch(dir, {})
     end
 
     log.info("watcher: watching", #fs_events, "directories debounce=", debounce_ms)
