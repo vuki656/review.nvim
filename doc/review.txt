@@ -543,14 +543,16 @@ export.on_export ~
 auto_refresh.enabled ~
 auto_refresh.debounce_ms ~
     A filesystem watcher re-renders the UI when files change on disk,
-    debounced by `debounce_ms`. libuv cannot watch a tree recursively on
-    Linux, so the watcher walks the git root and watches each directory
-    separately, skipping `.git`, `node_modules`, `target`, `dist`, `build`,
-    `.venv` and `vendor`. It stops after 2000 directories; if the repository
+    debounced by `debounce_ms`. On macOS and Windows the git root is watched
+    with a single recursive handle. libuv cannot watch a tree recursively on
+    Linux, so there the watcher walks the git root and watches each
+    directory separately. It stops after 2000 directories; if the repository
     is larger the remainder is not watched and a warning is written to the
     log. The list is built when the UI opens, so directories created later
-    are picked up the next time it opens. Useful when an agent is writing
-    while you read.
+    are picked up the next time it opens. Changes under `.git`,
+    `node_modules`, `target`, `dist`, `build`, `.venv` and `vendor` are
+    ignored on every platform. Useful when an agent is writing while you
+    read.
 
 persistence.enabled ~
     Remember comments and review state between sessions. Files are written
