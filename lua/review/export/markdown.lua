@@ -235,11 +235,13 @@ local function is_tmux()
     return vim.env.TMUX ~= nil
 end
 
----Send comments to a tmux pane
+---Send markdown content to a tmux pane
+---@param content string Markdown content to send
+---@param comment_count number Number of comments in content
 ---@param target? string Target window/pane (defaults to config)
 ---@param silent? boolean Suppress notifications (for auto-send)
 ---@return boolean success
-function M.to_tmux(target, silent)
+function M.send_to_tmux(content, comment_count, target, silent)
     if not is_tmux() then
         if not silent then
             vim.notify("Not running inside tmux", vim.log.levels.ERROR)
@@ -249,9 +251,6 @@ function M.to_tmux(target, silent)
 
     local cfg = require("review.config").get()
     target = target or cfg.tmux.target
-
-    local content = M.generate()
-    local comment_count = #state.get_all_comments()
 
     if comment_count == 0 then
         if not silent then
@@ -311,6 +310,16 @@ function M.to_tmux(target, silent)
     end)
 
     return true
+end
+
+---Send comments to a tmux pane
+---@param target? string Target window/pane (defaults to config)
+---@param silent? boolean Suppress notifications (for auto-send)
+---@return boolean success
+function M.to_tmux(target, silent)
+    local content = M.generate()
+    local comment_count = #state.get_all_comments()
+    return M.send_to_tmux(content, comment_count, target, silent)
 end
 
 ---Send comments through the configured export callback, falling back to tmux

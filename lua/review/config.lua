@@ -35,6 +35,7 @@
 ---@class ReviewQuickCommentsKeymaps
 ---@field add string|nil Keymap to add a quick comment
 ---@field toggle_panel string|nil Keymap to toggle the quick comments panel
+---@field send string|nil Keymap to send quick comments
 
 ---@class ReviewQuickCommentsPanelConfig
 ---@field width number Panel width in columns
@@ -153,6 +154,7 @@ M.defaults = {
         keymaps = {
             add = nil,
             toggle_panel = nil,
+            send = nil,
         },
         panel = {
             width = 65,

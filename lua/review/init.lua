@@ -72,6 +72,14 @@ function M.send(target)
     export.send(target)
 end
 
+---Send quick comments through the export callback, or to a tmux pane
+---@param target? string Optional target pane, tmux only (defaults to config)
+---@param opts? { clear?: boolean, silent?: boolean }
+---@return boolean success
+function M.quick_send(target, opts)
+    return quick_comments.send(target, opts)
+end
+
 ---Clear all review comments, asking for confirmation when any exist
 function M.clear_comments()
     ui.clear_comments()
