@@ -58,6 +58,10 @@ function M.setup()
         elseif subcommand == "qp" then
             local quick_comments = require("review.quick_comments")
             quick_comments.toggle_panel()
+        elseif subcommand == "qs" or subcommand == "qsend" then
+            local target = args[2]
+            local quick_comments = require("review.quick_comments")
+            quick_comments.send(target)
         elseif subcommand == "log" then
             local log = require("review.core.log")
             vim.cmd("tabedit " .. vim.fn.fnameescape(log.get_log_path()))
@@ -75,7 +79,7 @@ function M.setup()
             end
             return vim.tbl_filter(function(item)
                 return vim.startswith(item, arg_lead)
-            end, { "close", "export", "send", "commit", "pick", "qc", "qp", "log", "clear" })
+            end, { "close", "export", "send", "commit", "pick", "qc", "qp", "qs", "log", "clear" })
         end,
         desc = "Review AI-generated code changes",
     })

@@ -40,7 +40,7 @@ Test files live in `tests/` and follow the naming convention `test_<module>.lua`
 
 Shared fixtures and factories are in `tests/helpers.lua`.
 
-Tested modules: `comment_types`, `config`, `core/diff`, `core/format`, `core/json_persistence`, `core/paths`, `core/watcher` (only `is_ignored_path`), `export/markdown`, `quick_comments/markdown`, `quick_comments/state`, `state`, `ui/panel_keymaps`. `core/git` is tested only for its pure parsers (`tests/test_git_parse.lua` covers name-status and commit-line parsing); everything in it that shells out to git is not.
+Tested modules: `comment_types`, `config`, `core/diff`, `core/format`, `core/json_persistence`, `core/paths`, `core/watcher` (only `is_ignored_path`), `export/markdown`, `quick_comments/markdown`, `quick_comments/state`, `quick_comments` (send), `state`, `ui/panel_keymaps`. `core/git` is tested only for its pure parsers (`tests/test_git_parse.lua` covers name-status and commit-line parsing); everything in it that shells out to git is not.
 
 Not tested (integration-heavy): `core/async`, `core/log`, `core/persistence`, `core/watcher` (start/stop), `commands`, `health`, `quick_comments/init`, `quick_comments/panel`, `quick_comments/persistence`, `quick_comments/signs`, `ui/*` (except `ui/panel_keymaps`).
 
@@ -158,6 +158,7 @@ Autosave (`VimLeavePre`) is registered from `plugin/review.lua`, so sessions per
 - `:Review clear` – Clear all review comments
 - `:Review qc` – Add a quick comment on the current line
 - `:Review qp` – Toggle the quick comments panel
+- `:Review qs [target]` – Send quick comments to `export.on_export`, or a tmux pane when unset
 - `:Review log` – Open the log file in a new tab
 
 `:Review` is registered from `plugin/review.lua`, so it exists without `setup()`.

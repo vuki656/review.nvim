@@ -146,7 +146,7 @@ function M.render()
         -- Footer with keymaps
         table.insert(lines, string.rep("─", panel_width))
         table.insert(highlights, { line = #lines - 1, col = 0, end_col = panel_width * 3, hl = "ReviewBorder" })
-        table.insert(lines, " ⏎ jump  L preview  d delete  e edit  c copy  q close")
+        table.insert(lines, " ⏎ jump  L preview  d delete  e edit  c copy  s send  q close")
         table.insert(highlights, { line = #lines - 1, col = 0, end_col = #lines[#lines], hl = "ReviewFooterText" })
 
         vim.api.nvim_buf_set_lines(panel.bufnr, 0, -1, false, lines)
@@ -300,6 +300,12 @@ local function setup_keymaps(bufnr)
         vim.fn.setreg("+", content)
         vim.notify("Copied " .. #comments .. " comment(s) to clipboard", vim.log.levels.INFO)
     end, opts)
+
+    -- Send all to export callback or tmux
+    vim.keymap.set("n", "s", function()
+        local quick_comments = require("review.quick_comments")
+        quick_comments.send()
+    end, opts)
 end
 
 ---Open the panel
@@ -377,6 +383,18 @@ end
 ---@return boolean
 function M.is_open()
     return panel.winid ~= nil and vim.api.nvim_win_is_valid(panel.winid)
+end
+
+---Get the panel buffer number
+---@return number|nil
+function M.get_bufnr()
+    return panel.bufnr
+end
+
+---Get the panel window ID
+---@return number|nil
+function M.get_winid()
+    return panel.winid
 end
 
 return M

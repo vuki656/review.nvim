@@ -178,6 +178,11 @@ with `S`, or by setting `ui.diff_view_mode` to "split".
 
 :Review qp              Toggle the quick comments panel.
 
+:Review qs [{target}]   Send quick comments to `export.on_export` when it is
+                        set, or to a tmux pane when it is not. {target}
+                        defaults to `tmux.target` and applies to the tmux
+                        path only.
+
 :Review log             Open the plugin log file in a new tab.
 
 ==============================================================================
@@ -208,6 +213,7 @@ Quick comments have their own module: >lua
     qc.open_panel()
     qc.close_panel()
     qc.export()            -- copy to clipboard
+    qc.send(target)        -- markdown to export.on_export, else tmux
     qc.copy()              -- copy to clipboard, then clear all comments
 <
 ==============================================================================
@@ -383,6 +389,8 @@ on every covered line and the panel lists them as `L42-50`.
     d             Delete the comment.
     c             Copy all quick comments to the clipboard as markdown. The
                   comments are kept.
+    s             Send all quick comments to `export.on_export` or tmux. The
+                  comments are kept.
     q / <Esc>     Close the panel.
 
 `require("review.quick_comments").copy()` copies and then clears every quick
@@ -415,6 +423,7 @@ need the keys you want to change. The complete defaults: >lua
             keymaps = {
                 add = nil,
                 toggle_panel = nil,
+                send = nil,
             },
             panel = {
                 width = 65,
@@ -499,8 +508,9 @@ tmux.auto_enter ~
 
 quick_comments.keymaps.add ~
 quick_comments.keymaps.toggle_panel ~
-    Global keys equivalent to |:Review| qc and |:Review| qp. Unset by
-    default.
+quick_comments.keymaps.send ~
+    Global keys equivalent to |:Review| qc, |:Review| qp, and |:Review| qs.
+    Unset by default.
 
 quick_comments.panel.width ~
     Width of the quick comments split, in columns.
