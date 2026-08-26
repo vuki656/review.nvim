@@ -385,16 +385,4 @@ function M.is_open()
     return panel.winid ~= nil and vim.api.nvim_win_is_valid(panel.winid)
 end
 
----Get the panel buffer number
----@return number|nil
-function M.get_bufnr()
-    return panel.bufnr
-end
-
----Get the panel window ID
----@return number|nil
-function M.get_winid()
-    return panel.winid
-end
-
 return M

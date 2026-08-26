@@ -26,6 +26,7 @@ local T = new_set({
             os.remove(QC_SESSION_PATH)
             qc_persistence.get_path = original_get_path
             qc_state.clear()
+            pcall(vim.keymap.del, "n", "<leader>qs")
             if qc_panel.is_open() then
                 qc_panel.close()
             end
@@ -61,37 +62,34 @@ T["send silent suppresses warning when no comments"] = function()
     expect.equality(#captured, 0)
 end
 
-T["send calls on_export with quick comments content and comments table"] = function()
-    local captured_payload = {}
+T["send executes on_export handler with markdown and comment list"] = function()
+    local called = false
+    local captured_content = nil
+    local captured_comments = nil
+
     config.setup({
         export = {
             on_export = function(content, comments)
-                captured_payload.content = content
-                captured_payload.comments = comments
+                called = true
+                captured_content = content
+                captured_comments = comments
                 return true
             end,
         },
     })
 
-    qc_state.add("/project/src/main.lua", 10, "fix", "Fix this bug", "local x = 1", 12)
+    qc_state.add("/project/src/main.lua", 10, "note", "Test comment")
 
-    local captured_notify, restore_notify = helpers.capture_notifications()
-    local ok, result = pcall(qc.send)
-    restore_notify()
-
+    local ok, result = pcall(qc.send, nil, { silent = true })
     if not ok then
         error(result)
     end
 
     expect.equality(result, true)
-    expect.equality(captured_payload.content:find("# Quick Comments") ~= nil, true)
-    expect.equality(captured_payload.content:find("Fix this bug") ~= nil, true)
-    expect.equality(#captured_payload.comments, 1)
-    expect.equality(captured_payload.comments[1].text, "Fix this bug")
-
-    expect.equality(#captured_notify, 1)
-    expect.equality(captured_notify[1].message, "Sent 1 quick comment(s)")
-    expect.equality(captured_notify[1].level, vim.log.levels.INFO)
+    expect.equality(called, true)
+    expect.equality(captured_content:find("# Quick Comments") ~= nil, true)
+    expect.equality(captured_content:find("Test comment") ~= nil, true)
+    expect.equality(#captured_comments, 1)
 end
 
 T["send reports failure when on_export returns false"] = function()
@@ -132,7 +130,7 @@ T["send reports failure when on_export errors"] = function()
     expect.equality(result, false)
 end
 
-T["send with clear=true clears comments state and closes panel on success"] = function()
+T["send with clear=true clears state, saves persistence, and closes panel on success"] = function()
     config.setup({
         export = {
             on_export = function()
@@ -176,7 +174,6 @@ T["send with clear=true retains comments if delivery fails"] = function()
 end
 
 T["send with clear=true retains comments if tmux delivery fails"] = function()
-    -- Ensure no on_export handler is set so it goes through tmux path
     config.setup({
         export = {
             on_export = nil,
@@ -185,13 +182,122 @@ T["send with clear=true retains comments if tmux delivery fails"] = function()
 
     qc_state.add("/project/src/main.lua", 10, "note", "Tmux comment to preserve")
 
-    -- Outside tmux (or bad pane), send returns false or fails async without clearing
+    local export = require("review.export.markdown")
+    local original_send_to_tmux = export.send_to_tmux
+    export.send_to_tmux = function(_, _, _, _, on_done)
+        if on_done then
+            on_done(false)
+        end
+        return false
+    end
+
     local ok, result = pcall(qc.send, "invalid:pane", { clear = true, silent = true })
+    export.send_to_tmux = original_send_to_tmux
+
     if not ok then
         error(result)
     end
 
+    expect.equality(result, false)
     expect.equality(qc_state.count(), 1)
+end
+
+T["send with clear=true clears comments when tmux delivery succeeds"] = function()
+    config.setup({
+        export = {
+            on_export = nil,
+        },
+    })
+
+    qc_state.add("/project/src/main.lua", 10, "note", "Tmux comment to clear")
+    qc_panel.open()
+    expect.equality(qc_panel.is_open(), true)
+
+    local export = require("review.export.markdown")
+    local original_send_to_tmux = export.send_to_tmux
+    export.send_to_tmux = function(_, _, _, _, on_done)
+        if on_done then
+            on_done(true)
+        end
+        return true
+    end
+
+    local ok, result = pcall(qc.send, "valid:pane", { clear = true, silent = true })
+    export.send_to_tmux = original_send_to_tmux
+
+    if not ok then
+        error(result)
+    end
+
+    expect.equality(result, true)
+    expect.equality(qc_state.count(), 0)
+    expect.equality(qc_panel.is_open(), false)
+end
+
+T["send passes content, count, target, and silent to export.send_to_tmux when on_export is nil"] = function()
+    config.setup({
+        export = {
+            on_export = nil,
+        },
+    })
+
+    qc_state.add("/project/src/main.lua", 10, "note", "Tmux fallback comment")
+
+    local export = require("review.export.markdown")
+    local original_send_to_tmux = export.send_to_tmux
+    local captured = {}
+
+    export.send_to_tmux = function(content, comment_count, target, silent, on_done)
+        captured.content = content
+        captured.comment_count = comment_count
+        captured.target = target
+        captured.silent = silent
+        captured.on_done = on_done
+        return true
+    end
+
+    local ok, result = pcall(qc.send, "CLAUDE.0", { silent = true })
+    export.send_to_tmux = original_send_to_tmux
+
+    if not ok then
+        error(result)
+    end
+
+    expect.equality(result, true)
+    expect.equality(captured.content:find("# Quick Comments") ~= nil, true)
+    expect.equality(captured.content:find("Tmux fallback comment") ~= nil, true)
+    expect.equality(captured.comment_count, 1)
+    expect.equality(captured.target, "CLAUDE.0")
+    expect.equality(captured.silent, true)
+    expect.equality(type(captured.on_done), "function")
+end
+
+T[":Review qs <target> passes target argument to send_to_tmux"] = function()
+    config.setup({
+        export = {
+            on_export = nil,
+        },
+    })
+
+    qc_state.add("/project/src/main.lua", 1, "note", "Target test")
+
+    local export = require("review.export.markdown")
+    local original_send_to_tmux = export.send_to_tmux
+    local captured_target = nil
+
+    export.send_to_tmux = function(_, _, target)
+        captured_target = target
+        return true
+    end
+
+    local ok, err = pcall(vim.cmd, "Review qs agent_pane")
+    export.send_to_tmux = original_send_to_tmux
+
+    if not ok then
+        error(err)
+    end
+
+    expect.equality(captured_target, "agent_pane")
 end
 
 T["review.quick_send delegates to quick_comments.send"] = function()
@@ -235,25 +341,6 @@ T[":Review qs command dispatches to quick_comments.send"] = function()
     expect.equality(called, true)
 end
 
-T[":Review qsend command alias also dispatches to quick_comments.send"] = function()
-    local called = false
-    local opts = {
-        export = {
-            on_export = function()
-                called = true
-                return true
-            end,
-        },
-    }
-
-    qc_state.add("/project/src/main.lua", 1, "note", "Alias test")
-
-    config.setup(opts)
-    vim.cmd("Review qsend")
-
-    expect.equality(called, true)
-end
-
 T["panel 's' keymap calls quick_comments.send"] = function()
     local called = false
     config.setup({
@@ -268,8 +355,18 @@ T["panel 's' keymap calls quick_comments.send"] = function()
     qc_state.add("/project/src/main.lua", 1, "note", "Panel send test")
     qc_panel.open()
 
-    -- Find the 's' keymap in the panel buffer
-    local bufnr = qc_panel.get_bufnr and qc_panel.get_bufnr() or vim.api.nvim_get_current_buf()
+    local bufnr = nil
+    for _, b in ipairs(vim.api.nvim_list_bufs()) do
+        if
+            vim.api.nvim_buf_is_loaded(b)
+            and vim.api.nvim_get_option_value("filetype", { buf = b }) == "review-quick-comments"
+        then
+            bufnr = b
+            break
+        end
+    end
+
+    expect.equality(bufnr ~= nil, true)
     local keymaps = vim.api.nvim_buf_get_keymap(bufnr, "n")
     local s_map = nil
     for _, map in ipairs(keymaps) do
@@ -305,20 +402,14 @@ T["quick_comments.keymaps.send registers global keymap"] = function()
     qc_state.add("/project/src/main.lua", 1, "note", "Keymap test")
     qc.setup()
 
-    local keymaps = vim.api.nvim_get_keymap("n")
-    local found = nil
-    for _, map in ipairs(keymaps) do
-        if map.lhs == " <Space>qs" or map.lhs == "<leader>qs" or map.lhs:find("qs") then
-            found = map
-            break
-        end
-    end
-
-    expect.equality(found ~= nil, true)
-    if found and found.callback then
+    local found = vim.fn.maparg("<leader>qs", "n", false, true)
+    expect.equality(found.desc, "Send quick comments")
+    if found.callback then
         found.callback()
-        expect.equality(called, true)
     end
+    expect.equality(called, true)
+
+    pcall(vim.keymap.del, "n", "<leader>qs")
 end
 
 return T

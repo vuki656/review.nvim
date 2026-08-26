@@ -58,7 +58,7 @@ function M.setup()
         elseif subcommand == "qp" then
             local quick_comments = require("review.quick_comments")
             quick_comments.toggle_panel()
-        elseif subcommand == "qs" or subcommand == "qsend" then
+        elseif subcommand == "qs" then
             local target = args[2]
             local quick_comments = require("review.quick_comments")
             quick_comments.send(target)

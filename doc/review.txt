@@ -198,6 +198,7 @@ with `S`, or by setting `ui.diff_view_mode` to "split".
     review.clear_comments() -- clear all review comments
     review.export()        -- markdown to clipboard
     review.send(target)    -- markdown to export.on_export, else tmux
+    review.quick_send(target, opts) -- quick comments to export.on_export, else tmux
     review.is_open()       -- boolean
     review.get_state()     -- current state table
     review.reset()         -- reset state
@@ -213,7 +214,7 @@ Quick comments have their own module: >lua
     qc.open_panel()
     qc.close_panel()
     qc.export()            -- copy to clipboard
-    qc.send(target)        -- markdown to export.on_export, else tmux
+    qc.send(target, opts)  -- markdown to export.on_export, else tmux; opts.clear, opts.silent
     qc.copy()              -- copy to clipboard, then clear all comments
 <
 ==============================================================================
@@ -499,8 +500,8 @@ tmux.target ~
     normally the pane you switched away from to reach Neovim, which is
     usually the one running your agent. Any other target accepted by
     `tmux paste-buffer -t` works, for example a named window "CLAUDE",
-    "CLAUDE.0" or a fully qualified "session:window.pane". |:Review| send
-    takes a target for a single call.
+    "CLAUDE.0" or a fully qualified "session:window.pane". |:Review| send and
+    |:Review| qs take a target for a single call.
 
 tmux.auto_enter ~
     Send Enter after pasting. Off by default so you can read the prompt

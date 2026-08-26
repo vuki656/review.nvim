@@ -42,7 +42,7 @@ end
 local function check_tmux()
     if vim.fn.executable("tmux") ~= 1 then
         vim.health.warn("`tmux` not found in PATH", {
-            "Optional, only required for `:Review send`",
+            "Optional, only required for `:Review send` and `:Review qs`",
         })
         return
     end
@@ -53,7 +53,7 @@ local function check_tmux()
         vim.health.ok("Running inside a tmux session")
     else
         vim.health.warn("Not running inside a tmux session ($TMUX is unset)", {
-            "`:Review send` requires Neovim to run inside tmux",
+            "`:Review send` and `:Review qs` require Neovim to run inside tmux",
         })
     end
 end
