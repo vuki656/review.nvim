@@ -5,16 +5,26 @@ local config = require("review.config")
 local helpers = require("tests.helpers")
 local qc = require("review.quick_comments")
 local qc_panel = require("review.quick_comments.panel")
+local qc_persistence = require("review.quick_comments.persistence")
 local qc_state = require("review.quick_comments.state")
 local review = require("review")
+
+local QC_SESSION_PATH = vim.fn.tempname() .. "-qc.json"
+local original_get_path = qc_persistence.get_path
 
 local T = new_set({
     hooks = {
         pre_case = function()
+            qc_persistence.get_path = function()
+                return QC_SESSION_PATH
+            end
+            os.remove(QC_SESSION_PATH)
             config.setup()
             qc_state.clear()
         end,
         post_case = function()
+            os.remove(QC_SESSION_PATH)
+            qc_persistence.get_path = original_get_path
             qc_state.clear()
             if qc_panel.is_open() then
                 qc_panel.close()
@@ -165,6 +175,25 @@ T["send with clear=true retains comments if delivery fails"] = function()
     expect.equality(qc_state.count(), 1)
 end
 
+T["send with clear=true retains comments if tmux delivery fails"] = function()
+    -- Ensure no on_export handler is set so it goes through tmux path
+    config.setup({
+        export = {
+            on_export = nil,
+        },
+    })
+
+    qc_state.add("/project/src/main.lua", 10, "note", "Tmux comment to preserve")
+
+    -- Outside tmux (or bad pane), send returns false or fails async without clearing
+    local ok, result = pcall(qc.send, "invalid:pane", { clear = true, silent = true })
+    if not ok then
+        error(result)
+    end
+
+    expect.equality(qc_state.count(), 1)
+end
+
 T["review.quick_send delegates to quick_comments.send"] = function()
     local called = false
     config.setup({
@@ -200,7 +229,7 @@ T[":Review qs command dispatches to quick_comments.send"] = function()
 
     qc_state.add("/project/src/main.lua", 1, "note", "Command test")
 
-    review.setup(opts)
+    config.setup(opts)
     vim.cmd("Review qs")
 
     expect.equality(called, true)
@@ -219,7 +248,7 @@ T[":Review qsend command alias also dispatches to quick_comments.send"] = functi
 
     qc_state.add("/project/src/main.lua", 1, "note", "Alias test")
 
-    review.setup(opts)
+    config.setup(opts)
     vim.cmd("Review qsend")
 
     expect.equality(called, true)

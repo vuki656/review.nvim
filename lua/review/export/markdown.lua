@@ -240,11 +240,15 @@ end
 ---@param comment_count number Number of comments in content
 ---@param target? string Target window/pane (defaults to config)
 ---@param silent? boolean Suppress notifications (for auto-send)
+---@param on_done? fun(success: boolean) Callback when async paste finishes
 ---@return boolean success
-function M.send_to_tmux(content, comment_count, target, silent)
+function M.send_to_tmux(content, comment_count, target, silent, on_done)
     if not is_tmux() then
         if not silent then
             vim.notify("Not running inside tmux", vim.log.levels.ERROR)
+        end
+        if on_done then
+            on_done(false)
         end
         return false
     end
@@ -256,6 +260,9 @@ function M.send_to_tmux(content, comment_count, target, silent)
         if not silent then
             vim.notify("No comments to send", vim.log.levels.WARN)
         end
+        if on_done then
+            on_done(false)
+        end
         return false
     end
 
@@ -264,6 +271,9 @@ function M.send_to_tmux(content, comment_count, target, silent)
     if not file then
         if not silent then
             vim.notify("Failed to create temp file", vim.log.levels.ERROR)
+        end
+        if on_done then
+            on_done(false)
         end
         return false
     end
@@ -277,11 +287,14 @@ function M.send_to_tmux(content, comment_count, target, silent)
                     vim.notify("Failed to load tmux buffer: " .. (load_result.stderr or ""), vim.log.levels.ERROR)
                 end
                 os.remove(tmpfile)
+                if on_done then
+                    on_done(false)
+                end
             end)
             return
         end
 
-        vim.system({ "tmux", "paste-buffer", "-t", target }, {}, function(paste_result)
+        vim.system({ "tmux", "paste-buffer", "-p", "-t", target }, {}, function(paste_result)
             vim.schedule(function()
                 os.remove(tmpfile)
 
@@ -292,11 +305,16 @@ function M.send_to_tmux(content, comment_count, target, silent)
                             vim.log.levels.ERROR
                         )
                     end
+                    if on_done then
+                        on_done(false)
+                    end
                     return
                 end
 
                 if cfg.tmux.auto_enter then
-                    vim.system({ "tmux", "send-keys", "-t", target, "Enter" })
+                    vim.defer_fn(function()
+                        vim.system({ "tmux", "send-keys", "-t", target, "Enter" })
+                    end, 100)
                 end
 
                 if not silent then
@@ -304,6 +322,10 @@ function M.send_to_tmux(content, comment_count, target, silent)
                         string.format("Sent %d comment(s) to tmux pane '%s'", comment_count, target),
                         vim.log.levels.INFO
                     )
+                end
+
+                if on_done then
+                    on_done(true)
                 end
             end)
         end)
@@ -315,11 +337,12 @@ end
 ---Send comments to a tmux pane
 ---@param target? string Target window/pane (defaults to config)
 ---@param silent? boolean Suppress notifications (for auto-send)
+---@param on_done? fun(success: boolean)
 ---@return boolean success
-function M.to_tmux(target, silent)
+function M.to_tmux(target, silent, on_done)
     local content = M.generate()
     local comment_count = #state.get_all_comments()
-    return M.send_to_tmux(content, comment_count, target, silent)
+    return M.send_to_tmux(content, comment_count, target, silent, on_done)
 end
 
 ---Send comments through the configured export callback, falling back to tmux
