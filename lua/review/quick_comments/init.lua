@@ -161,6 +161,22 @@ function M.export()
     vim.notify("Exported " .. count .. " comment(s) to clipboard", vim.log.levels.INFO)
 end
 
+---Clear signs from loaded buffers, reset quick comments state, save persistence, and close panel
+local function clear_quick_comments()
+    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_loaded(bufnr) then
+            signs.clear(bufnr)
+        end
+    end
+
+    qc_state.clear()
+    persistence.save()
+
+    if panel.is_open() then
+        panel.close()
+    end
+end
+
 ---Copy comments to clipboard, clear state, and notify
 function M.copy()
     local comments = qc_state.get_all_flat()
@@ -170,24 +186,43 @@ function M.copy()
     end
 
     local comment_count = copy_to_clipboard(comments)
+    clear_quick_comments()
+    vim.notify("Copied " .. comment_count .. " quick comment(s) to clipboard and cleared", vim.log.levels.INFO)
+end
 
-    -- Clear signs from all buffers that have comments
-    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-        if vim.api.nvim_buf_is_loaded(bufnr) then
-            signs.clear(bufnr)
+---Send quick comments through the configured export callback, falling back to tmux
+---@param target? string Target window/pane (defaults to config)
+---@param opts? { clear?: boolean, silent?: boolean }
+---@return boolean success
+function M.send(target, opts)
+    opts = opts or {}
+    local comments = qc_state.get_all_flat()
+    if #comments == 0 then
+        if not opts.silent then
+            vim.notify("No quick comments to send", vim.log.levels.WARN)
+        end
+        return false
+    end
+
+    local content = markdown.build(comments)
+    local export = require("review.export.markdown")
+
+    local function handle_done(ok)
+        if ok and opts.clear then
+            clear_quick_comments()
         end
     end
 
-    -- Clear state
-    qc_state.clear()
-    persistence.save()
-
-    -- Close panel if open
-    if panel.is_open() then
-        panel.close()
+    if export.has_handler() then
+        local success = export.run_handler(content, comments, opts.silent) == true
+        if success and not opts.silent then
+            vim.notify(string.format("Sent %d quick comment(s)", #comments), vim.log.levels.INFO)
+        end
+        handle_done(success)
+        return success
     end
 
-    vim.notify("Copied " .. comment_count .. " quick comment(s) to clipboard and cleared", vim.log.levels.INFO)
+    return export.send_to_tmux(content, #comments, target, opts.silent, handle_done)
 end
 
 ---Set up the quick comments feature
@@ -226,6 +261,12 @@ function M.setup()
             vim.keymap.set("n", keymaps.toggle_panel, function()
                 M.toggle_panel()
             end, { desc = "Toggle quick comments panel" })
+        end
+
+        if keymaps.send then
+            vim.keymap.set("n", keymaps.send, function()
+                M.send()
+            end, { desc = "Send quick comments" })
         end
     end
 end

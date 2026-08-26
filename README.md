@@ -35,7 +35,7 @@
 
 - Neovim 0.10 or later (enforced in `plugin/review.lua`)
 - `git` on `$PATH`
-- **tmux**, optional, only for `:Review send` and the "Copy & Send to tmux" exit option. Everything else works without it.
+- **tmux**, optional, only for `:Review send`, `:Review qs` and the "Copy & Send to tmux" exit option. Everything else works without it.
 - [nvim-web-devicons](https://github.com/nvim-tree/nvim-web-devicons), optional, file icons. Without it the icon column is blank.
 - Tree-sitter parsers for the languages you review, optional, syntax highlighting inside the diff. Without a parser the diff still renders, just uncolored.
 
@@ -121,6 +121,7 @@ lua require("review").setup({})
 | `:Review clear` | Clear all review comments |
 | `:Review qc` | Add a quick comment on the current line of the current buffer, or on a range with `:'<,'>Review qc` |
 | `:Review qp` | Toggle the quick comments panel |
+| `:Review qs [target]` | Send quick comments to `export.on_export`, or to a tmux pane (defaults to `tmux.target`) |
 | `:Review log` | Open the plugin log file in a new tab |
 
 `:checkhealth review` verifies the Neovim version, git and the repository, tmux and `$TMUX`, whether `setup()` has run, the log level, and the log file path. The "`setup()` has not been called" result is a warning, not an error. The defaults are in effect either way.
@@ -137,6 +138,7 @@ review.close()
 review.clear_comments()  -- clear all review comments
 review.export()          -- to clipboard
 review.send(target)      -- to export.on_export, else tmux; target optional
+review.quick_send(target, opts) -- send quick comments; opts.clear, opts.silent
 review.is_open()         -- boolean
 review.get_state()       -- current state table
 review.reset()           -- reset state
@@ -152,6 +154,7 @@ qc.add(42, 50)      -- comment on lines 42 to 50
 qc.add_visual()     -- comment on the current visual selection
 qc.toggle_panel()
 qc.export()         -- copy to clipboard
+qc.send(target, opts) -- to export.on_export, else tmux; opts.clear, opts.silent
 qc.copy()           -- copy to clipboard, then clear all quick comments
 ```
 
@@ -284,6 +287,7 @@ Quick comments are separate from review comments: they attach to any line of any
 | `e` | Edit the comment |
 | `d` | Delete the comment |
 | `c` | Copy all quick comments to the clipboard as markdown |
+| `s` | Send all quick comments to `export.on_export`, or to tmux |
 | `q` / `<Esc>` | Close the panel |
 
 ## ⚙️ Configuration
@@ -312,6 +316,7 @@ require("review").setup({
         keymaps = {
             add = nil,
             toggle_panel = nil,
+            send = nil,
         },
         panel = {
             width = 65,
@@ -355,9 +360,9 @@ The `nil` entries are unset by default. No global keymaps are created unless you
 - `ui.diff_view_mode`: `"unified"` or `"split"` (side-by-side) on open. `S` toggles at runtime.
 - `ui.number_navigation`: enable `1`–`n` to focus the sidebar panels top to bottom and `0` to focus the diff. Disabled by default so normal-mode counts and `0` retain their usual behavior unless you opt in.
 - `ui.panels`: sidebar panels to display. Can be a list of panel names (e.g. `{ "file_tree", "comment_list" }` or `{ "files", "comments" }`) or a table of boolean toggles (e.g. `{ branch = false, branches = false, commits = false }`). Defaults to showing all panels (`branch_info`, `file_tree`, `branch_list`, `commit_list`, `comment_list`). Note that the Files panel (`file_tree`) cannot be disabled.
-- `tmux.target`: tmux target that `:Review send` pastes into. The default `"!"` is tmux's last active pane, which is normally the pane you came from, usually the one running your agent. Any target `tmux paste-buffer -t` accepts works instead, e.g. a named window `"CLAUDE"`, `"CLAUDE.0"` or a fully qualified `"session:window.pane"`.
+- `tmux.target`: tmux target that `:Review send` and `:Review qs` paste into. The default `"!"` is tmux's last active pane, which is normally the pane you came from, usually the one running your agent. Any target `tmux paste-buffer -t` accepts works instead, e.g. a named window `"CLAUDE"`, `"CLAUDE.0"` or a fully qualified `"session:window.pane"`.
 - `tmux.auto_enter`: send `Enter` after pasting. Off by default so you can read the prompt before submitting it.
-- `quick_comments.keymaps.add` / `.toggle_panel`: global keys for `:Review qc` and `:Review qp`.
+- `quick_comments.keymaps.add` / `.toggle_panel` / `.send`: global keys for `:Review qc`, `:Review qp`, and `:Review qs`.
 - `quick_comments.signs.enabled`: gutter signs for quick comments.
 - `export.context_lines`: lines of diff context included above and below each comment in the exported markdown.
 - `export.on_export`: your own delivery callback, `function(content, comments)`. `content` is the exported markdown, `comments` the comment tables it was built from. Return `false` (or raise) to say the hand-off failed. When it is set, `:Review send` and "Copy & Send" call it instead of pasting into tmux. The clipboard paths, `:Review export` and "Exit & Copy", still copy and then call it as well. A failed hand-off on close keeps the saved session instead of deleting it, so nothing is lost.

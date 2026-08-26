@@ -146,7 +146,7 @@ function M.render()
         -- Footer with keymaps
         table.insert(lines, string.rep("─", panel_width))
         table.insert(highlights, { line = #lines - 1, col = 0, end_col = panel_width * 3, hl = "ReviewBorder" })
-        table.insert(lines, " ⏎ jump  L preview  d delete  e edit  c copy  q close")
+        table.insert(lines, " ⏎ jump  L preview  d delete  e edit  c copy  s send  q close")
         table.insert(highlights, { line = #lines - 1, col = 0, end_col = #lines[#lines], hl = "ReviewFooterText" })
 
         vim.api.nvim_buf_set_lines(panel.bufnr, 0, -1, false, lines)
@@ -299,6 +299,12 @@ local function setup_keymaps(bufnr)
         local content = markdown.build(comments)
         vim.fn.setreg("+", content)
         vim.notify("Copied " .. #comments .. " comment(s) to clipboard", vim.log.levels.INFO)
+    end, opts)
+
+    -- Send all to export callback or tmux
+    vim.keymap.set("n", "s", function()
+        local quick_comments = require("review.quick_comments")
+        quick_comments.send()
     end, opts)
 end
 
