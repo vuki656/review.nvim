@@ -122,7 +122,7 @@ Comments can cover a range of lines: selecting lines in visual mode and pressing
 
 ### Export Delivery
 
-`export/markdown.lua` separates generation from delivery: `generate()` builds the markdown, and `to_clipboard`, `to_file`, `to_tmux` are thin wrappers on it. `export.on_export` in config is a user delivery callback, `function(content, comments)`, and `M.send()` is the entry point every send path uses — it calls the callback when one is set and falls back to `to_tmux` when not. `to_clipboard` copies first and then also calls the callback. A callback returning `false` or raising counts as a failed hand-off, which makes the close path keep the saved session instead of deleting it (`has_handler()` gates that so tmux's optimistic `true` keeps its old behavior).
+`export/markdown.lua` separates generation from delivery: `generate()` builds the markdown, and `to_clipboard`, `to_file`, `to_tmux` are thin wrappers on it (`to_file` creates the parent directory first). `export.on_export` in config is a user delivery callback, `function(content, comments)`, and `M.send()` is the entry point every send path uses — it calls the callback when one is set and falls back to `to_tmux` when not. `to_clipboard` copies first and then also calls the callback. A callback returning `false` or raising counts as a failed hand-off, which makes the close path keep the saved session instead of deleting it (`has_handler()` gates that so tmux's optimistic `true` keeps its old behavior). The exit popup offers a `copy_and_file` action that copies to the clipboard and writes `<git root>/.agents/diff_review.md` (cwd fallback outside a repo); a failed file write keeps the saved session.
 
 ### Session Persistence
 

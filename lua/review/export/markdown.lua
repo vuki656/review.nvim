@@ -214,6 +214,8 @@ end
 function M.to_file(filepath)
     local content = M.generate()
 
+    vim.fn.mkdir(vim.fn.fnamemodify(filepath, ":h"), "p")
+
     local file = io.open(filepath, "w")
     if not file then
         vim.notify("Failed to open file: " .. filepath, vim.log.levels.ERROR)

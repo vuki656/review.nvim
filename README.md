@@ -381,10 +381,11 @@ The loop:
 3. `<Space>` on files in the Files panel to stage the parts you're keeping.
 4. `q` to close. If you have comments, an exit popup appears:
    - **Exit, Copy & Send to tmux**: copies to the clipboard *and* pastes into the tmux target.
+   - **Exit, Copy & Save to .agents/diff_review.md**: copies to the clipboard *and* writes the markdown to `<git root>/.agents/diff_review.md` (falls back to the working directory outside a git repo; the directory is created if missing).
    - **Exit & Copy**: clipboard only.
    - **Exit**: keeps the session so `:Review` picks up where you left off.
 
-   The two copy options clear the saved session. With no comments, `q` exits straight away.
+   The copy options clear the saved session. With no comments, `q` exits straight away.
 5. Paste into the agent, or let tmux do it for you.
 
 `:Review export` and `:Review send [target]` do the same export without closing the UI.

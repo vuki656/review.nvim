@@ -330,7 +330,7 @@ local function do_close(action)
 
     -- Handle export based on action
     local export_landed = true
-    if action == "copy" or action == "copy_and_send" then
+    if action == "copy" or action == "copy_and_file" or action == "copy_and_send" then
         local all_comments = state.get_all_comments()
         if #all_comments > 0 then
             local export = require("review.export.markdown")
@@ -358,6 +358,14 @@ local function do_close(action)
             if handed_off == false then
                 export_landed = false
                 log.error("ui: export.on_export did not succeed, preserving session file")
+            end
+
+            if action == "copy_and_file" then
+                local filepath = (git.get_root() or vim.uv.cwd()) .. "/.agents/diff_review.md"
+                if not export.to_file(filepath) then
+                    export_landed = false
+                    log.error("ui: failed to write markdown file, preserving session file")
+                end
             end
         end
     end
@@ -398,8 +406,13 @@ local function show_exit_popup()
     local all_comments = state.get_all_comments()
     local has_comments = #all_comments > 0
 
-    local actions = { "copy_and_send", "copy", "exit" }
-    local labels = { "Exit, Copy & Send to tmux", "Exit & Copy", "Exit" }
+    local actions = { "copy_and_send", "copy_and_file", "copy", "exit" }
+    local labels = {
+        "Exit, Copy & Send to tmux",
+        "Exit, Copy & Save to .agents/diff_review.md",
+        "Exit & Copy",
+        "Exit",
+    }
 
     local title = "Close review"
     if has_comments then

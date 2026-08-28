@@ -603,11 +603,16 @@ The intended loop:
        Exit, Copy & Send to tmux   Copy to the clipboard and paste into the
                                    configured tmux target, or hand off to
                                    `export.on_export` when it is set.
+       Exit, Copy & Save to .agents/diff_review.md
+                                   Copy to the clipboard and also write the
+                                   markdown to `<git root>/.agents/diff_review.md`
+                                   (working directory outside a git repo); the
+                                   directory is created when missing.
        Exit & Copy                 Clipboard only.
        Exit                        Keep the saved session so the next
                                    |:Review| resumes where you left off.
 
-     The two copy options clear the saved session. With no comments, `q`
+     The copy options clear the saved session. With no comments, `q`
      exits immediately with no menu.
   5. Paste into your agent, or let tmux have done it for you.
 
