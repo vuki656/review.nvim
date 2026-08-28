@@ -23,7 +23,7 @@
 
 - Diff browser in a dedicated tab: file tree, branches, commits, comments
 - Typed comments (note, fix, question) attached to specific diff lines
-- Export all comments as markdown with diff context, to the clipboard or a tmux pane
+- Export all comments as markdown with diff context, to the clipboard, a herdr agent pane, or a tmux pane
 - Quick comments on any line of any buffer, with gutter signs
 - Git actions without leaving the tab: stage, commit, amend, push, pull, checkout, branch
 - Session persistence, so comments survive a restart
@@ -36,6 +36,7 @@
 - Neovim 0.10 or later (enforced in `plugin/review.lua`)
 - `git` on `$PATH`
 - **tmux**, optional, only for `:Review send`, `:Review qs` and the "Copy & Send to tmux" exit option. Everything else works without it.
+- **herdr**, optional, an alternative tmux target for the same send paths. When Neovim runs inside herdr, `:Review send` and "Copy & Send" open a picker of herdr agent panes (running agents with their working directory and state) and submit the markdown to the chosen one via `herdr agent prompt` — text lands in the agent's prompt via bracketed paste, Enter included. Without a handler set, herdr takes precedence over tmux inside herdr.
 - [nvim-web-devicons](https://github.com/nvim-tree/nvim-web-devicons), optional, file icons. Without it the icon column is blank.
 - Tree-sitter parsers for the languages you review, optional, syntax highlighting inside the diff. Without a parser the diff still renders, just uncolored.
 
@@ -380,7 +381,7 @@ The loop:
 2. Read the diff. Press `c` on a line to attach a comment, `<Tab>` to pick its type (Fix / Note / Question), `<CR>` to submit. Comments render as boxed virtual lines under the code and collect in the Comments panel.
 3. `<Space>` on files in the Files panel to stage the parts you're keeping.
 4. `q` to close. If you have comments, an exit popup appears:
-   - **Exit, Copy & Send to tmux**: copies to the clipboard *and* pastes into the tmux target.
+   - **Exit, Copy & Send to tmux**: copies to the clipboard *and* pastes into the tmux target (inside herdr, opens a picker of herdr agent panes instead).
    - **Exit & Copy**: clipboard only.
    - **Exit**: keeps the session so `:Review` picks up where you left off.
 
@@ -425,6 +426,8 @@ require("review").setup({
 ```
 
 For the tmux path, `tmux.target` names where the markdown is pasted. The default `"!"` is tmux's last active pane, so the export lands in whatever pane you were in before Neovim, usually the one running your agent. If your agent lives somewhere fixed, set a name instead (`target = "CLAUDE"`, or a fully qualified `"session:window.pane"`), or pass one per call with `:Review send other-pane`. "Copy & Send" fails quietly outside tmux, you still get the clipboard copy.
+
+For the herdr path (Neovim running inside herdr), no configuration is needed: `:Review send` and "Copy & Send" list every running agent pane with its working directory and lifecycle state, and you pick the recipient. The markdown is submitted with `herdr agent prompt`, which uses the pane's bracketed-paste mode, presses Enter, and refuses to paste into an agent that is waiting at an approval dialog.
 
 ## 📄 License
 

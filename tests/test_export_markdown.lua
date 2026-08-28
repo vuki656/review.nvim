@@ -255,4 +255,26 @@ T["context boundary handling at start of render_lines"] = function()
     expect.equality(result:find("%+only line") ~= nil, true)
 end
 
+T["herdr_targets keeps only agent panes"] = function()
+    local agents = {
+        { pane_id = "w:p1", cwd = "/tmp", agent_status = "unknown" },
+        { pane_id = "w:p2", agent = "pi", cwd = "/repo", agent_status = "idle" },
+        { agent = "pi", cwd = "/no/pane" },
+        { pane_id = "w:p3", agent = "claude", agent_status = "working" },
+    }
+    local targets = markdown.herdr_targets(agents)
+    expect.equality(#targets, 2)
+    expect.equality(targets[1].pane_id, "w:p2")
+    expect.equality(targets[1].agent, "pi")
+    expect.equality(targets[1].cwd, "/repo")
+    expect.equality(targets[1].agent_status, "idle")
+    expect.equality(targets[2].pane_id, "w:p3")
+    expect.equality(targets[2].agent_status, "working")
+end
+
+T["herdr_targets handles nil and empty input"] = function()
+    expect.equality(#markdown.herdr_targets(nil), 0)
+    expect.equality(#markdown.herdr_targets({}), 0)
+end
+
 return T
