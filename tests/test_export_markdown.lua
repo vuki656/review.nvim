@@ -255,4 +255,31 @@ T["context boundary handling at start of render_lines"] = function()
     expect.equality(result:find("%+only line") ~= nil, true)
 end
 
+T["parse_agents parses herdr agent list JSON"] = function()
+    local raw = [[
+{"id":"cli:agent:list","result":{"agents":[
+  {"agent":"pi","cwd":"/tmp/repo","pane_id":"wY:p2"},
+  {"agent":"claude","cwd":"/tmp/other","pane_id":"wY:p7"}
+]}}]]
+    local agents = markdown.parse_agents(raw)
+    expect.equality(#agents, 2)
+    expect.equality(agents[1].agent, "pi")
+    expect.equality(agents[1].cwd, "/tmp/repo")
+    expect.equality(agents[1].pane_id, "wY:p2")
+    expect.equality(agents[2].pane_id, "wY:p7")
+end
+
+T["parse_agents handles malformed output"] = function()
+    expect.equality(#markdown.parse_agents("not json"), 0)
+    expect.equality(#markdown.parse_agents(""), 0)
+    expect.equality(#markdown.parse_agents('{"result":{}}'), 0)
+end
+
+T["parse_agents skips entries without pane_id"] = function()
+    local raw = '{"result":{"agents":[{"agent":"pi","cwd":"/x"},{"agent":"c","cwd":"/y","pane_id":"a:b"}]}}'
+    local agents = markdown.parse_agents(raw)
+    expect.equality(#agents, 1)
+    expect.equality(agents[1].pane_id, "a:b")
+end
+
 return T

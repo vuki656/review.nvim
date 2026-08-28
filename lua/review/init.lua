@@ -66,13 +66,13 @@ function M.export()
     export.to_clipboard()
 end
 
----Send comments through the export callback, or to a tmux pane
+---Send comments through the export callback, or to a herdr/tmux pane
 ---@param target? string Optional target pane, tmux only (defaults to config)
 function M.send(target)
     export.send(target)
 end
 
----Send quick comments through the export callback, or to a tmux pane
+---Send quick comments through the export callback, or to a herdr/tmux pane
 ---@param target? string Optional target pane, tmux only (defaults to config)
 ---@param opts? { clear?: boolean, silent?: boolean }
 ---@return boolean success

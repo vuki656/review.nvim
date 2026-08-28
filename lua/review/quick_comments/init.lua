@@ -190,7 +190,7 @@ function M.copy()
     vim.notify("Copied " .. comment_count .. " quick comment(s) to clipboard and cleared", vim.log.levels.INFO)
 end
 
----Send quick comments through the configured export callback, falling back to tmux
+---Send quick comments through the configured export callback, falling back to herdr/tmux
 ---@param target? string Target window/pane (defaults to config)
 ---@param opts? { clear?: boolean, silent?: boolean }
 ---@return boolean success
@@ -222,7 +222,7 @@ function M.send(target, opts)
         return success
     end
 
-    return export.send_to_tmux(content, #comments, target, opts.silent, handle_done)
+    return export.send_to_default(content, #comments, target, opts.silent, handle_done)
 end
 
 ---Set up the quick comments feature

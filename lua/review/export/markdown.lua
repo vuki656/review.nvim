@@ -345,13 +345,159 @@ function M.to_tmux(target, silent, on_done)
     return M.send_to_tmux(content, comment_count, target, silent, on_done)
 end
 
+---Check if running inside a herdr session
+---@return boolean
+local function is_herdr()
+    return vim.env.HERDR_PANE_ID ~= nil
+end
+
+---Parse `herdr agent list` JSON output into agent descriptors
+---@param raw string Raw stdout of `herdr agent list`
+---@return table[] agents List of { agent, cwd, pane_id }
+function M.parse_agents(raw)
+    local ok, decoded = pcall(vim.json.decode, raw or "")
+    if not ok or type(decoded) ~= "table" or type(decoded.result) ~= "table" then
+        return {}
+    end
+
+    local agents = {}
+    for _, pane in ipairs(decoded.result.agents or {}) do
+        if type(pane.pane_id) == "string" then
+            table.insert(agents, { agent = pane.agent, cwd = pane.cwd, pane_id = pane.pane_id })
+        end
+    end
+    return agents
+end
+
+---Send markdown content to a herdr agent pane picked via vim.ui.select
+---@param content string Markdown content to send
+---@param comment_count number Number of comments in content
+---@param silent? boolean Suppress notifications (for auto-send)
+---@param on_done? fun(success: boolean) Callback when async send finishes
+---@return boolean success
+function M.send_to_herdr(content, comment_count, silent, on_done)
+    if not is_herdr() then
+        if not silent then
+            vim.notify("Not running inside herdr", vim.log.levels.ERROR)
+        end
+        if on_done then
+            on_done(false)
+        end
+        return false
+    end
+
+    if comment_count == 0 then
+        if not silent then
+            vim.notify("No comments to send", vim.log.levels.WARN)
+        end
+        if on_done then
+            on_done(false)
+        end
+        return false
+    end
+
+    local function fail(msg)
+        vim.schedule(function()
+            if not silent then
+                vim.notify(msg, vim.log.levels.ERROR)
+            end
+            if on_done then
+                on_done(false)
+            end
+        end)
+    end
+
+    -- ponytail: text is passed as argv, fine for review-sized markdown; switch to a
+    -- stdin/socket channel if exports ever grow past the OS argv limit
+    vim.system({ "herdr", "agent", "list" }, {}, function(list_result)
+        if list_result.code ~= 0 then
+            fail("Failed to list herdr agents: " .. (list_result.stderr or ""))
+            return
+        end
+
+        local agents = M.parse_agents(list_result.stdout)
+        if #agents == 0 then
+            fail("No herdr agents found")
+            return
+        end
+
+        vim.schedule(function()
+            vim.ui.select(agents, {
+                prompt = "Send comments to herdr agent",
+                format_item = function(agent)
+                    return string.format("%s:%s", agent.agent or "?", agent.cwd or "?")
+                end,
+            }, function(choice)
+                if not choice then
+                    if on_done then
+                        on_done(false)
+                    end
+                    return
+                end
+
+                vim.system({ "herdr", "pane", "send-text", choice.pane_id, content }, {}, function(send_result)
+                    vim.schedule(function()
+                        if send_result.code ~= 0 then
+                            if not silent then
+                                vim.notify(
+                                    string.format(
+                                        "Failed to send to herdr pane '%s': %s",
+                                        choice.pane_id,
+                                        send_result.stderr or ""
+                                    ),
+                                    vim.log.levels.ERROR
+                                )
+                            end
+                            if on_done then
+                                on_done(false)
+                            end
+                            return
+                        end
+
+                        if not silent then
+                            vim.notify(
+                                string.format(
+                                    "Sent %d comment(s) to herdr agent '%s:%s'",
+                                    comment_count,
+                                    choice.agent or "?",
+                                    choice.cwd or "?"
+                                ),
+                                vim.log.levels.INFO
+                            )
+                        end
+                        if on_done then
+                            on_done(true)
+                        end
+                    end)
+                end)
+            end)
+        end)
+    end)
+
+    return true
+end
+
+---Send comments to herdr (inside a herdr session) or tmux
+---@param content string Markdown content to send
+---@param comment_count number Number of comments in content
+---@param target? string Target window/pane, tmux only
+---@param silent? boolean Suppress notifications
+---@param on_done? fun(success: boolean)
+---@return boolean success
+function M.send_to_default(content, comment_count, target, silent, on_done)
+    if is_herdr() then
+        return M.send_to_herdr(content, comment_count, silent, on_done)
+    end
+    return M.send_to_tmux(content, comment_count, target, silent, on_done)
+end
+
 ---Send comments through the configured export callback, falling back to tmux
 ---@param target? string Target window/pane, tmux only
 ---@param silent? boolean Suppress notifications
 ---@return boolean success
 function M.send(target, silent)
     if not M.has_handler() then
-        return M.to_tmux(target, silent)
+        return M.send_to_default(M.generate(), #state.get_all_comments(), target, silent)
     end
 
     local comments = state.get_all_comments()

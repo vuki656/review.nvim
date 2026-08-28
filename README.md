@@ -23,7 +23,7 @@
 
 - Diff browser in a dedicated tab: file tree, branches, commits, comments
 - Typed comments (note, fix, question) attached to specific diff lines
-- Export all comments as markdown with diff context, to the clipboard or a tmux pane
+- Export all comments as markdown with diff context, to the clipboard or a tmux/herdr pane
 - Quick comments on any line of any buffer, with gutter signs
 - Git actions without leaving the tab: stage, commit, amend, push, pull, checkout, branch
 - Session persistence, so comments survive a restart
@@ -35,7 +35,7 @@
 
 - Neovim 0.10 or later (enforced in `plugin/review.lua`)
 - `git` on `$PATH`
-- **tmux**, optional, only for `:Review send`, `:Review qs` and the "Copy & Send to tmux" exit option. Everything else works without it.
+- **tmux or herdr**, optional, only for `:Review send`, `:Review qs` and the "Copy & Send" exit option. Inside a herdr session (`$HERDR_PANE_ID` set) herdr is used, otherwise tmux. Everything else works without either.
 - [nvim-web-devicons](https://github.com/nvim-tree/nvim-web-devicons), optional, file icons. Without it the icon column is blank.
 - Tree-sitter parsers for the languages you review, optional, syntax highlighting inside the diff. Without a parser the diff still renders, just uncolored.
 
@@ -124,7 +124,7 @@ lua require("review").setup({})
 | `:Review qs [target]` | Send quick comments to `export.on_export`, or to a tmux pane (defaults to `tmux.target`) |
 | `:Review log` | Open the plugin log file in a new tab |
 
-`:checkhealth review` verifies the Neovim version, git and the repository, tmux and `$TMUX`, whether `setup()` has run, the log level, and the log file path. The "`setup()` has not been called" result is a warning, not an error. The defaults are in effect either way.
+`:checkhealth review` verifies the Neovim version, git and the repository, tmux and `$TMUX`, herdr and `$HERDR_PANE_ID`, whether `setup()` has run, the log level, and the log file path. The "`setup()` has not been called" result is a warning, not an error. The defaults are in effect either way.
 
 Lua API:
 
@@ -362,6 +362,7 @@ The `nil` entries are unset by default. No global keymaps are created unless you
 - `ui.panels`: sidebar panels to display. Can be a list of panel names (e.g. `{ "file_tree", "comment_list" }` or `{ "files", "comments" }`) or a table of boolean toggles (e.g. `{ branch = false, branches = false, commits = false }`). Defaults to showing all panels (`branch_info`, `file_tree`, `branch_list`, `commit_list`, `comment_list`). Note that the Files panel (`file_tree`) cannot be disabled.
 - `tmux.target`: tmux target that `:Review send` and `:Review qs` paste into. The default `"!"` is tmux's last active pane, which is normally the pane you came from, usually the one running your agent. Any target `tmux paste-buffer -t` accepts works instead, e.g. a named window `"CLAUDE"`, `"CLAUDE.0"` or a fully qualified `"session:window.pane"`.
 - `tmux.auto_enter`: send `Enter` after pasting. Off by default so you can read the prompt before submitting it.
+- herdr: no config. Inside a herdr session `:Review send` and `:Review qs` list your herdr agents (`herdr agent list`) and let you pick one with `vim.ui.select` (shown as `agent:cwd`, e.g. `pi:/Users/me/Repos/review.nvim`). The markdown is sent with `herdr pane send-text` and no `Enter`, so the prompt lands in the agent's input for you to review before submitting.
 - `quick_comments.keymaps.add` / `.toggle_panel` / `.send`: global keys for `:Review qc`, `:Review qp`, and `:Review qs`.
 - `quick_comments.signs.enabled`: gutter signs for quick comments.
 - `export.context_lines`: lines of diff context included above and below each comment in the exported markdown.
@@ -380,7 +381,7 @@ The loop:
 2. Read the diff. Press `c` on a line to attach a comment, `<Tab>` to pick its type (Fix / Note / Question), `<CR>` to submit. Comments render as boxed virtual lines under the code and collect in the Comments panel.
 3. `<Space>` on files in the Files panel to stage the parts you're keeping.
 4. `q` to close. If you have comments, an exit popup appears:
-   - **Exit, Copy & Send to tmux**: copies to the clipboard *and* pastes into the tmux target.
+   - **Exit, Copy & Send**: copies to the clipboard *and* pastes into the tmux target, or, inside herdr, into a herdr agent you pick.
    - **Exit & Copy**: clipboard only.
    - **Exit**: keeps the session so `:Review` picks up where you left off.
 
@@ -425,6 +426,8 @@ require("review").setup({
 ```
 
 For the tmux path, `tmux.target` names where the markdown is pasted. The default `"!"` is tmux's last active pane, so the export lands in whatever pane you were in before Neovim, usually the one running your agent. If your agent lives somewhere fixed, set a name instead (`target = "CLAUDE"`, or a fully qualified `"session:window.pane"`), or pass one per call with `:Review send other-pane`. "Copy & Send" fails quietly outside tmux, you still get the clipboard copy.
+
+For the herdr path (when Neovim runs inside a herdr session), a `vim.ui.select` picker lists the detected agents and the markdown is typed into the chosen pane via `herdr pane send-text` — no `Enter` is sent, you submit the prompt yourself.
 
 ## 📄 License
 

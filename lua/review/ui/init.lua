@@ -399,7 +399,7 @@ local function show_exit_popup()
     local has_comments = #all_comments > 0
 
     local actions = { "copy_and_send", "copy", "exit" }
-    local labels = { "Exit, Copy & Send to tmux", "Exit & Copy", "Exit" }
+    local labels = { "Exit, Copy & Send", "Exit & Copy", "Exit" }
 
     local title = "Close review"
     if has_comments then

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-review.nvim is a Neovim plugin for reviewing AI-generated code changes. `:Review` opens a dedicated tab of floating windows: a sidebar of stacked floats (Branch, Files, Branches, Commits, Comments — configurable via `ui.panels`, though Files cannot be disabled) on the left and a diff pane on the right. It browses git diffs, attaches typed comments to lines, and exports review feedback to the clipboard or tmux (designed for Claude Code workflows).
+review.nvim is a Neovim plugin for reviewing AI-generated code changes. `:Review` opens a dedicated tab of floating windows: a sidebar of stacked floats (Branch, Files, Branches, Commits, Comments — configurable via `ui.panels`, though Files cannot be disabled) on the left and a diff pane on the right. It browses git diffs, attaches typed comments to lines, and exports review feedback to the clipboard or tmux/herdr (designed for Claude Code workflows).
 
 ## Commands
 
@@ -122,7 +122,7 @@ Comments can cover a range of lines: selecting lines in visual mode and pressing
 
 ### Export Delivery
 
-`export/markdown.lua` separates generation from delivery: `generate()` builds the markdown, and `to_clipboard`, `to_file`, `to_tmux` are thin wrappers on it. `export.on_export` in config is a user delivery callback, `function(content, comments)`, and `M.send()` is the entry point every send path uses — it calls the callback when one is set and falls back to `to_tmux` when not. `to_clipboard` copies first and then also calls the callback. A callback returning `false` or raising counts as a failed hand-off, which makes the close path keep the saved session instead of deleting it (`has_handler()` gates that so tmux's optimistic `true` keeps its old behavior).
+`export/markdown.lua` separates generation from delivery: `generate()` builds the markdown, and `to_clipboard`, `to_file`, `to_tmux` are thin wrappers on it. `export.on_export` in config is a user delivery callback, `function(content, comments)`, and `M.send()` is the entry point every send path uses — it calls the callback when one is set and falls back to `send_to_default` when not, which routes to herdr (`send_to_herdr`, picker over `herdr agent list`, `pane send-text`, no Enter) when `$HERDR_PANE_ID` is set and to tmux otherwise. `to_clipboard` copies first and then also calls the callback. A callback returning `false` or raising counts as a failed hand-off, which makes the close path keep the saved session instead of deleting it (`has_handler()` gates that so tmux's optimistic `true` keeps its old behavior).
 
 ### Session Persistence
 

@@ -183,8 +183,8 @@ T["send with clear=true retains comments if tmux delivery fails"] = function()
     qc_state.add("/project/src/main.lua", 10, "note", "Tmux comment to preserve")
 
     local export = require("review.export.markdown")
-    local original_send_to_tmux = export.send_to_tmux
-    export.send_to_tmux = function(_, _, _, _, on_done)
+    local original_send_to_default = export.send_to_default
+    export.send_to_default = function(_, _, _, _, on_done)
         if on_done then
             on_done(false)
         end
@@ -192,7 +192,7 @@ T["send with clear=true retains comments if tmux delivery fails"] = function()
     end
 
     local ok, result = pcall(qc.send, "invalid:pane", { clear = true, silent = true })
-    export.send_to_tmux = original_send_to_tmux
+    export.send_to_default = original_send_to_default
 
     if not ok then
         error(result)
@@ -214,8 +214,8 @@ T["send with clear=true clears comments when tmux delivery succeeds"] = function
     expect.equality(qc_panel.is_open(), true)
 
     local export = require("review.export.markdown")
-    local original_send_to_tmux = export.send_to_tmux
-    export.send_to_tmux = function(_, _, _, _, on_done)
+    local original_send_to_default = export.send_to_default
+    export.send_to_default = function(_, _, _, _, on_done)
         if on_done then
             on_done(true)
         end
@@ -223,7 +223,7 @@ T["send with clear=true clears comments when tmux delivery succeeds"] = function
     end
 
     local ok, result = pcall(qc.send, "valid:pane", { clear = true, silent = true })
-    export.send_to_tmux = original_send_to_tmux
+    export.send_to_default = original_send_to_default
 
     if not ok then
         error(result)
@@ -234,7 +234,7 @@ T["send with clear=true clears comments when tmux delivery succeeds"] = function
     expect.equality(qc_panel.is_open(), false)
 end
 
-T["send passes content, count, target, and silent to export.send_to_tmux when on_export is nil"] = function()
+T["send passes content, count, target, and silent to export.send_to_default when on_export is nil"] = function()
     config.setup({
         export = {
             on_export = nil,
@@ -244,10 +244,10 @@ T["send passes content, count, target, and silent to export.send_to_tmux when on
     qc_state.add("/project/src/main.lua", 10, "note", "Tmux fallback comment")
 
     local export = require("review.export.markdown")
-    local original_send_to_tmux = export.send_to_tmux
+    local original_send_to_default = export.send_to_default
     local captured = {}
 
-    export.send_to_tmux = function(content, comment_count, target, silent, on_done)
+    export.send_to_default = function(content, comment_count, target, silent, on_done)
         captured.content = content
         captured.comment_count = comment_count
         captured.target = target
@@ -257,7 +257,7 @@ T["send passes content, count, target, and silent to export.send_to_tmux when on
     end
 
     local ok, result = pcall(qc.send, "CLAUDE.0", { silent = true })
-    export.send_to_tmux = original_send_to_tmux
+    export.send_to_default = original_send_to_default
 
     if not ok then
         error(result)
@@ -272,7 +272,7 @@ T["send passes content, count, target, and silent to export.send_to_tmux when on
     expect.equality(type(captured.on_done), "function")
 end
 
-T[":Review qs <target> passes target argument to send_to_tmux"] = function()
+T[":Review qs <target> passes target argument to send_to_default"] = function()
     config.setup({
         export = {
             on_export = nil,
@@ -282,16 +282,16 @@ T[":Review qs <target> passes target argument to send_to_tmux"] = function()
     qc_state.add("/project/src/main.lua", 1, "note", "Target test")
 
     local export = require("review.export.markdown")
-    local original_send_to_tmux = export.send_to_tmux
+    local original_send_to_default = export.send_to_default
     local captured_target = nil
 
-    export.send_to_tmux = function(_, _, target)
+    export.send_to_default = function(_, _, target)
         captured_target = target
         return true
     end
 
     local ok, err = pcall(vim.cmd, "Review qs agent_pane")
-    export.send_to_tmux = original_send_to_tmux
+    export.send_to_default = original_send_to_default
 
     if not ok then
         error(err)

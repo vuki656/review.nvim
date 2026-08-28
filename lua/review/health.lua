@@ -40,6 +40,10 @@ local function check_git()
 end
 
 local function check_tmux()
+    if vim.env.HERDR_PANE_ID then
+        return -- herdr is the active multiplexer, checked below
+    end
+
     if vim.fn.executable("tmux") ~= 1 then
         vim.health.warn("`tmux` not found in PATH", {
             "Optional, only required for `:Review send` and `:Review qs`",
@@ -56,6 +60,21 @@ local function check_tmux()
             "`:Review send` and `:Review qs` require Neovim to run inside tmux",
         })
     end
+end
+
+local function check_herdr()
+    if not vim.env.HERDR_PANE_ID then
+        return
+    end
+
+    if vim.fn.executable("herdr") ~= 1 then
+        vim.health.warn("Running inside herdr but `herdr` not found in PATH", {
+            "Required for `:Review send` and `:Review qs`",
+        })
+        return
+    end
+
+    vim.health.ok("Running inside a herdr session (pane " .. vim.env.HERDR_PANE_ID .. ")")
 end
 
 local function check_setup()
@@ -105,6 +124,7 @@ function M.check()
     check_neovim_version()
     check_git()
     check_tmux()
+    check_herdr()
     check_setup()
     check_log_file()
 end
