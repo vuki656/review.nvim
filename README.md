@@ -124,7 +124,7 @@ lua require("review").setup({})
 | `:Review qs [target]` | Send quick comments to `export.on_export`, or to a herdr/tmux pane (defaults to `tmux.target`) |
 | `:Review log` | Open the plugin log file in a new tab |
 
-`:checkhealth review` verifies the Neovim version, git and the repository, the multiplexer (tmux and `$TMUX`, or herdr and `$HERDR_PANE_ID` inside a herdr session), whether `setup()` has run, the log level, and the log file path. The "`setup()` has not been called" result is a warning, not an error. The defaults are in effect either way.
+`:checkhealth review` verifies the Neovim version, git and the repository, tmux and `$TMUX`, herdr and `$HERDR_PANE_ID`, whether `setup()` has run, the log level, and the log file path. The "`setup()` has not been called" result is a warning, not an error. The defaults are in effect either way.
 
 Lua API:
 

@@ -642,9 +642,8 @@ to reading the file from disk and marks the block "(no changes)".
 10. TROUBLESHOOTING                                   *review-troubleshooting*
 
 Start with `:checkhealth review`, which verifies the Neovim version, git and
-the repository, the multiplexer (tmux and $TMUX, or herdr and
-$HERDR_PANE_ID inside a herdr session), whether `setup()` has run, the log
-level, and the log file path. "`setup()` has not been called" is reported as a warning,
+the repository, tmux and $TMUX, herdr and $HERDR_PANE_ID, whether `setup()`
+has run, the log level, and the log file path. "`setup()` has not been called" is reported as a warning,
 not an error: the defaults are in effect either way.
 
 :Review is not a command ~
