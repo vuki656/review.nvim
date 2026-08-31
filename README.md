@@ -115,16 +115,16 @@ lua require("review").setup({})
 | `:Review` | Toggle the review UI |
 | `:Review close` | Close the review UI |
 | `:Review export` | Copy all comments to the clipboard as markdown |
-| `:Review send [target]` | Send comments to `export.on_export`, or to a tmux pane (defaults to `tmux.target`) |
+| `:Review send [target]` | Send comments to `export.on_export`, or to a herdr/tmux pane (defaults to `tmux.target`) |
 | `:Review commit <sha>` | Set the diff base to `<sha>` |
 | `:Review pick [count]` | Pick a base commit from the last `count` commits (default 20) |
 | `:Review clear` | Clear all review comments |
 | `:Review qc` | Add a quick comment on the current line of the current buffer, or on a range with `:'<,'>Review qc` |
 | `:Review qp` | Toggle the quick comments panel |
-| `:Review qs [target]` | Send quick comments to `export.on_export`, or to a tmux pane (defaults to `tmux.target`) |
+| `:Review qs [target]` | Send quick comments to `export.on_export`, or to a herdr/tmux pane (defaults to `tmux.target`) |
 | `:Review log` | Open the plugin log file in a new tab |
 
-`:checkhealth review` verifies the Neovim version, git and the repository, tmux and `$TMUX`, herdr and `$HERDR_PANE_ID`, whether `setup()` has run, the log level, and the log file path. The "`setup()` has not been called" result is a warning, not an error. The defaults are in effect either way.
+`:checkhealth review` verifies the Neovim version, git and the repository, the multiplexer (tmux and `$TMUX`, or herdr and `$HERDR_PANE_ID` inside a herdr session), whether `setup()` has run, the log level, and the log file path. The "`setup()` has not been called" result is a warning, not an error. The defaults are in effect either way.
 
 Lua API:
 
@@ -137,7 +137,7 @@ review.open()
 review.close()
 review.clear_comments()  -- clear all review comments
 review.export()          -- to clipboard
-review.send(target)      -- to export.on_export, else tmux; target optional
+review.send(target)      -- to export.on_export, else herdr/tmux; target optional
 review.quick_send(target, opts) -- send quick comments; opts.clear, opts.silent
 review.is_open()         -- boolean
 review.get_state()       -- current state table
@@ -154,7 +154,7 @@ qc.add(42, 50)      -- comment on lines 42 to 50
 qc.add_visual()     -- comment on the current visual selection
 qc.toggle_panel()
 qc.export()         -- copy to clipboard
-qc.send(target, opts) -- to export.on_export, else tmux; opts.clear, opts.silent
+qc.send(target, opts) -- to export.on_export, else herdr/tmux; opts.clear, opts.silent
 qc.copy()           -- copy to clipboard, then clear all quick comments
 ```
 
@@ -287,7 +287,7 @@ Quick comments are separate from review comments: they attach to any line of any
 | `e` | Edit the comment |
 | `d` | Delete the comment |
 | `c` | Copy all quick comments to the clipboard as markdown |
-| `s` | Send all quick comments to `export.on_export`, or to tmux |
+| `s` | Send all quick comments to `export.on_export`, or to herdr/tmux |
 | `q` / `<Esc>` | Close the panel |
 
 ## ⚙️ Configuration
@@ -386,7 +386,7 @@ The loop:
    - **Exit**: keeps the session so `:Review` picks up where you left off.
 
    The two copy options clear the saved session. With no comments, `q` exits straight away.
-5. Paste into the agent, or let tmux do it for you.
+5. Paste into the agent, or let tmux/herdr do it for you.
 
 `:Review export` and `:Review send [target]` do the same export without closing the UI.
 
@@ -425,7 +425,7 @@ require("review").setup({
 })
 ```
 
-For the tmux path, `tmux.target` names where the markdown is pasted. The default `"!"` is tmux's last active pane, so the export lands in whatever pane you were in before Neovim, usually the one running your agent. If your agent lives somewhere fixed, set a name instead (`target = "CLAUDE"`, or a fully qualified `"session:window.pane"`), or pass one per call with `:Review send other-pane`. "Copy & Send" fails quietly outside tmux, you still get the clipboard copy.
+For the tmux path, `tmux.target` names where the markdown is pasted. The default `"!"` is tmux's last active pane, so the export lands in whatever pane you were in before Neovim, usually the one running your agent. If your agent lives somewhere fixed, set a name instead (`target = "CLAUDE"`, or a fully qualified `"session:window.pane"`), or pass one per call with `:Review send other-pane`. "Copy & Send" fails quietly outside tmux and herdr, you still get the clipboard copy.
 
 For the herdr path (when Neovim runs inside a herdr session), a `vim.ui.select` picker lists the detected agents and the markdown is typed into the chosen pane via `herdr pane send-text` — no `Enter` is sent, you submit the prompt yourself.
 

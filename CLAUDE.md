@@ -152,13 +152,13 @@ Autosave (`VimLeavePre`) is registered from `plugin/review.lua`, so sessions per
 - `:Review` – Toggle review UI
 - `:Review close` – Close review UI
 - `:Review export` – Export comments to clipboard
-- `:Review send [target]` – Send comments to `export.on_export`, or a tmux pane when unset
+- `:Review send [target]` – Send comments to `export.on_export`, or a herdr/tmux pane when unset
 - `:Review commit <sha>` – Change git comparison base
 - `:Review pick [count]` – Interactive commit picker
 - `:Review clear` – Clear all review comments
 - `:Review qc` – Add a quick comment on the current line
 - `:Review qp` – Toggle the quick comments panel
-- `:Review qs [target]` – Send quick comments to `export.on_export`, or a tmux pane when unset
+- `:Review qs [target]` – Send quick comments to `export.on_export`, or a herdr/tmux pane when unset
 - `:Review log` – Open the log file in a new tab
 
 `:Review` is registered from `plugin/review.lua`, so it exists without `setup()`.

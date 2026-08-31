@@ -335,6 +335,8 @@ function M.send_to_tmux(content, comment_count, target, silent, on_done)
 end
 
 ---Send comments to a tmux pane
+-- FIX: unused internally since send_to_default; pending maintainer decision
+-- (keep as public API or remove) — do not drop without an answer.
 ---@param target? string Target window/pane (defaults to config)
 ---@param silent? boolean Suppress notifications (for auto-send)
 ---@param on_done? fun(success: boolean)
@@ -347,7 +349,7 @@ end
 
 ---Check if running inside a herdr session
 ---@return boolean
-local function is_herdr()
+function M.inside_herdr()
     return vim.env.HERDR_PANE_ID ~= nil
 end
 
@@ -361,9 +363,17 @@ function M.parse_agents(raw)
     end
 
     local agents = {}
-    for _, pane in ipairs(decoded.result.agents or {}) do
-        if type(pane.pane_id) == "string" then
-            table.insert(agents, { agent = pane.agent, cwd = pane.cwd, pane_id = pane.pane_id })
+    local list = decoded.result.agents
+    if type(list) ~= "table" then
+        return {}
+    end
+    for _, pane in ipairs(list) do
+        if type(pane) == "table" and type(pane.pane_id) == "string" then
+            table.insert(agents, {
+                agent = type(pane.agent) == "string" and pane.agent or nil,
+                cwd = type(pane.cwd) == "string" and pane.cwd or nil,
+                pane_id = pane.pane_id,
+            })
         end
     end
     return agents
@@ -376,7 +386,7 @@ end
 ---@param on_done? fun(success: boolean) Callback when async send finishes
 ---@return boolean success
 function M.send_to_herdr(content, comment_count, silent, on_done)
-    if not is_herdr() then
+    if not M.inside_herdr() then
         if not silent then
             vim.notify("Not running inside herdr", vim.log.levels.ERROR)
         end
@@ -396,6 +406,16 @@ function M.send_to_herdr(content, comment_count, silent, on_done)
         return false
     end
 
+    if vim.fn.executable("herdr") ~= 1 then
+        if not silent then
+            vim.notify("`herdr` not found in PATH", vim.log.levels.ERROR)
+        end
+        if on_done then
+            on_done(false)
+        end
+        return false
+    end
+
     local function fail(msg)
         vim.schedule(function()
             if not silent then
@@ -407,8 +427,6 @@ function M.send_to_herdr(content, comment_count, silent, on_done)
         end)
     end
 
-    -- ponytail: text is passed as argv, fine for review-sized markdown; switch to a
-    -- stdin/socket channel if exports ever grow past the OS argv limit
     vim.system({ "herdr", "agent", "list" }, {}, function(list_result)
         if list_result.code ~= 0 then
             fail("Failed to list herdr agents: " .. (list_result.stderr or ""))
@@ -421,28 +439,19 @@ function M.send_to_herdr(content, comment_count, silent, on_done)
             return
         end
 
-        vim.schedule(function()
-            vim.ui.select(agents, {
-                prompt = "Send comments to herdr agent",
-                format_item = function(agent)
-                    return string.format("%s:%s", agent.agent or "?", agent.cwd or "?")
-                end,
-            }, function(choice)
-                if not choice then
-                    if on_done then
-                        on_done(false)
-                    end
-                    return
-                end
-
-                vim.system({ "herdr", "pane", "send-text", choice.pane_id, content }, {}, function(send_result)
+        local function spawn_send(agent)
+            local ok_spawn, err = pcall(
+                vim.system,
+                { "herdr", "pane", "send-text", agent.pane_id, content },
+                {},
+                function(send_result)
                     vim.schedule(function()
                         if send_result.code ~= 0 then
                             if not silent then
                                 vim.notify(
                                     string.format(
                                         "Failed to send to herdr pane '%s': %s",
-                                        choice.pane_id,
+                                        agent.pane_id,
                                         send_result.stderr or ""
                                     ),
                                     vim.log.levels.ERROR
@@ -459,8 +468,8 @@ function M.send_to_herdr(content, comment_count, silent, on_done)
                                 string.format(
                                     "Sent %d comment(s) to herdr agent '%s:%s'",
                                     comment_count,
-                                    choice.agent or "?",
-                                    choice.cwd or "?"
+                                    agent.agent or "?",
+                                    agent.cwd or "?"
                                 ),
                                 vim.log.levels.INFO
                             )
@@ -469,7 +478,41 @@ function M.send_to_herdr(content, comment_count, silent, on_done)
                             on_done(true)
                         end
                     end)
-                end)
+                end
+            )
+            if not ok_spawn then
+                fail("Failed to run herdr: " .. tostring(err))
+            end
+        end
+
+        -- Auto-send paths (silent) must not open a picker: pick the only agent
+        -- automatically and fail when the choice is ambiguous.
+        if silent and #agents > 1 then
+            fail("Multiple herdr agents found, cannot auto-send")
+            return
+        elseif silent and #agents == 1 then
+            spawn_send(agents[1])
+            return
+        end
+
+        vim.schedule(function()
+            vim.ui.select(agents, {
+                prompt = "Send comments to herdr agent",
+                format_item = function(agent)
+                    return string.format("%s:%s", agent.agent or "?", agent.cwd or "?")
+                end,
+            }, function(choice)
+                if not choice then
+                    if not silent then
+                        vim.notify("Send cancelled, comments left on the clipboard", vim.log.levels.WARN)
+                    end
+                    if on_done then
+                        on_done(false)
+                    end
+                    return
+                end
+
+                spawn_send(choice)
             end)
         end)
     end)
@@ -485,7 +528,7 @@ end
 ---@param on_done? fun(success: boolean)
 ---@return boolean success
 function M.send_to_default(content, comment_count, target, silent, on_done)
-    if is_herdr() then
+    if M.inside_herdr() then
         return M.send_to_herdr(content, comment_count, silent, on_done)
     end
     return M.send_to_tmux(content, comment_count, target, silent, on_done)

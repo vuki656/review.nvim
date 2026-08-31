@@ -392,8 +392,8 @@ on every covered line and the panel lists them as `L42-50`.
     d             Delete the comment.
     c             Copy all quick comments to the clipboard as markdown. The
                   comments are kept.
-    s             Send all quick comments to `export.on_export` or tmux. The
-                  comments are kept.
+    s             Send all quick comments to `export.on_export` or herdr/tmux.
+                  The comments are kept.
     q / <Esc>     Close the panel.
 
 `require("review.quick_comments").copy()` copies and then clears every quick
@@ -642,8 +642,9 @@ to reading the file from disk and marks the block "(no changes)".
 10. TROUBLESHOOTING                                   *review-troubleshooting*
 
 Start with `:checkhealth review`, which verifies the Neovim version, git and
-the repository, tmux and $TMUX, herdr and $HERDR_PANE_ID, whether `setup()`
-has run, the log level, and the log file path. "`setup()` has not been called" is reported as a warning,
+the repository, the multiplexer (tmux and $TMUX, or herdr and
+$HERDR_PANE_ID inside a herdr session), whether `setup()` has run, the log
+level, and the log file path. "`setup()` has not been called" is reported as a warning,
 not an error: the defaults are in effect either way.
 
 :Review is not a command ~

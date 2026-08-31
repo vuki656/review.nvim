@@ -319,6 +319,40 @@ function M.show_diff(path)
     })
 end
 
+---Run the teardown tail of the close path
+---@param save_session boolean Whether to keep the persisted session
+local function finish_close(save_session)
+    -- Handle persistence
+    if config.get().persistence.enabled then
+        if save_session then
+            persistence.save()
+        else
+            persistence.delete()
+        end
+    end
+
+    -- Stop file watcher
+    watcher.stop()
+
+    -- Destroy components
+    file_tree.destroy()
+    commit_list.destroy()
+    branch_list.destroy()
+    comment_list.destroy()
+    diff_view.destroy()
+
+    -- Unmount layout
+    layout.unmount()
+
+    -- Restore tabline
+    if saved_showtabline ~= nil then
+        vim.api.nvim_set_option_value("showtabline", saved_showtabline, {})
+        saved_showtabline = nil
+    end
+
+    state.reset()
+end
+
 ---Perform the actual close operation
 ---@param action? string "exit" | "copy" | "copy_and_send"
 local function do_close(action)
@@ -347,9 +381,19 @@ local function do_close(action)
 
             local handed_off
             if action == "copy_and_send" then
-                local sent = export.send(nil, false)
                 if export.has_handler() then
-                    handed_off = sent
+                    handed_off = export.send(nil, false)
+                elseif export.inside_herdr() then
+                    -- The herdr send is interactive (agent picker); defer the
+                    -- teardown until it settles so a cancelled or failed send
+                    -- keeps the saved session.
+                    export.send_to_herdr(content, #all_comments, false, function(ok)
+                        finish_close(not ok)
+                    end)
+                    return
+                else
+                    -- tmux stays optimistic: fire and forget, teardown as before
+                    export.send_to_tmux(content, #all_comments, nil, false)
                 end
             else
                 handed_off = export.run_handler(content, all_comments, false)
@@ -362,35 +406,7 @@ local function do_close(action)
         end
     end
 
-    -- Handle persistence
-    if config.get().persistence.enabled then
-        if action == "exit" or not export_landed then
-            persistence.save()
-        else
-            persistence.delete()
-        end
-    end
-
-    -- Stop file watcher
-    watcher.stop()
-
-    -- Destroy components
-    file_tree.destroy()
-    commit_list.destroy()
-    branch_list.destroy()
-    comment_list.destroy()
-    diff_view.destroy()
-
-    -- Unmount layout
-    layout.unmount()
-
-    -- Restore tabline
-    if saved_showtabline ~= nil then
-        vim.api.nvim_set_option_value("showtabline", saved_showtabline, {})
-        saved_showtabline = nil
-    end
-
-    state.reset()
+    finish_close(action == "exit" or not export_landed)
 end
 
 ---Show exit popup with options
