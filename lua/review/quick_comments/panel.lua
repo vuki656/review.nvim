@@ -301,7 +301,7 @@ local function setup_keymaps(bufnr)
         vim.notify("Copied " .. #comments .. " comment(s) to clipboard", vim.log.levels.INFO)
     end, opts)
 
-    -- Send all to export callback or tmux
+    -- Send all to export callback or herdr/tmux
     vim.keymap.set("n", "s", function()
         local quick_comments = require("review.quick_comments")
         quick_comments.send()

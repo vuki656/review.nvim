@@ -199,8 +199,8 @@ with `S`, or by setting `ui.diff_view_mode` to "split".
     review.close()
     review.clear_comments() -- clear all review comments
     review.export()        -- markdown to clipboard
-    review.send(target)    -- markdown to export.on_export, else tmux
-    review.quick_send(target, opts) -- quick comments to export.on_export, else tmux
+    review.send(target)    -- markdown to export.on_export, else herdr/tmux
+    review.quick_send(target, opts) -- quick comments to export.on_export, else herdr/tmux
     review.is_open()       -- boolean
     review.get_state()     -- current state table
     review.reset()         -- reset state
@@ -216,7 +216,7 @@ Quick comments have their own module: >lua
     qc.open_panel()
     qc.close_panel()
     qc.export()            -- copy to clipboard
-    qc.send(target, opts)  -- markdown to export.on_export, else tmux; opts.clear, opts.silent
+    qc.send(target, opts)  -- markdown to export.on_export, else herdr/tmux; opts.clear, opts.silent
     qc.copy()              -- copy to clipboard, then clear all comments
 <
 ==============================================================================
@@ -534,9 +534,9 @@ export.on_export ~
     Return `false`, or raise an error, to report that the hand-off failed.
 
     When it is set, |:Review| send and the "Copy & Send" exit option call it
-    instead of pasting into tmux. The clipboard paths, |:Review| export and
-    "Exit & Copy", still copy and then call it as well. A failed hand-off on
-    close keeps the saved session rather than deleting it. >lua
+    instead of pasting into tmux/herdr. The clipboard paths, |:Review|
+    export and "Exit & Copy", still copy and then call it as well. A failed
+    hand-off on close keeps the saved session rather than deleting it. >lua
 
         require("review").setup({
             export = {
@@ -643,8 +643,9 @@ to reading the file from disk and marks the block "(no changes)".
 
 Start with `:checkhealth review`, which verifies the Neovim version, git and
 the repository, tmux and $TMUX, herdr and $HERDR_PANE_ID, whether `setup()`
-has run, the log level, and the log file path. "`setup()` has not been called" is reported as a warning,
-not an error: the defaults are in effect either way.
+has run, the log level, and the log file path. "`setup()` has not been
+called" is reported as a warning, not an error: the defaults are in effect
+either way.
 
 :Review is not a command ~
     The plugin has not loaded. See |review-installation|. If you lazy-load,

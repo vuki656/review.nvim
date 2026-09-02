@@ -319,9 +319,14 @@ function M.show_diff(path)
     })
 end
 
+---Set while a close is in flight, so re-entrant `q` (e.g. while the herdr
+---picker is open) cannot run the close path twice
+local closing = false
+
 ---Run the teardown tail of the close path
 ---@param save_session boolean Whether to keep the persisted session
 local function finish_close(save_session)
+    closing = false
     -- Handle persistence
     if config.get().persistence.enabled then
         if save_session then
@@ -356,9 +361,10 @@ end
 ---Perform the actual close operation
 ---@param action? string "exit" | "copy" | "copy_and_send"
 local function do_close(action)
-    if not state.state.is_open then
+    if not state.state.is_open or closing then
         return
     end
+    closing = true
 
     log.info("ui: closing review action=", action)
 

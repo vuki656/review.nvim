@@ -229,6 +229,14 @@ function M.to_file(filepath)
     return true
 end
 
+---A finished child process counts as failed when it exited non-zero or was
+---killed by a signal (libuv reports code = 0 with signal = N in that case)
+---@param result vim.SystemCompleted
+---@return boolean
+local function failed(result)
+    return result.code ~= 0 or (result.signal or 0) ~= 0
+end
+
 ---Check if running inside tmux
 ---@return boolean
 local function is_tmux()
@@ -281,7 +289,7 @@ function M.send_to_tmux(content, comment_count, target, silent, on_done)
     file:close()
 
     vim.system({ "tmux", "load-buffer", "--", tmpfile }, {}, function(load_result)
-        if load_result.code ~= 0 then
+        if failed(load_result) then
             vim.schedule(function()
                 if not silent then
                     vim.notify("Failed to load tmux buffer: " .. (load_result.stderr or ""), vim.log.levels.ERROR)
@@ -298,7 +306,7 @@ function M.send_to_tmux(content, comment_count, target, silent, on_done)
             vim.schedule(function()
                 os.remove(tmpfile)
 
-                if paste_result.code ~= 0 then
+                if failed(paste_result) then
                     if not silent then
                         vim.notify(
                             string.format("Failed to paste to tmux pane '%s': %s", target, paste_result.stderr or ""),
@@ -426,13 +434,14 @@ function M.send_to_herdr(content, comment_count, silent, on_done)
     end
 
     vim.system({ "herdr", "agent", "list" }, {}, function(list_result)
-        if list_result.code ~= 0 then
+        if failed(list_result) then
             fail("Failed to list herdr agents: " .. (list_result.stderr or ""))
             return
         end
 
         local agents = M.parse_agents(list_result.stdout)
         if #agents == 0 then
+            log.warn("export: herdr agent list returned no usable agents, stdout=", vim.inspect(list_result.stdout))
             fail("No herdr agents found")
             return
         end
@@ -444,7 +453,7 @@ function M.send_to_herdr(content, comment_count, silent, on_done)
                 {},
                 function(send_result)
                     vim.schedule(function()
-                        if send_result.code ~= 0 then
+                        if failed(send_result) then
                             if not silent then
                                 vim.notify(
                                     string.format(
@@ -526,14 +535,14 @@ end
 ---@param on_done? fun(success: boolean)
 ---@return boolean success
 function M.send_to_default(content, comment_count, target, silent, on_done)
-    if M.inside_herdr() then
+    if M.inside_herdr() and not target then
         return M.send_to_herdr(content, comment_count, silent, on_done)
     end
     return M.send_to_tmux(content, comment_count, target, silent, on_done)
 end
 
----Send comments through the configured export callback, falling back to tmux
----@param target? string Target window/pane, tmux only
+---Send comments through the configured export callback, falling back to herdr/tmux
+---@param target? string Target window/pane, tmux only; an explicit target opts out of the herdr picker
 ---@param silent? boolean Suppress notifications
 ---@return boolean success
 function M.send(target, silent)

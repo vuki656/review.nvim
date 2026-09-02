@@ -298,12 +298,33 @@ T["send_to_default routes to herdr with HERDR_PANE_ID set"] = function()
         return true
     end
 
-    markdown.send_to_default("x", 2, "ignored", true)
+    markdown.send_to_default("x", 2, nil, true)
 
     markdown.send_to_tmux, markdown.send_to_herdr = orig_tmux, orig_herdr
     vim.env.HERDR_PANE_ID = nil
     expect.equality(calls.tmux, nil)
     expect.equality(calls.herdr, { 2, true })
+end
+
+T["send_to_default routes an explicit target to tmux inside herdr"] = function()
+    vim.env.HERDR_PANE_ID = "w1:p1"
+    local calls = {}
+    local orig_tmux, orig_herdr = markdown.send_to_tmux, markdown.send_to_herdr
+    markdown.send_to_tmux = function(_, _, target)
+        calls.tmux = target
+        return true
+    end
+    markdown.send_to_herdr = function()
+        calls.herdr = true
+        return true
+    end
+
+    markdown.send_to_default("x", 2, "CLAUDE.0", true)
+
+    markdown.send_to_tmux, markdown.send_to_herdr = orig_tmux, orig_herdr
+    vim.env.HERDR_PANE_ID = nil
+    expect.equality(calls.herdr, nil)
+    expect.equality(calls.tmux, "CLAUDE.0")
 end
 
 T["send_to_default routes to tmux outside herdr"] = function()

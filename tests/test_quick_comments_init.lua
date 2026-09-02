@@ -173,7 +173,7 @@ T["send with clear=true retains comments if delivery fails"] = function()
     expect.equality(qc_state.count(), 1)
 end
 
-T["send with clear=true retains comments if tmux delivery fails"] = function()
+T["send with clear=true retains comments if default delivery fails"] = function()
     config.setup({
         export = {
             on_export = nil,
@@ -202,7 +202,7 @@ T["send with clear=true retains comments if tmux delivery fails"] = function()
     expect.equality(qc_state.count(), 1)
 end
 
-T["send with clear=true clears comments when tmux delivery succeeds"] = function()
+T["send with clear=true clears comments when default delivery succeeds"] = function()
     config.setup({
         export = {
             on_export = nil,
