@@ -334,9 +334,7 @@ function M.send_to_tmux(content, comment_count, target, silent, on_done)
     return true
 end
 
----Send comments to a tmux pane
--- FIX: unused internally since send_to_default; pending maintainer decision
--- (keep as public API or remove) — do not drop without an answer.
+---Send comments to a tmux pane (kept for API compatibility)
 ---@param target? string Target window/pane (defaults to config)
 ---@param silent? boolean Suppress notifications (for auto-send)
 ---@param on_done? fun(success: boolean)
