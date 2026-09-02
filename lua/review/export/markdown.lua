@@ -229,6 +229,14 @@ function M.to_file(filepath)
     return true
 end
 
+---A finished child process counts as failed when it exited non-zero or was
+---killed by a signal (libuv reports code = 0 with signal = N in that case)
+---@param result vim.SystemCompleted
+---@return boolean
+local function failed(result)
+    return result.code ~= 0 or (result.signal or 0) ~= 0
+end
+
 ---Check if running inside tmux
 ---@return boolean
 local function is_tmux()
@@ -281,7 +289,7 @@ function M.send_to_tmux(content, comment_count, target, silent, on_done)
     file:close()
 
     vim.system({ "tmux", "load-buffer", "--", tmpfile }, {}, function(load_result)
-        if load_result.code ~= 0 then
+        if failed(load_result) then
             vim.schedule(function()
                 if not silent then
                     vim.notify("Failed to load tmux buffer: " .. (load_result.stderr or ""), vim.log.levels.ERROR)
@@ -298,7 +306,7 @@ function M.send_to_tmux(content, comment_count, target, silent, on_done)
             vim.schedule(function()
                 os.remove(tmpfile)
 
-                if paste_result.code ~= 0 then
+                if failed(paste_result) then
                     if not silent then
                         vim.notify(
                             string.format("Failed to paste to tmux pane '%s': %s", target, paste_result.stderr or ""),
@@ -334,7 +342,7 @@ function M.send_to_tmux(content, comment_count, target, silent, on_done)
     return true
 end
 
----Send comments to a tmux pane
+---Send comments to a tmux pane (kept for API compatibility)
 ---@param target? string Target window/pane (defaults to config)
 ---@param silent? boolean Suppress notifications (for auto-send)
 ---@param on_done? fun(success: boolean)
@@ -345,13 +353,201 @@ function M.to_tmux(target, silent, on_done)
     return M.send_to_tmux(content, comment_count, target, silent, on_done)
 end
 
----Send comments through the configured export callback, falling back to tmux
+---Check if running inside a herdr session
+---@return boolean
+function M.inside_herdr()
+    return vim.env.HERDR_PANE_ID ~= nil
+end
+
+---Parse `herdr agent list` JSON output into agent descriptors
+---@param raw string Raw stdout of `herdr agent list`
+---@return table[] agents List of { agent, cwd, pane_id }
+function M.parse_agents(raw)
+    local ok, decoded = pcall(vim.json.decode, raw or "")
+    if not ok or type(decoded) ~= "table" or type(decoded.result) ~= "table" then
+        return {}
+    end
+
+    local agents = {}
+    local list = decoded.result.agents
+    if type(list) ~= "table" then
+        return {}
+    end
+    for _, pane in ipairs(list) do
+        if type(pane) == "table" and type(pane.pane_id) == "string" then
+            table.insert(agents, {
+                agent = type(pane.agent) == "string" and pane.agent or nil,
+                cwd = type(pane.cwd) == "string" and pane.cwd or nil,
+                pane_id = pane.pane_id,
+            })
+        end
+    end
+    return agents
+end
+
+---Send markdown content to a herdr agent pane picked via vim.ui.select
+---@param content string Markdown content to send
+---@param comment_count number Number of comments in content
+---@param silent? boolean Suppress notifications (for auto-send)
+---@param on_done? fun(success: boolean) Callback when async send finishes
+---@return boolean success
+function M.send_to_herdr(content, comment_count, silent, on_done)
+    if not M.inside_herdr() then
+        if not silent then
+            vim.notify("Not running inside herdr", vim.log.levels.ERROR)
+        end
+        if on_done then
+            on_done(false)
+        end
+        return false
+    end
+
+    if comment_count == 0 then
+        if not silent then
+            vim.notify("No comments to send", vim.log.levels.WARN)
+        end
+        if on_done then
+            on_done(false)
+        end
+        return false
+    end
+
+    if vim.fn.executable("herdr") ~= 1 then
+        if not silent then
+            vim.notify("`herdr` not found in PATH", vim.log.levels.ERROR)
+        end
+        if on_done then
+            on_done(false)
+        end
+        return false
+    end
+
+    local function fail(msg)
+        vim.schedule(function()
+            if not silent then
+                vim.notify(msg, vim.log.levels.ERROR)
+            end
+            if on_done then
+                on_done(false)
+            end
+        end)
+    end
+
+    vim.system({ "herdr", "agent", "list" }, {}, function(list_result)
+        if failed(list_result) then
+            fail("Failed to list herdr agents: " .. (list_result.stderr or ""))
+            return
+        end
+
+        local agents = M.parse_agents(list_result.stdout)
+        if #agents == 0 then
+            log.warn("export: herdr agent list returned no usable agents, stdout=", vim.inspect(list_result.stdout))
+            fail("No herdr agents found")
+            return
+        end
+
+        local function spawn_send(agent)
+            local ok_spawn, err = pcall(
+                vim.system,
+                { "herdr", "pane", "send-text", agent.pane_id, content },
+                {},
+                function(send_result)
+                    vim.schedule(function()
+                        if failed(send_result) then
+                            if not silent then
+                                vim.notify(
+                                    string.format(
+                                        "Failed to send to herdr pane '%s': %s",
+                                        agent.pane_id,
+                                        send_result.stderr or ""
+                                    ),
+                                    vim.log.levels.ERROR
+                                )
+                            end
+                            if on_done then
+                                on_done(false)
+                            end
+                            return
+                        end
+
+                        if not silent then
+                            vim.notify(
+                                string.format(
+                                    "Sent %d comment(s) to herdr agent '%s:%s'",
+                                    comment_count,
+                                    agent.agent or "?",
+                                    agent.cwd or "?"
+                                ),
+                                vim.log.levels.INFO
+                            )
+                        end
+                        if on_done then
+                            on_done(true)
+                        end
+                    end)
+                end
+            )
+            if not ok_spawn then
+                fail("Failed to run herdr: " .. tostring(err))
+            end
+        end
+
+        -- Auto-send paths (silent) must not open a picker: pick the only agent
+        -- automatically and fail when the choice is ambiguous.
+        if silent and #agents > 1 then
+            fail("Multiple herdr agents found, cannot auto-send")
+            return
+        elseif silent and #agents == 1 then
+            spawn_send(agents[1])
+            return
+        end
+
+        vim.schedule(function()
+            vim.ui.select(agents, {
+                prompt = "Send comments to herdr agent",
+                format_item = function(agent)
+                    return string.format("%s:%s", agent.agent or "?", agent.cwd or "?")
+                end,
+            }, function(choice)
+                if not choice then
+                    if not silent then
+                        vim.notify("Send cancelled, comments left on the clipboard", vim.log.levels.WARN)
+                    end
+                    if on_done then
+                        on_done(false)
+                    end
+                    return
+                end
+
+                spawn_send(choice)
+            end)
+        end)
+    end)
+
+    return true
+end
+
+---Send comments to herdr (inside a herdr session) or tmux
+---@param content string Markdown content to send
+---@param comment_count number Number of comments in content
 ---@param target? string Target window/pane, tmux only
+---@param silent? boolean Suppress notifications
+---@param on_done? fun(success: boolean)
+---@return boolean success
+function M.send_to_default(content, comment_count, target, silent, on_done)
+    if M.inside_herdr() and not target then
+        return M.send_to_herdr(content, comment_count, silent, on_done)
+    end
+    return M.send_to_tmux(content, comment_count, target, silent, on_done)
+end
+
+---Send comments through the configured export callback, falling back to herdr/tmux
+---@param target? string Target window/pane, tmux only; an explicit target opts out of the herdr picker
 ---@param silent? boolean Suppress notifications
 ---@return boolean success
 function M.send(target, silent)
     if not M.has_handler() then
-        return M.to_tmux(target, silent)
+        return M.send_to_default(M.generate(), #state.get_all_comments(), target, silent)
     end
 
     local comments = state.get_all_comments()

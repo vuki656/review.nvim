@@ -29,7 +29,7 @@ review.nvim is a diff reviewer for Neovim built around handing feedback back
 to a coding agent. It opens a dedicated tab with a sidebar of git panels and a
 diff pane, lets you attach typed comments (note, fix, question) to individual
 lines, and exports every comment as markdown with surrounding diff context to
-the clipboard, a file, or a tmux pane.
+the clipboard, a file, or a tmux/herdr pane.
 
 It also covers the git operations you need part way through a review: stage,
 unstage, commit, amend, push, pull, checkout, create and delete branches, and
@@ -48,8 +48,9 @@ Required:
 
 Optional:
 
-  - tmux. Needed only by |:Review| send and by the "Copy & Send to tmux" exit
-    option. Every other feature works without tmux installed.
+  - tmux or herdr. Needed only by |:Review| send and by the "Copy & Send"
+    exit option. Inside a herdr session (`$HERDR_PANE_ID` set) herdr is
+    used, otherwise tmux. Every other feature works without either.
   - nvim-web-devicons, for file type icons in the Files and Comments panels.
     Without it the icon column renders empty.
   - Tree-sitter parsers for the languages you review, for syntax colouring
@@ -156,10 +157,11 @@ with `S`, or by setting `ui.diff_view_mode` to "split".
 :Review export          Copy every comment to the clipboard as markdown.
 
 :Review send [{target}] Send comments to `export.on_export` when it is set,
-                        otherwise paste them into a tmux pane. {target}
-                        defaults to `tmux.target` and applies to the tmux
-                        path only. The tmux path fails if Neovim is not
-                        running inside tmux.
+                        otherwise paste them into a tmux pane, or, inside a
+                        herdr session, into a herdr agent picked with
+                        vim.ui.select. {target} defaults to `tmux.target`
+                        and applies to the tmux path only. The tmux path
+                        fails if Neovim is not running inside tmux.
 
 :Review commit {sha}    Set the diff base to {sha}. Reopens the UI if it is
                         already open.
@@ -179,7 +181,7 @@ with `S`, or by setting `ui.diff_view_mode` to "split".
 :Review qp              Toggle the quick comments panel.
 
 :Review qs [{target}]   Send quick comments to `export.on_export` when it is
-                        set, or to a tmux pane when it is not. {target}
+                        set, or to a herdr/tmux pane when it is not. {target}
                         defaults to `tmux.target` and applies to the tmux
                         path only.
 
@@ -197,8 +199,8 @@ with `S`, or by setting `ui.diff_view_mode` to "split".
     review.close()
     review.clear_comments() -- clear all review comments
     review.export()        -- markdown to clipboard
-    review.send(target)    -- markdown to export.on_export, else tmux
-    review.quick_send(target, opts) -- quick comments to export.on_export, else tmux
+    review.send(target)    -- markdown to export.on_export, else herdr/tmux
+    review.quick_send(target, opts) -- quick comments to export.on_export, else herdr/tmux
     review.is_open()       -- boolean
     review.get_state()     -- current state table
     review.reset()         -- reset state
@@ -214,7 +216,7 @@ Quick comments have their own module: >lua
     qc.open_panel()
     qc.close_panel()
     qc.export()            -- copy to clipboard
-    qc.send(target, opts)  -- markdown to export.on_export, else tmux; opts.clear, opts.silent
+    qc.send(target, opts)  -- markdown to export.on_export, else herdr/tmux; opts.clear, opts.silent
     qc.copy()              -- copy to clipboard, then clear all comments
 <
 ==============================================================================
@@ -390,8 +392,8 @@ on every covered line and the panel lists them as `L42-50`.
     d             Delete the comment.
     c             Copy all quick comments to the clipboard as markdown. The
                   comments are kept.
-    s             Send all quick comments to `export.on_export` or tmux. The
-                  comments are kept.
+    s             Send all quick comments to `export.on_export` or herdr/tmux.
+                  The comments are kept.
     q / <Esc>     Close the panel.
 
 `require("review.quick_comments").copy()` copies and then clears every quick
@@ -532,9 +534,9 @@ export.on_export ~
     Return `false`, or raise an error, to report that the hand-off failed.
 
     When it is set, |:Review| send and the "Copy & Send" exit option call it
-    instead of pasting into tmux. The clipboard paths, |:Review| export and
-    "Exit & Copy", still copy and then call it as well. A failed hand-off on
-    close keeps the saved session rather than deleting it. >lua
+    instead of pasting into tmux/herdr. The clipboard paths, |:Review|
+    export and "Exit & Copy", still copy and then call it as well. A failed
+    hand-off on close keeps the saved session rather than deleting it. >lua
 
         require("review").setup({
             export = {
@@ -600,8 +602,9 @@ The intended loop:
   3. Press <Space> in the Files panel to stage the parts you are keeping.
   4. Press `q`. If there are comments, an exit menu appears:
 
-       Exit, Copy & Send to tmux   Copy to the clipboard and paste into the
-                                   configured tmux target, or hand off to
+       Exit, Copy & Send          Copy to the clipboard and paste into the
+                                   configured tmux target (or a picked herdr
+                                   agent inside herdr), or hand off to
                                    `export.on_export` when it is set.
        Exit & Copy                 Clipboard only.
        Exit                        Keep the saved session so the next
@@ -609,11 +612,11 @@ The intended loop:
 
      The two copy options clear the saved session. With no comments, `q`
      exits immediately with no menu.
-  5. Paste into your agent, or let tmux have done it for you.
+  5. Paste into your agent, or let tmux/herdr have done it for you.
 
 |:Review| export and |:Review| send do the same export without closing the
-UI. "Copy & Send" fails quietly when Neovim is not inside tmux, so you still
-get the clipboard copy and no error popup.
+UI. "Copy & Send" fails quietly outside tmux and herdr, so you still get the
+clipboard copy and no error popup.
 
 The generated markdown groups comments by file, and each one carries its type
 label, file, line, and a fenced code block of surrounding diff context: >
@@ -639,9 +642,10 @@ to reading the file from disk and marks the block "(no changes)".
 10. TROUBLESHOOTING                                   *review-troubleshooting*
 
 Start with `:checkhealth review`, which verifies the Neovim version, git and
-the repository, tmux and $TMUX, whether `setup()` has run, the log level, and
-the log file path. "`setup()` has not been called" is reported as a warning,
-not an error: the defaults are in effect either way.
+the repository, tmux and $TMUX, herdr and $HERDR_PANE_ID, whether `setup()`
+has run, the log level, and the log file path. "`setup()` has not been
+called" is reported as a warning, not an error: the defaults are in effect
+either way.
 
 :Review is not a command ~
     The plugin has not loaded. See |review-installation|. If you lazy-load,
@@ -655,6 +659,8 @@ The toggle mapping does nothing ~
 "Not running inside tmux" ~
     |:Review| send checks $TMUX. Neovim must itself be running inside a tmux
     session; it cannot paste into a tmux server it is not attached to.
+    Inside herdr the same checks use $HERDR_PANE_ID instead and a picker of
+    detected herdr agents (from `herdr agent list`) appears.
 
 Sending succeeds but nothing appears in the agent ~
     The paste went somewhere else. With the default `tmux.target` of "!" it

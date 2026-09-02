@@ -319,52 +319,17 @@ function M.show_diff(path)
     })
 end
 
----Perform the actual close operation
----@param action? string "exit" | "copy" | "copy_and_send"
-local function do_close(action)
-    if not state.state.is_open then
-        return
-    end
+---Set while a close is in flight, so re-entrant `q` (e.g. while the herdr
+---picker is open) cannot run the close path twice
+local closing = false
 
-    log.info("ui: closing review action=", action)
-
-    -- Handle export based on action
-    local export_landed = true
-    if action == "copy" or action == "copy_and_send" then
-        local all_comments = state.get_all_comments()
-        if #all_comments > 0 then
-            local export = require("review.export.markdown")
-            -- Copy to clipboard
-            local content = export.generate()
-            vim.fn.setreg("+", content)
-            vim.fn.setreg("*", content)
-
-            export_landed = vim.fn.getreg("+") == content
-            if not export_landed then
-                vim.notify("Could not copy comments to the clipboard, keeping the saved session", vim.log.levels.ERROR)
-                log.error("ui: clipboard write did not land, preserving session file")
-            end
-
-            local handed_off
-            if action == "copy_and_send" then
-                local sent = export.send(nil, false)
-                if export.has_handler() then
-                    handed_off = sent
-                end
-            else
-                handed_off = export.run_handler(content, all_comments, false)
-            end
-
-            if handed_off == false then
-                export_landed = false
-                log.error("ui: export.on_export did not succeed, preserving session file")
-            end
-        end
-    end
-
+---Run the teardown tail of the close path
+---@param save_session boolean Whether to keep the persisted session
+local function finish_close(save_session)
+    closing = false
     -- Handle persistence
     if config.get().persistence.enabled then
-        if action == "exit" or not export_landed then
+        if save_session then
             persistence.save()
         else
             persistence.delete()
@@ -393,13 +358,70 @@ local function do_close(action)
     state.reset()
 end
 
+---Perform the actual close operation
+---@param action? string "exit" | "copy" | "copy_and_send"
+local function do_close(action)
+    if not state.state.is_open or closing then
+        return
+    end
+    closing = true
+
+    log.info("ui: closing review action=", action)
+
+    -- Handle export based on action
+    local export_landed = true
+    if action == "copy" or action == "copy_and_send" then
+        local all_comments = state.get_all_comments()
+        if #all_comments > 0 then
+            local export = require("review.export.markdown")
+            -- Copy to clipboard
+            local content = export.generate()
+            vim.fn.setreg("+", content)
+            vim.fn.setreg("*", content)
+
+            export_landed = vim.fn.getreg("+") == content
+            if not export_landed then
+                vim.notify("Could not copy comments to the clipboard, keeping the saved session", vim.log.levels.ERROR)
+                log.error("ui: clipboard write did not land, preserving session file")
+            end
+
+            local handed_off
+            if action == "copy_and_send" then
+                if export.has_handler() then
+                    handed_off = export.send(nil, false)
+                elseif export.inside_herdr() then
+                    -- The herdr send is interactive (agent picker); defer the
+                    -- teardown until it settles so a cancelled or failed send
+                    -- keeps the saved session.
+                    export.send_to_herdr(content, #all_comments, false, function(ok)
+                        finish_close(not ok)
+                    end)
+                    return
+                else
+                    -- tmux stays optimistic: fire and forget, teardown as before
+                    export.send_to_tmux(content, #all_comments, nil, false)
+                end
+            else
+                handed_off = export.run_handler(content, all_comments, false)
+            end
+
+            if handed_off == false then
+                export_landed = false
+                log.error("ui: export.on_export did not succeed, preserving session file")
+            end
+        end
+    end
+
+    finish_close(action == "exit" or not export_landed)
+end
+
 ---Show exit popup with options
 local function show_exit_popup()
     local all_comments = state.get_all_comments()
     local has_comments = #all_comments > 0
 
     local actions = { "copy_and_send", "copy", "exit" }
-    local labels = { "Exit, Copy & Send to tmux", "Exit & Copy", "Exit" }
+    local labels = { "Exit, Copy & Send", "Exit & Copy", "Exit" }
 
     local title = "Close review"
     if has_comments then

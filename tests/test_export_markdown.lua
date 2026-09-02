@@ -255,4 +255,103 @@ T["context boundary handling at start of render_lines"] = function()
     expect.equality(result:find("%+only line") ~= nil, true)
 end
 
+T["parse_agents parses herdr agent list JSON"] = function()
+    local raw = [[
+{"id":"cli:agent:list","result":{"agents":[
+  {"agent":"pi","cwd":"/tmp/repo","pane_id":"wY:p2"},
+  {"agent":"claude","cwd":"/tmp/other","pane_id":"wY:p7"}
+]}}]]
+    local agents = markdown.parse_agents(raw)
+    expect.equality(#agents, 2)
+    expect.equality(agents[1].agent, "pi")
+    expect.equality(agents[1].cwd, "/tmp/repo")
+    expect.equality(agents[1].pane_id, "wY:p2")
+    expect.equality(agents[2].pane_id, "wY:p7")
+end
+
+T["parse_agents handles malformed output"] = function()
+    expect.equality(#markdown.parse_agents("not json"), 0)
+    expect.equality(#markdown.parse_agents(""), 0)
+    expect.equality(#markdown.parse_agents('{"result":{}}'), 0)
+    expect.equality(#markdown.parse_agents('{"result":{"agents":null}}'), 0)
+end
+
+T["parse_agents coerces vim.NIL fields to nil"] = function()
+    local raw = '{"result":{"agents":[{"agent":null,"cwd":null,"pane_id":"a:b"}]}}'
+    local agents = markdown.parse_agents(raw)
+    expect.equality(#agents, 1)
+    expect.equality(agents[1].agent, nil)
+    expect.equality(agents[1].cwd, nil)
+    expect.equality(agents[1].pane_id, "a:b")
+end
+
+T["send_to_default routes to herdr with HERDR_PANE_ID set"] = function()
+    vim.env.HERDR_PANE_ID = "w1:p1"
+    local calls = {}
+    local orig_tmux, orig_herdr = markdown.send_to_tmux, markdown.send_to_herdr
+    markdown.send_to_tmux = function()
+        calls.tmux = true
+        return true
+    end
+    markdown.send_to_herdr = function(_, count, silent)
+        calls.herdr = { count, silent }
+        return true
+    end
+
+    markdown.send_to_default("x", 2, nil, true)
+
+    markdown.send_to_tmux, markdown.send_to_herdr = orig_tmux, orig_herdr
+    vim.env.HERDR_PANE_ID = nil
+    expect.equality(calls.tmux, nil)
+    expect.equality(calls.herdr, { 2, true })
+end
+
+T["send_to_default routes an explicit target to tmux inside herdr"] = function()
+    vim.env.HERDR_PANE_ID = "w1:p1"
+    local calls = {}
+    local orig_tmux, orig_herdr = markdown.send_to_tmux, markdown.send_to_herdr
+    markdown.send_to_tmux = function(_, _, target)
+        calls.tmux = target
+        return true
+    end
+    markdown.send_to_herdr = function()
+        calls.herdr = true
+        return true
+    end
+
+    markdown.send_to_default("x", 2, "CLAUDE.0", true)
+
+    markdown.send_to_tmux, markdown.send_to_herdr = orig_tmux, orig_herdr
+    vim.env.HERDR_PANE_ID = nil
+    expect.equality(calls.herdr, nil)
+    expect.equality(calls.tmux, "CLAUDE.0")
+end
+
+T["send_to_default routes to tmux outside herdr"] = function()
+    vim.env.HERDR_PANE_ID = nil
+    local calls = {}
+    local orig_tmux, orig_herdr = markdown.send_to_tmux, markdown.send_to_herdr
+    markdown.send_to_tmux = function(_, _, target)
+        calls.tmux = target
+        return true
+    end
+    markdown.send_to_herdr = function()
+        calls.herdr = true
+        return true
+    end
+
+    markdown.send_to_default("x", 2, "CLAUDE.0", true)
+
+    markdown.send_to_tmux, markdown.send_to_herdr = orig_tmux, orig_herdr
+    expect.equality(calls.herdr, nil)
+    expect.equality(calls.tmux, "CLAUDE.0")
+end
+
+T["parse_agents skips entries without pane_id"] = function()
+    local raw = '{"result":{"agents":[{"agent":"pi","cwd":"/x"},{"agent":"c","cwd":"/y","pane_id":"a:b"}]}}'
+    local agents = markdown.parse_agents(raw)
+    expect.equality(#agents, 1)
+    expect.equality(agents[1].pane_id, "a:b")
+end
+
 return T
