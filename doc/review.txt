@@ -294,7 +294,10 @@ the base; the plugin reports this rather than acting.
 In side-by-side mode `c` and `dc` are bound only on the right (new) pane.
 Diffs of lock files (package-lock.json, yarn.lock, Cargo.lock and similar)
 are deliberately not rendered. A binary file renders as "Binary file — no
-diff to display." rather than an empty pane.
+diff to display." rather than an empty pane. A diff over 1 MB renders as
+"File too large — no diff to display." so moving onto it in the Files panel
+does not stall the editor, and syntax highlighting is skipped for sources
+over 256 KB.
 
 ------------------------------------------------------------------------------
 7.3 Comment input                                      *review-mappings-input*

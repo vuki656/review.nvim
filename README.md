@@ -208,7 +208,7 @@ Numeric section navigation is disabled by default. When `ui.number_navigation` i
 | `q` | Close the review |
 | `?` | Help overlay |
 
-In side-by-side mode, `c` and `dc` are only bound on the right (new) pane. A binary file renders as a `Binary file` placeholder instead of an empty pane.
+In side-by-side mode, `c` and `dc` are only bound on the right (new) pane. A binary file renders as a `Binary file` placeholder instead of an empty pane, and a diff over 1 MB renders as a `File too large` placeholder so navigating onto it does not stall the editor.
 
 ### Comment input popup
 

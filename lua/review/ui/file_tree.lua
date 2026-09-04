@@ -48,6 +48,8 @@ local active_timers = {
     scroll_timer = nil,
 }
 
+local SELECT_DEBOUNCE_MS = 120
+
 -- Footer state
 local footer_state = { unpushed_count = nil }
 local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
@@ -1384,10 +1386,11 @@ local function setup_keymaps(bufnr, callbacks)
             active_timers.select_timer = nil
         end
 
-        -- Debounce: wait 50ms before loading diff
+        -- Debounce: long enough to coalesce key repeat (80-150ms) so files
+        -- scrolled past never load a diff
         active_timers.select_timer = vim.uv.new_timer()
         active_timers.select_timer:start(
-            50,
+            SELECT_DEBOUNCE_MS,
             0,
             vim.schedule_wrap(function()
                 if active_timers.select_timer then
