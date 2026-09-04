@@ -3,6 +3,7 @@ local comment_types_module = require("review.comment_types")
 local diff_parser = require("review.core.diff")
 local git = require("review.core.git")
 local layout = require("review.ui.layout")
+local limits = require("review.core.limits")
 local panel_keymaps = require("review.ui.panel_keymaps")
 local state = require("review.state")
 local ui_util = require("review.ui.util")
@@ -179,6 +180,10 @@ local function apply_highlights_from_source(
     display_lines,
     line_offset
 )
+    if limits.is_too_large(#source_content, limits.MAX_SOURCE_BYTES) then
+        return
+    end
+
     local source_lines = vim.split(source_content, "\n", { plain = true })
     local treesitter_padding = 20
     local ranges = build_source_ranges(source_line_to_display, #source_lines, treesitter_padding)
@@ -563,6 +568,17 @@ local function is_lock_file(file)
     return LOCK_FILE_NAMES[filename] == true
 end
 
+---Replace a diff buffer's contents with a short message
+---@param bufnr number
+---@param lines string[]
+local function set_placeholder(bufnr, lines)
+    vim.api.nvim_set_option_value("readonly", false, { buf = bufnr })
+    vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr })
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+    vim.api.nvim_set_option_value("modifiable", false, { buf = bufnr })
+    vim.api.nvim_set_option_value("readonly", true, { buf = bufnr })
+end
+
 ---Async two-stage diff rendering: Stage 1 renders diff + highlights immediately,
 ---Stage 2 applies treesitter syntax highlights asynchronously after fetching file content.
 ---Must be called inside async.run().
@@ -572,14 +588,7 @@ end
 ---@return table[]|nil render_lines
 local function render_diff_async(bufnr, file, expected_generation)
     if is_lock_file(file) then
-        vim.api.nvim_set_option_value("readonly", false, { buf = bufnr })
-        vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr })
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
-            "",
-            "  Lock file diff not shown.",
-        })
-        vim.api.nvim_set_option_value("modifiable", false, { buf = bufnr })
-        vim.api.nvim_set_option_value("readonly", true, { buf = bufnr })
+        set_placeholder(bufnr, { "", "  Lock file diff not shown." })
         return nil
     end
 
@@ -595,27 +604,17 @@ local function render_diff_async(bufnr, file, expected_generation)
     end
 
     if not result.success then
-        vim.api.nvim_set_option_value("readonly", false, { buf = bufnr })
-        vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr })
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
-            "",
-            "  Error getting diff:",
-            "  " .. (result.error or "Unknown error"),
-        })
-        vim.api.nvim_set_option_value("modifiable", false, { buf = bufnr })
-        vim.api.nvim_set_option_value("readonly", true, { buf = bufnr })
+        set_placeholder(bufnr, { "", "  Error getting diff:", "  " .. (result.error or "Unknown error") })
+        return nil
+    end
+
+    if result.too_large then
+        set_placeholder(bufnr, { file, "", "  File too large — no diff to display." })
         return nil
     end
 
     if result.output == "" then
-        vim.api.nvim_set_option_value("readonly", false, { buf = bufnr })
-        vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr })
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
-            "",
-            "  No changes in this file.",
-        })
-        vim.api.nvim_set_option_value("modifiable", false, { buf = bufnr })
-        vim.api.nvim_set_option_value("readonly", true, { buf = bufnr })
+        set_placeholder(bufnr, { "", "  No changes in this file." })
         return nil
     end
 
@@ -623,15 +622,7 @@ local function render_diff_async(bufnr, file, expected_generation)
     local parsed = diff_parser.parse(result.output)
 
     if parsed.binary and #parsed.hunks == 0 then
-        vim.api.nvim_set_option_value("readonly", false, { buf = bufnr })
-        vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr })
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
-            file,
-            "",
-            "  Binary file — no diff to display.",
-        })
-        vim.api.nvim_set_option_value("modifiable", false, { buf = bufnr })
-        vim.api.nvim_set_option_value("readonly", true, { buf = bufnr })
+        set_placeholder(bufnr, { file, "", "  Binary file — no diff to display." })
         return nil
     end
 
@@ -737,14 +728,7 @@ end
 local function render_split_diff(old_bufnr, new_bufnr, file)
     if is_lock_file(file) then
         for _, bufnr in ipairs({ old_bufnr, new_bufnr }) do
-            vim.api.nvim_set_option_value("readonly", false, { buf = bufnr })
-            vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr })
-            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
-                "",
-                "  Lock file diff not shown.",
-            })
-            vim.api.nvim_set_option_value("modifiable", false, { buf = bufnr })
-            vim.api.nvim_set_option_value("readonly", true, { buf = bufnr })
+            set_placeholder(bufnr, { "", "  Lock file diff not shown." })
         end
         return nil, nil
     end
@@ -754,11 +738,17 @@ local function render_split_diff(old_bufnr, new_bufnr, file)
         return nil, nil
     end
 
-    if result.output == "" then
+    -- Split mode renders on the main thread, so bail out before parsing anything
+    -- big enough to stall it; M.create falls back to unified, which shows why
+    if result.too_large or result.output == "" then
         return nil, nil
     end
 
     local parsed = diff_parser.parse(result.output)
+    if parsed.binary and #parsed.hunks == 0 then
+        return nil, nil
+    end
+
     local old_lines, new_lines = diff_parser.get_split_render_lines(parsed)
 
     local old_display = {}

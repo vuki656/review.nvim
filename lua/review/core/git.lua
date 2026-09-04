@@ -1,3 +1,4 @@
+local limits = require("review.core.limits")
 local log = require("review.core.log")
 
 local M = {}
@@ -6,6 +7,7 @@ local M = {}
 ---@field success boolean
 ---@field output string
 ---@field error string|nil
+---@field too_large boolean|nil Diff was skipped because it is too big to render
 
 -- Cached git root (invalidated on cwd change)
 local cached_root = nil
@@ -301,22 +303,29 @@ function M.get_changed_files(base, base_end)
     end)
 end
 
+---Build the ls-files command that reports whether a path is untracked
+---@param file string
+---@return string[]
+local function untracked_cmd(file)
+    return {
+        "git",
+        "-c",
+        "core.quotepath=false",
+        "--literal-pathspecs",
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        "--",
+        file,
+    }
+end
+
 ---Check if a file is untracked
 ---@param file string File path relative to git root
 ---@return boolean
 function M.is_untracked(file)
     return with_git_root(false, function(git_root)
-        local result = vim.system({
-            "git",
-            "-c",
-            "core.quotepath=false",
-            "--literal-pathspecs",
-            "ls-files",
-            "--others",
-            "--exclude-standard",
-            "--",
-            file,
-        }, { text = true, cwd = git_root }):wait()
+        local result = vim.system(untracked_cmd(file), { text = true, cwd = git_root }):wait()
 
         return result.code == 0 and vim.trim(result.stdout) ~= ""
     end)
@@ -333,17 +342,65 @@ function M.is_safe_rev(rev)
     return type(rev) == "string" and rev ~= "" and rev:sub(1, 1) ~= "-"
 end
 
+---Read the leading bytes of a file without pulling the whole thing into memory
+---@param path string
+---@return string|nil
+local function read_probe(path)
+    local fd = vim.uv.fs_open(path, "r", 438)
+    if not fd then
+        return nil
+    end
+
+    local ok, chunk = pcall(vim.uv.fs_read, fd, limits.BINARY_PROBE_BYTES, 0)
+    vim.uv.fs_close(fd)
+
+    if not ok then
+        return nil
+    end
+    return chunk
+end
+
+---Cap a raw diff so callers never parse or render something huge
+---@param output string
+---@return GitDiffResult
+local function capped_diff_result(output)
+    if limits.is_too_large(#output, limits.MAX_DIFF_BYTES) then
+        return { success = true, output = "", error = nil, too_large = true }
+    end
+    return { success = true, output = output, error = nil }
+end
+
 ---Synthesize an add-only diff for an untracked file
 ---@param git_root string
 ---@param file string File path relative to git root
 ---@return GitDiffResult
 local function untracked_diff(git_root, file)
     local full_path = git_root .. "/" .. file
+
+    local stat = vim.uv.fs_stat(full_path)
+    if not stat or stat.type ~= "file" then
+        return { success = true, output = "", error = nil }
+    end
+
+    if limits.is_too_large(stat.size, limits.MAX_DIFF_BYTES) then
+        return { success = true, output = "", error = nil, too_large = true }
+    end
+
+    if limits.is_binary_chunk(read_probe(full_path)) then
+        return {
+            success = true,
+            output = "Binary files /dev/null and b/" .. file .. " differ",
+            error = nil,
+        }
+    end
+
     local read_ok, content = pcall(vim.fn.readfile, full_path)
     if not read_ok or not content or #content == 0 then
         return { success = true, output = "", error = nil }
     end
 
+    -- readfile turns NUL bytes into newlines, so an entry containing one means
+    -- binary content past the probe; emitting it would corrupt the synthesized diff
     for _, line in ipairs(content) do
         if line:find("\n", 1, true) then
             return {
@@ -366,38 +423,59 @@ local function untracked_diff(git_root, file)
     return { success = true, output = table.concat(diff_lines, "\n"), error = nil }
 end
 
+local rename_source_cache = {}
+
+---@param base string
+---@param staged boolean
+---@param git_root string
+---@return string
+local function rename_cache_key(base, staged, git_root)
+    return (staged and "staged" or base) .. "\0" .. git_root
+end
+
+---@param staged boolean
+---@param base string
+---@return string[]
+local function rename_source_cmd(staged, base)
+    local cmd = { "git", "-c", "core.quotepath=false", "--literal-pathspecs", "diff", "-M", "--name-status" }
+    if staged then
+        table.insert(cmd, "--cached")
+    else
+        table.insert(cmd, base)
+    end
+    return cmd
+end
+
+---@param stdout string|nil
+---@return table<string, string>
+local function parse_rename_sources(stdout)
+    local sources = {}
+    for _, line in ipairs(vim.split(stdout or "", "\n", { plain = true })) do
+        local parsed = M.parse_name_status_line(line)
+        if parsed and parsed.rename_from then
+            sources[parsed.path] = parsed.rename_from
+        end
+    end
+    return sources
+end
+
 ---Find the source path of a renamed or copied file
 ---@param git_root string
 ---@param file string New path
 ---@param base string Base to compare against
 ---@param staged boolean Whether to look in the index rather than the worktree
 ---@return string|nil
-local rename_source_cache = {}
-
 local function find_rename_source(git_root, file, base, staged)
-    local cache_key = (staged and "staged" or base) .. "\0" .. git_root
+    local cache_key = rename_cache_key(base, staged, git_root)
     local cached = rename_source_cache[cache_key]
 
     if not cached then
-        local cmd = { "git", "-c", "core.quotepath=false", "--literal-pathspecs", "diff", "-M", "--name-status" }
-        if staged then
-            table.insert(cmd, "--cached")
-        else
-            table.insert(cmd, base)
-        end
-
-        local result = vim.system(cmd, { text = true, cwd = git_root }):wait()
+        local result = vim.system(rename_source_cmd(staged, base), { text = true, cwd = git_root }):wait()
         if result.code ~= 0 then
             return nil
         end
 
-        cached = {}
-        for _, line in ipairs(vim.split(result.stdout or "", "\n", { plain = true })) do
-            local parsed = M.parse_name_status_line(line)
-            if parsed and parsed.rename_from then
-                cached[parsed.path] = parsed.rename_from
-            end
-        end
+        cached = parse_rename_sources(result.stdout)
         rename_source_cache[cache_key] = cached
     end
 
@@ -451,7 +529,7 @@ function M.get_diff(file, base, base_end, opts)
             return { success = false, output = "", error = result.stderr }
         end
 
-        return { success = true, output = result.stdout, error = nil }
+        return capped_diff_result(result.stdout)
     end
 
     local file_status = opts and opts.file_status or nil
@@ -520,12 +598,12 @@ function M.get_diff(file, base, base_end, opts)
             table.insert(cmd, rename_from)
             local retry = vim.system(cmd, { text = true, cwd = git_root }):wait()
             if retry.code == 0 and retry.stdout ~= "" then
-                return { success = true, output = retry.stdout, error = nil }
+                return capped_diff_result(retry.stdout)
             end
         end
     end
 
-    return { success = true, output = result.stdout, error = nil }
+    return capped_diff_result(result.stdout)
 end
 
 ---Get combined diff for a commit range in a single git call
@@ -1239,7 +1317,8 @@ function M.get_file_at_rev(file, rev)
     return result.stdout, nil
 end
 
----Get file content from the working tree
+---Get file content from the working tree.
+---Only used to feed syntax highlighting, so it refuses sources too big to parse.
 ---@param file string File path relative to git root
 ---@return string|nil content, string|nil error
 function M.get_working_tree_file(file)
@@ -1249,6 +1328,15 @@ function M.get_working_tree_file(file)
     end
 
     local full_path = git_root .. "/" .. file
+
+    local stat = vim.uv.fs_stat(full_path)
+    if not stat or stat.type ~= "file" then
+        return nil, "Could not read file: " .. full_path
+    end
+    if limits.is_too_large(stat.size, limits.MAX_SOURCE_BYTES) then
+        return nil, "File too large to highlight: " .. full_path
+    end
+
     local read_ok, lines = pcall(vim.fn.readfile, full_path)
     if not read_ok or not lines then
         return nil, "Could not read file: " .. full_path
@@ -1646,6 +1734,40 @@ local function parse_name_set(stdout)
     return result
 end
 
+---Async: check if a file is untracked
+---@param file string File path relative to git root
+---@return boolean
+function M.is_untracked_async(file)
+    return with_git_root(false, function(git_root)
+        local result = async.system(untracked_cmd(file), { text = true, cwd = git_root })
+
+        return result.code == 0 and vim.trim(result.stdout) ~= ""
+    end)
+end
+
+---Async: find the source path of a renamed or copied file
+---@param git_root string
+---@param file string New path
+---@param base string Base to compare against
+---@param staged boolean Whether to look in the index rather than the worktree
+---@return string|nil
+local function find_rename_source_async(git_root, file, base, staged)
+    local cache_key = rename_cache_key(base, staged, git_root)
+    local cached = rename_source_cache[cache_key]
+
+    if not cached then
+        local result = async.system(rename_source_cmd(staged, base), { text = true, cwd = git_root })
+        if result.code ~= 0 then
+            return nil
+        end
+
+        cached = parse_rename_sources(result.stdout)
+        rename_source_cache[cache_key] = cached
+    end
+
+    return cached[file]
+end
+
 ---Async: get set of staged files
 ---@return table<string, boolean>
 function M.get_staged_files_async()
@@ -1933,12 +2055,12 @@ function M.get_diff_async(file, base, base_end, opts)
             return { success = false, output = "", error = result.stderr }
         end
 
-        return { success = true, output = result.stdout, error = nil }
+        return capped_diff_result(result.stdout)
     end
 
     local file_status = opts and opts.file_status or nil
 
-    local is_untracked = file_status == "untracked" or (not file_status and M.is_untracked(file))
+    local is_untracked = file_status == "untracked" or (not file_status and M.is_untracked_async(file))
     if is_untracked then
         return untracked_diff(git_root, file)
     end
@@ -1995,17 +2117,17 @@ function M.get_diff_async(file, base, base_end, opts)
     end
 
     if result.stdout:match("\nnew file mode") then
-        local rename_from = opts and opts.rename_from or find_rename_source(git_root, file, base, is_staged_only)
+        local rename_from = opts and opts.rename_from or find_rename_source_async(git_root, file, base, is_staged_only)
         if rename_from then
             table.insert(cmd, rename_from)
             local retry = async.system(cmd, { text = true, cwd = git_root })
             if retry.code == 0 and retry.stdout ~= "" then
-                return { success = true, output = retry.stdout, error = nil }
+                return capped_diff_result(retry.stdout)
             end
         end
     end
 
-    return { success = true, output = result.stdout, error = nil }
+    return capped_diff_result(result.stdout)
 end
 
 ---Async: get file content at a specific revision

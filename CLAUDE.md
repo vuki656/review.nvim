@@ -40,7 +40,7 @@ Test files live in `tests/` and follow the naming convention `test_<module>.lua`
 
 Shared fixtures and factories are in `tests/helpers.lua`.
 
-Tested modules: `comment_types`, `config`, `core/diff`, `core/format`, `core/json_persistence`, `core/paths`, `core/watcher` (only `is_ignored_path`), `export/markdown`, `quick_comments/init` (send), `quick_comments/markdown`, `quick_comments/panel` (send keymap), `quick_comments/state`, `state`, `ui/panel_keymaps`. `core/git` is tested only for its pure parsers (`tests/test_git_parse.lua` covers name-status and commit-line parsing); everything in it that shells out to git is not.
+Tested modules: `comment_types`, `config`, `core/diff`, `core/format`, `core/json_persistence`, `core/limits`, `core/paths`, `core/watcher` (only `is_ignored_path`), `export/markdown`, `quick_comments/init` (send), `quick_comments/markdown`, `quick_comments/panel` (send keymap), `quick_comments/state`, `state`, `ui/panel_keymaps`. `core/git` is tested only for its pure parsers (`tests/test_git_parse.lua` covers name-status and commit-line parsing); everything in it that shells out to git is not.
 
 Not tested (integration-heavy): `core/async`, `core/log`, `core/persistence`, `core/watcher` (start/stop), `commands`, `health`, `quick_comments/persistence`, `quick_comments/signs`, `ui/*` (except `ui/panel_keymaps`).
 
@@ -62,6 +62,7 @@ lua/review/
 │   ├── async.lua               # Coroutine-based async utilities
 │   ├── log.lua                 # File-based logger (DEBUG/INFO/WARN/ERROR), rotates at 1 MB
 │   ├── json_persistence.lua    # JSON file read/write, resolves paths inside the git dir
+│   ├── limits.lua              # Size caps and binary detection for diffs and source files
 │   ├── persistence.lua         # Session persistence (wraps json_persistence + state)
 │   └── watcher.lua             # Fs watchers for auto-refresh (recursive on macOS/Windows, per-directory on Linux)
 ├── ui/
@@ -142,7 +143,8 @@ Autosave (`VimLeavePre`) is registered from `plugin/review.lua`, so sessions per
 
 - **State centralization**: All mutable state lives in `state.lua`
 - **Namespace isolation**: Uses Neovim namespaces for extmarks/highlights
-- **Async git**: `core/git.lua` carries two variants of most operations. The plain ones call `vim.system():wait()`; the `*_async` ones (`get_diff_async`, `get_changed_files_async`, `get_all_file_statuses_async`, `get_file_at_rev_async`, plus the `*_streaming` commit helpers) must run inside `async.run()` and use `async.system()`/`async.all()`, which are coroutine wrappers that yield until the callback fires. The hot render paths — file tree refresh, diff rendering, treesitter highlight fetch — use the async variants and fan out concurrent git calls with `async.all()`; everything else stays synchronous
+- **Async git**: `core/git.lua` carries two variants of most operations. The plain ones call `vim.system():wait()`; the `*_async` ones (`get_diff_async`, `get_changed_files_async`, `get_all_file_statuses_async`, `get_file_at_rev_async`, `is_untracked_async`, plus the `*_streaming` commit helpers) must run inside `async.run()` and use `async.system()`/`async.all()`, which are coroutine wrappers that yield until the callback fires. The hot render paths — file tree refresh, diff rendering, treesitter highlight fetch — use the async variants and fan out concurrent git calls with `async.all()`; everything else stays synchronous
+- **Size caps**: `core/limits.lua` holds the thresholds that keep file-tree navigation from stalling the main loop. `get_diff`/`get_diff_async` return `too_large = true` with an empty output above `MAX_DIFF_BYTES` (1 MB) instead of handing back a diff nobody can render, and both the unified and split render paths show a placeholder for that and for binary files. `get_working_tree_file` and `apply_highlights_from_source` refuse sources over `MAX_SOURCE_BYTES` (256 KB), so treesitter never splits a huge string. Untracked files are stat'd and probed for a NUL byte in their first `BINARY_PROBE_BYTES` before any full read
 - **Git root caching**: Cached to avoid repeated syscalls
 - **Keymap tracking**: Panels register keymaps through `ui/util.lua`'s buffer mapper so `?` can render the help overlay from the same list
 - **Highlight defaults**: Groups in `highlights.lua` use the `ui/palette.lua` colors and are set with `default = true`, and re-applied on `ColorScheme` so they survive a theme change
