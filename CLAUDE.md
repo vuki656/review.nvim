@@ -40,7 +40,7 @@ Test files live in `tests/` and follow the naming convention `test_<module>.lua`
 
 Shared fixtures and factories are in `tests/helpers.lua`.
 
-Tested modules: `comment_types`, `config`, `core/diff`, `core/format`, `core/json_persistence`, `core/limits`, `core/paths`, `core/watcher` (only `is_ignored_path`), `export/markdown`, `quick_comments/init` (send), `quick_comments/markdown`, `quick_comments/panel` (send keymap), `quick_comments/state`, `state`, `ui/panel_keymaps`. `core/git` is tested only for its pure parsers (`tests/test_git_parse.lua` covers name-status and commit-line parsing); everything in it that shells out to git is not.
+Tested modules: `comment_types`, `config`, `core/diff`, `core/format`, `core/json_persistence`, `core/limits`, `core/paths`, `core/watcher` (only `is_ignored_path`), `export/markdown`, `quick_comments/init` (send), `quick_comments/markdown`, `quick_comments/panel` (send keymap), `quick_comments/state`, `state`, `ui/panel_keymaps`. `core/git` is tested only for its pure parsers (`tests/test_git_parse.lua` covers name-status, numstat and commit-line parsing); everything in it that shells out to git is not.
 
 Not tested (integration-heavy): `core/async`, `core/log`, `core/persistence`, `core/watcher` (start/stop), `commands`, `health`, `quick_comments/persistence`, `quick_comments/signs`, `ui/*` (except `ui/panel_keymaps`).
 
@@ -68,7 +68,7 @@ lua/review/
 ├── ui/
 │   ├── init.lua                # UI orchestration (open/close/toggle), wires panel callbacks
 │   ├── layout.lua              # Floating-window tab layout (sidebar floats + diff pane)
-│   ├── file_tree.lua           # Files panel: file list with status icons
+│   ├── file_tree.lua           # Files panel: file list with status icons and line stats
 │   ├── diff_view.lua           # Diff pane: diff, inline comments, comment input
 │   ├── comment_list.lua        # Comments panel
 │   ├── commit_list.lua         # Commits panel

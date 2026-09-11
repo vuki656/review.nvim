@@ -130,8 +130,10 @@ the diff on the right. >
     ├─ Comments ──────┤│                               │
     └─────────────────┘└───────────────────────────────┘
 <
-Branch is a read-only line naming the current branch. Files, Branches,
-Commits and Comments are focusable panels. The sidebar takes a percentage of
+Branch is a read-only line naming the current branch. Files lists every
+changed file with its `+added -deleted` line counts and shows the totals in
+its title (see `ui.line_stats`). Files, Branches, Commits and Comments are
+focusable panels. The sidebar takes a percentage of
 the screen width set by `ui.file_tree_width`.
 
 <Tab> cycles Files -> Branches -> Commits -> Comments -> Files. `h` and `l`
@@ -419,6 +421,7 @@ need the keys you want to change. The complete defaults: >lua
             file_tree_width = 33,
             diff_view_mode = "unified",
             number_navigation = false,
+            line_stats = true,
             panels = { "branch_info", "file_tree", "branch_list", "commit_list", "comment_list" },
         },
         tmux = {
@@ -491,6 +494,11 @@ ui.number_navigation ~
     `1`-`n` focus the sidebar panels top to bottom and `0` focuses the diff
     pane. Disabled by default so normal-mode counts and `0` retain their usual
     behavior unless explicitly enabled.
+
+ui.line_stats ~
+    Show `+added -deleted` line counts after each file in the Files panel and
+    the totals in its title. Enabled by default; set to `false` for a plain
+    file list.
 
 ui.panels ~
     Sidebar panels to display. Accepts a list of panel names/aliases (e.g.,

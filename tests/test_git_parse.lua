@@ -160,4 +160,53 @@ unquote["rename line with quoted paths is decoded"] = function()
     expect.equality(entry.path, 'new"name.txt')
 end
 
+local numstat = new_set()
+T["numstat"] = numstat
+
+numstat["modified file"] = function()
+    local entry = git.parse_numstat_line("12\t3\tlua/init.lua")
+    expect.equality(entry.added, 12)
+    expect.equality(entry.deleted, 3)
+    expect.equality(entry.path, "lua/init.lua")
+end
+
+numstat["binary file has no counts"] = function()
+    local entry = git.parse_numstat_line("-\t-\tassets/logo.png")
+    expect.equality(entry.added, nil)
+    expect.equality(entry.deleted, nil)
+    expect.equality(entry.path, "assets/logo.png")
+end
+
+numstat["rename inside a directory resolves to the new path"] = function()
+    local entry = git.parse_numstat_line("1\t1\tlua/{old => new}/init.lua")
+    expect.equality(entry.path, "lua/new/init.lua")
+end
+
+numstat["rename that drops a directory resolves to the new path"] = function()
+    local entry = git.parse_numstat_line("0\t0\tlua/{sub => }/init.lua")
+    expect.equality(entry.path, "lua/init.lua")
+end
+
+numstat["whole-path rename resolves to the new path"] = function()
+    local entry = git.parse_numstat_line("0\t0\told.txt => new.txt")
+    expect.equality(entry.path, "new.txt")
+end
+
+numstat["path containing spaces stays intact"] = function()
+    local entry = git.parse_numstat_line("2\t0\tfile with spaces.txt")
+    expect.equality(entry.path, "file with spaces.txt")
+end
+
+numstat["quoted path is decoded"] = function()
+    local entry = git.parse_numstat_line('1\t0\t"we\\"ird.txt"')
+    expect.equality(entry.path, 'we"ird.txt')
+end
+
+numstat["empty and malformed input"] = function()
+    expect.equality(git.parse_numstat_line(""), nil)
+    expect.equality(git.parse_numstat_line(nil), nil)
+    expect.equality(git.parse_numstat_line("garbage"), nil)
+    expect.equality(git.parse_numstat_line("12\tlua/init.lua"), nil)
+end
+
 return T

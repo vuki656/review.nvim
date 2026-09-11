@@ -1,4 +1,5 @@
 local async = require("review.core.async")
+local config = require("review.config")
 local git = require("review.core.git")
 local log = require("review.core.log")
 local paths = require("review.core.paths")
@@ -51,7 +52,7 @@ local active_timers = {
 local SELECT_DEBOUNCE_MS = 120
 
 -- Footer state
-local footer_state = { unpushed_count = nil }
+local footer_state = { unpushed_count = nil, line_totals = nil }
 local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 
 ---@class FileNode
@@ -73,6 +74,9 @@ local SPINNER_FRAMES = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧",
 ---@field file_icon_end number
 ---@field filename_start number
 ---@field filename_end number
+---@field stats_start number|nil Start of the " +N −M" line stats, nil when not shown
+---@field stats_added_end number|nil End of the " +N" part
+---@field stats_end number|nil End of the line stats
 
 ---Check if a file is "non-important" (tests, index/barrel, config, type defs)
 ---@param path string
@@ -190,6 +194,52 @@ local function get_git_status_hl(git_status)
     end
 end
 
+---Text shown after a filename for its line stats, e.g. " +12 −3". Binary
+---files have no counts and get nothing.
+---@param line_stats GitLineStats|nil
+---@return string text
+---@return number added_len Byte length of the " +N" part, 0 when nothing is shown
+local function format_line_stats(line_stats)
+    if not line_stats or line_stats.added == nil or line_stats.deleted == nil then
+        return "", 0
+    end
+
+    local added_part = " +" .. line_stats.added
+    local deleted_part = " −" .. line_stats.deleted
+    return added_part .. deleted_part, #added_part
+end
+
+---Totals over the listed files for the Files title
+---@param files string[]
+---@param line_stats_map table<string, GitLineStats>|nil
+---@return { added: number, deleted: number }|nil totals nil when stats are disabled or there are no files
+local function sum_line_stats(files, line_stats_map)
+    if not line_stats_map or #files == 0 then
+        return nil
+    end
+
+    local totals = { added = 0, deleted = 0 }
+    for _, file in ipairs(files) do
+        local line_stats = line_stats_map[file]
+        if line_stats then
+            totals.added = totals.added + (line_stats.added or 0)
+            totals.deleted = totals.deleted + (line_stats.deleted or 0)
+        end
+    end
+    return totals
+end
+
+---Line stats for the current comparison range, or nil when `ui.line_stats`
+---is off. Must run inside async.run().
+---@param files string[]
+---@return table<string, GitLineStats>|nil
+local function fetch_line_stats_async(files)
+    if not config.get().ui.line_stats then
+        return nil
+    end
+    return git.get_line_stats_async(files, state.state.base, state.state.base_end)
+end
+
 ---Create a single file node
 ---@param file string
 ---@param in_reviewed_section boolean Whether file is in the reviewed section (filename faded)
@@ -197,8 +247,9 @@ end
 ---@param base string|nil Base commit for git status comparison
 ---@param git_status GitFileStatus|nil Pre-fetched git status (avoids subprocess call if provided)
 ---@param old_path string|nil Original path for renamed files
+---@param line_stats GitLineStats|nil Added/deleted line counts to show after the filename
 ---@return FileNode
-local function create_file_node(file, in_reviewed_section, in_deleted_section, base, git_status, old_path)
+local function create_file_node(file, in_reviewed_section, in_deleted_section, base, git_status, old_path, line_stats)
     local is_history_mode = base ~= nil and base ~= "HEAD"
     -- In history mode, don't show reviewed state
     local reviewed = not is_history_mode and state.is_reviewed(file)
@@ -224,12 +275,14 @@ local function create_file_node(file, in_reviewed_section, in_deleted_section, b
     local dot_part = "● "
     local file_icon_part = file_icon .. " "
     local filename_part = filename
-    local text = padding .. checkbox_part .. dot_part .. file_icon_part .. filename_part .. path_suffix
+    local stats_text, stats_added_len = format_line_stats(line_stats)
+    local text = padding .. checkbox_part .. dot_part .. file_icon_part .. filename_part .. stats_text .. path_suffix
 
     local offset = #padding
     local checkbox_start = not is_history_mode and offset or nil
     local checkbox_end = not is_history_mode and (offset + #checkbox_part) or nil
     local dot_offset = offset + #checkbox_part
+    local filename_end = dot_offset + #dot_part + #file_icon_part + #filename_part
     return {
         path = file,
         text = text,
@@ -247,7 +300,10 @@ local function create_file_node(file, in_reviewed_section, in_deleted_section, b
         file_icon_start = dot_offset + #dot_part,
         file_icon_end = dot_offset + #dot_part + #file_icon_part,
         filename_start = dot_offset + #dot_part + #file_icon_part,
-        filename_end = dot_offset + #dot_part + #file_icon_part + #filename_part,
+        filename_end = filename_end,
+        stats_start = stats_text ~= "" and filename_end or nil,
+        stats_added_end = stats_text ~= "" and (filename_end + stats_added_len) or nil,
+        stats_end = stats_text ~= "" and (filename_end + #stats_text) or nil,
     }
 end
 
@@ -302,9 +358,11 @@ end
 ---@param base string|nil Base commit for comparison
 ---@param base_end string|nil End of commit range
 ---@param cached_unstaged_set table<string, boolean>|nil Pre-fetched unstaged set (avoids duplicate call)
+---@param line_stats_map table<string, GitLineStats>|nil Pre-fetched line stats per file, nil when disabled
 ---@return FileNode[]
-local function create_nodes(files, base, base_end, cached_unstaged_set)
+local function create_nodes(files, base, base_end, cached_unstaged_set, line_stats_map)
     local is_history_mode = base ~= nil and base ~= "HEAD"
+    line_stats_map = line_stats_map or {}
 
     -- Batch fetch all git statuses in one call (major perf win)
     local status_map, rename_map = git.get_all_file_statuses(files, base, base_end)
@@ -364,13 +422,23 @@ local function create_nodes(files, base, base_end, cached_unstaged_set)
         local regular, non_important = partition_files(file_list)
         for _, file in ipairs(regular) do
             local old_path = use_rename and rename_map[file] or nil
-            table.insert(nodes, create_file_node(file, in_reviewed, in_deleted, base, status_map[file], old_path))
+            local node =
+                create_file_node(file, in_reviewed, in_deleted, base, status_map[file], old_path, line_stats_map[file])
+            table.insert(nodes, node)
         end
         if #non_important > 0 then
             table.insert(nodes, create_sub_separator_node())
             for _, file in ipairs(non_important) do
                 local old_path = use_rename and rename_map[file] or nil
-                local node = create_file_node(file, in_reviewed, in_deleted, base, status_map[file], old_path)
+                local node = create_file_node(
+                    file,
+                    in_reviewed,
+                    in_deleted,
+                    base,
+                    status_map[file],
+                    old_path,
+                    line_stats_map[file]
+                )
                 node.is_non_important = true
                 table.insert(nodes, node)
             end
@@ -415,9 +483,11 @@ end
 ---@param base string|nil Base commit for comparison
 ---@param base_end string|nil End of commit range
 ---@param _cached_unstaged_set table<string, boolean>|nil Pre-fetched unstaged set (unused in tree view)
+---@param line_stats_map table<string, GitLineStats>|nil Pre-fetched line stats per file, nil when disabled
 ---@return FileNode[]
-local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
+local function create_tree_nodes(files, base, base_end, _cached_unstaged_set, line_stats_map)
     local is_history_mode = base ~= nil and base ~= "HEAD"
+    line_stats_map = line_stats_map or {}
 
     -- Batch fetch all git statuses in one call (major perf win)
     local status_map = git.get_all_file_statuses(files, base, base_end)
@@ -532,12 +602,14 @@ local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
             local checkbox_part = is_history_mode and "" or (reviewed and "󰄵 " or "󰄱 ")
             local dot_part = "● "
             local left_pad = " "
-            local text = left_pad .. indent .. checkbox_part .. dot_part .. file_icon .. " " .. name
+            local stats_text, stats_added_len = format_line_stats(line_stats_map[file])
+            local text = left_pad .. indent .. checkbox_part .. dot_part .. file_icon .. " " .. name .. stats_text
 
             local offset = #left_pad + #indent
             local checkbox_start = not is_history_mode and offset or nil
             local checkbox_end = not is_history_mode and (offset + #checkbox_part) or nil
             local dot_offset = offset + #checkbox_part
+            local filename_end = #text - #stats_text
             table.insert(nodes, {
                 path = file,
                 text = text,
@@ -558,7 +630,10 @@ local function create_tree_nodes(files, base, base_end, _cached_unstaged_set)
                 file_icon_start = dot_offset + #dot_part,
                 file_icon_end = dot_offset + #dot_part + #file_icon + 1,
                 filename_start = dot_offset + #dot_part + #file_icon + 1,
-                filename_end = #text,
+                filename_end = filename_end,
+                stats_start = stats_text ~= "" and filename_end or nil,
+                stats_added_end = stats_text ~= "" and (filename_end + stats_added_len) or nil,
+                stats_end = stats_text ~= "" and (filename_end + #stats_text) or nil,
             })
         else
             -- It's a directory
@@ -706,7 +781,13 @@ local function update_winbar(winid, file_count, is_refreshing)
     local suffix = is_refreshing and " [refreshing...]" or ""
     local unpushed = footer_state.unpushed_count
     local unpushed_suffix = unpushed and unpushed > 0 and (" ↑" .. unpushed) or ""
-    local title = "  Files (" .. file_count .. ")" .. suffix .. unpushed_suffix .. " "
+    local title = { { "  Files (" .. file_count .. ")" .. suffix .. unpushed_suffix } }
+    local totals = footer_state.line_totals
+    if totals then
+        table.insert(title, { " +" .. totals.added, "ReviewGitAdded" })
+        table.insert(title, { " −" .. totals.deleted, "ReviewGitDeleted" })
+    end
+    table.insert(title, { " " })
     pcall(vim.api.nvim_win_set_config, winid, { title = title, title_pos = "left" })
 end
 
@@ -847,6 +928,27 @@ local function render_to_buffer(bufnr, nodes, winid)
                 or (node.is_non_important and "ReviewFileFaded" or "ReviewFilePath")
             vim.api.nvim_buf_add_highlight(bufnr, -1, filename_hl, i - 1, node.filename_start, node.filename_end)
             vim.api.nvim_buf_add_highlight(bufnr, -1, "ReviewFilePathFaded", i - 1, node.filename_end, -1)
+
+            -- Line stats sit right after the filename; added later than the
+            -- faded path highlight so they win over it
+            if node.stats_start then
+                vim.api.nvim_buf_add_highlight(
+                    bufnr,
+                    -1,
+                    "ReviewGitAdded",
+                    i - 1,
+                    node.stats_start,
+                    node.stats_added_end
+                )
+                vim.api.nvim_buf_add_highlight(
+                    bufnr,
+                    -1,
+                    "ReviewGitDeleted",
+                    i - 1,
+                    node.stats_added_end,
+                    node.stats_end
+                )
+            end
         end
     end
 
@@ -1754,9 +1856,10 @@ function M.create(layout_component, callbacks)
     async.run(function()
         local files = git.get_changed_files_async(state.state.base, state.state.base_end)
 
-        -- Fetch staged + unstaged sets concurrently
+        -- Fetch staged + unstaged sets and line stats concurrently
         local unstaged_set = {}
         local staged_set = {}
+        local line_stats_map
         if not state.state.base_end then
             local batch_results = async.all({
                 function()
@@ -1765,9 +1868,15 @@ function M.create(layout_component, callbacks)
                 function()
                     return git.get_staged_files_async()
                 end,
+                function()
+                    return fetch_line_stats_async(files)
+                end,
             })
             unstaged_set = batch_results[1]
             staged_set = batch_results[2]
+            line_stats_map = batch_results[3]
+        else
+            line_stats_map = fetch_line_stats_async(files)
         end
 
         -- Discard stale results
@@ -1790,9 +1899,9 @@ function M.create(layout_component, callbacks)
         -- Create nodes (sync — just CPU, no I/O)
         local nodes
         if M.view_mode == "tree" then
-            nodes = create_tree_nodes(files, state.state.base, state.state.base_end, unstaged_set)
+            nodes = create_tree_nodes(files, state.state.base, state.state.base_end, unstaged_set, line_stats_map)
         else
-            nodes = create_nodes(files, state.state.base, state.state.base_end, unstaged_set)
+            nodes = create_nodes(files, state.state.base, state.state.base_end, unstaged_set, line_stats_map)
         end
 
         -- Final staleness check before rendering
@@ -1805,6 +1914,7 @@ function M.create(layout_component, callbacks)
 
         M.current.files = files
         M.current.nodes = nodes
+        footer_state.line_totals = sum_line_stats(files, line_stats_map)
 
         render_to_buffer(bufnr, nodes, layout_component.winid)
         update_winbar(layout_component.winid, #files)
@@ -1864,6 +1974,7 @@ function M.refresh(on_complete)
 
         local history_mode = state.is_history_mode()
         local unstaged_set = {}
+        local line_stats_map
         if not history_mode and not state.state.base_end then
             local batch_results = async.all({
                 function()
@@ -1872,9 +1983,13 @@ function M.refresh(on_complete)
                 function()
                     return git.get_staged_files_async()
                 end,
+                function()
+                    return fetch_line_stats_async(files)
+                end,
             })
             unstaged_set = batch_results[1]
             local staged_set = batch_results[2]
+            line_stats_map = batch_results[3]
 
             -- Discard stale results before mutating state
             if current_generation ~= generation then
@@ -1890,6 +2005,8 @@ function M.refresh(on_complete)
                 state.set_reviewed(file, is_staged and not has_unstaged)
             end
         else
+            line_stats_map = fetch_line_stats_async(files)
+
             if current_generation ~= generation then
                 return
             end
@@ -1901,9 +2018,9 @@ function M.refresh(on_complete)
         -- Create nodes (sync — just CPU, no I/O)
         local nodes
         if M.view_mode == "tree" then
-            nodes = create_tree_nodes(files, state.state.base, state.state.base_end, unstaged_set)
+            nodes = create_tree_nodes(files, state.state.base, state.state.base_end, unstaged_set, line_stats_map)
         else
-            nodes = create_nodes(files, state.state.base, state.state.base_end, unstaged_set)
+            nodes = create_nodes(files, state.state.base, state.state.base_end, unstaged_set, line_stats_map)
         end
 
         -- Final staleness check
@@ -1916,6 +2033,7 @@ function M.refresh(on_complete)
 
         M.current.files = files
         M.current.nodes = nodes
+        footer_state.line_totals = sum_line_stats(files, line_stats_map)
 
         render_to_buffer(bufnr, nodes, winid)
         update_winbar(winid, #files)

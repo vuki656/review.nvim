@@ -17,6 +17,7 @@ T["setup with no args uses defaults"] = function()
     expect.equality(config.get().diff.base, "HEAD")
     expect.equality(config.get().ui.file_tree_width, 33)
     expect.equality(config.get().ui.number_navigation, false)
+    expect.equality(config.get().ui.line_stats, true)
     expect.equality(config.get().tmux.auto_enter, false)
 end
 
@@ -40,6 +41,12 @@ end
 T["numeric section navigation can be enabled"] = function()
     config.setup({ ui = { number_navigation = true } })
     expect.equality(config.get().ui.number_navigation, true)
+end
+
+T["line stats can be disabled"] = function()
+    config.setup({ ui = { line_stats = false } })
+    expect.equality(config.get().ui.line_stats, false)
+    expect.equality(config.get().ui.number_navigation, false)
 end
 
 T["deep nested override preserves siblings"] = function()
