@@ -208,26 +208,33 @@ local function format_line_stats(line_stats)
     local deleted_part = " −" .. line_stats.deleted
     return added_part .. deleted_part, #added_part
 end
+M._format_line_stats = format_line_stats
 
----Totals over the listed files for the Files title
+---Totals over the listed files for the Files title. Nil when stats are
+---disabled, failed (nil map, or the `{ code = ... }` sentinel async.all
+---substitutes for a crashed task), or no listed file has a count, so the
+---title never claims `+0 −0` for changes it could not measure.
 ---@param files string[]
 ---@param line_stats_map table<string, GitLineStats>|nil
----@return { added: number, deleted: number }|nil totals nil when stats are disabled or there are no files
+---@return { added: number, deleted: number }|nil
 local function sum_line_stats(files, line_stats_map)
-    if not line_stats_map or #files == 0 then
+    if type(line_stats_map) ~= "table" or line_stats_map.code ~= nil or #files == 0 then
         return nil
     end
 
     local totals = { added = 0, deleted = 0 }
+    local seen = false
     for _, file in ipairs(files) do
         local line_stats = line_stats_map[file]
         if line_stats then
+            seen = true
             totals.added = totals.added + (line_stats.added or 0)
             totals.deleted = totals.deleted + (line_stats.deleted or 0)
         end
     end
-    return totals
+    return seen and totals or nil
 end
+M._sum_line_stats = sum_line_stats
 
 ---Line stats for the current comparison range, or nil when `ui.line_stats`
 ---is off. Must run inside async.run().

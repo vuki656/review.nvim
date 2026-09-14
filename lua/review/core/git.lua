@@ -150,44 +150,43 @@ end
 
 ---@class GitNumstat : GitLineStats
 ---@field path string Path the counts apply to (the new path for renames and copies)
+---@field rename_from string|nil Original path for renames and copies
 
----Resolve the path column of `git diff --numstat` output, which for renames
----and copies is either `old => new` or `dir/{old => new}/rest`
----@param raw string
----@return string
-local function numstat_new_path(raw)
-    local prefix, new_part, suffix = raw:match("^(.-){[^}]- => ([^}]*)}(.*)$")
-    if prefix then
-        -- An empty new part (`lua/{sub => }/init.lua`) leaves a doubled slash
-        return (prefix .. new_part .. suffix):gsub("//+", "/")
+---Parse the output of `git diff --numstat -z`. Each entry is
+---`added\tdeleted\tpath\0`; a rename or copy instead has an empty path and is
+---followed by the old and the new path as two more NUL-terminated fields.
+---With `-z` git never quotes paths, so `}` or ` => ` in a filename is safe.
+---@param stdout string
+---@return GitNumstat[]
+function M.parse_numstat_output(stdout)
+    local entries = {}
+    local fields = vim.split(stdout or "", "\0", { plain = true })
+
+    local index = 1
+    while index <= #fields do
+        local field = fields[index]
+        index = index + 1
+
+        local added, deleted, path = field:match("^(%S+)\t(%S+)\t(.*)$")
+        if added and deleted then
+            local rename_from = nil
+            if path == "" then
+                rename_from = fields[index]
+                path = fields[index + 1]
+                index = index + 2
+            end
+            if path and path ~= "" then
+                table.insert(entries, {
+                    added = tonumber(added),
+                    deleted = tonumber(deleted),
+                    path = path,
+                    rename_from = rename_from,
+                })
+            end
+        end
     end
 
-    local whole_new = raw:match("^.- => (.+)$")
-    if whole_new then
-        return whole_new
-    end
-
-    return raw
-end
-
----Parse a single line of `git diff --numstat` output
----@param line string
----@return GitNumstat|nil
-function M.parse_numstat_line(line)
-    if not line or line == "" then
-        return nil
-    end
-
-    local added, deleted, raw_path = line:match("^(%S+)\t(%S+)\t(.+)$")
-    if not added or not deleted or not raw_path or raw_path == "" then
-        return nil
-    end
-
-    return {
-        added = tonumber(added),
-        deleted = tonumber(deleted),
-        path = M.unquote_path(numstat_new_path(raw_path)),
-    }
+    return entries
 end
 
 ---Record a parsed name-status line into status and rename maps
@@ -469,29 +468,85 @@ local function untracked_diff(git_root, file)
     return { success = true, output = table.concat(diff_lines, "\n"), error = nil }
 end
 
----Line stats for an untracked file, mirroring the add-only diff untracked_diff
----synthesizes for it. Binary, oversized and unreadable files count as binary.
+local LINE_COUNT_CHUNK_BYTES = 64 * 1024
+
+---Count the lines of a text file the way git counts a new file: newlines,
+---plus one for a last line without a trailing newline. Reads in chunks so no
+---per-line table is built. Returns nil for binary content (a NUL byte
+---anywhere, the same rule untracked_diff applies) or a read error.
+---@param full_path string
+---@return number|nil
+local function count_text_lines(full_path)
+    local fd = vim.uv.fs_open(full_path, "r", 438)
+    if not fd then
+        return nil
+    end
+
+    local lines = 0
+    local last_byte = nil
+    local offset = 0
+    while true do
+        local ok, chunk = pcall(vim.uv.fs_read, fd, LINE_COUNT_CHUNK_BYTES, offset)
+        if not ok or chunk == nil or chunk:find("\0", 1, true) then
+            vim.uv.fs_close(fd)
+            return nil
+        end
+        if chunk == "" then
+            break
+        end
+
+        local _, newlines = chunk:gsub("\n", "")
+        lines = lines + newlines
+        last_byte = chunk:sub(-1)
+        offset = offset + #chunk
+    end
+    vim.uv.fs_close(fd)
+
+    if last_byte ~= nil and last_byte ~= "\n" then
+        lines = lines + 1
+    end
+    return lines
+end
+
+---Untracked line counts keyed by absolute path and validated by size and
+---mtime, so a refresh only re-reads files that changed
+local untracked_stats_cache = {}
+
+---Line stats for an untracked file, mirroring the add-only diff
+---untracked_diff synthesizes for it. Anything without a trustworthy count
+---(binary, oversized, unreadable, not a regular file) has nil counts, never a
+---made-up zero.
 ---@param git_root string
 ---@param file string File path relative to git root
 ---@return GitLineStats
 local function untracked_line_stats(git_root, file)
     local full_path = git_root .. "/" .. file
+    local no_counts = { added = nil, deleted = nil }
 
     local stat = vim.uv.fs_stat(full_path)
-    if not stat or stat.type ~= "file" then
-        return { added = 0, deleted = 0 }
+    if not stat or stat.type ~= "file" or limits.is_too_large(stat.size, limits.MAX_DIFF_BYTES) then
+        return no_counts
     end
 
-    if limits.is_too_large(stat.size, limits.MAX_DIFF_BYTES) or limits.is_binary_chunk(read_probe(full_path)) then
-        return { added = nil, deleted = nil }
+    local cached = untracked_stats_cache[full_path]
+    if
+        cached
+        and cached.size == stat.size
+        and cached.mtime_sec == stat.mtime.sec
+        and cached.mtime_nsec == stat.mtime.nsec
+    then
+        return cached.stats
     end
 
-    local read_ok, content = pcall(vim.fn.readfile, full_path)
-    if not read_ok or not content then
-        return { added = nil, deleted = nil }
-    end
-
-    return { added = #content, deleted = 0 }
+    local added = count_text_lines(full_path)
+    local stats = added and { added = added, deleted = 0 } or no_counts
+    untracked_stats_cache[full_path] = {
+        size = stat.size,
+        mtime_sec = stat.mtime.sec,
+        mtime_nsec = stat.mtime.nsec,
+        stats = stats,
+    }
+    return stats
 end
 
 local rename_source_cache = {}
@@ -2088,47 +2143,84 @@ function M.get_all_file_statuses_async(files, base, base_end)
     return result_map, result_rename_map
 end
 
----Async: added/deleted line counts for the given files, from one
----`git diff --numstat` call over the same range the file list was built from.
----Untracked files are counted from disk. Files git reports nothing for are
----left out of the result.
+---Async: added/deleted line counts for the given files over the same range
+---the file list was built from. The file list unions three sources, so the
+---counts do too: `git diff --numstat` against the base for tracked changes,
+---`--cached` numstat for files whose only change is staged (HEAD base only,
+---the case get_diff handles as is_staged_only), and the disk for untracked
+---files. Files none of them report on are left out. Returns nil when the
+---numstat call fails, so an unknown count never turns into an invented one.
 ---@param files string[] List of file paths relative to git root
 ---@param base string|nil Base commit to compare against (default: HEAD)
 ---@param base_end string|nil End of commit range
----@return table<string, GitLineStats>
+---@return table<string, GitLineStats>|nil
 function M.get_line_stats_async(files, base, base_end)
     if not M.is_safe_rev(base) or not M.is_safe_rev(base_end) then
         log.error("get_line_stats_async: refusing unsafe revision")
-        return {}
+        return nil
     end
 
     base = base or "HEAD"
     local git_root = M.get_root()
     if not git_root then
-        return {}
+        return nil
     end
 
+    local function numstat_cmd(target)
+        return { "git", "--literal-pathspecs", "diff", "-M", "--numstat", "-z", target }
+    end
+    local skipped = { code = 0, stdout = "" }
+
     local range = base_end and (base .. "..." .. base_end) or base
-    local result = async.system(
-        { "git", "-c", "core.quotepath=false", "--literal-pathspecs", "diff", "-M", "--numstat", range },
-        { text = true, cwd = git_root }
-    )
+    local results = async.all({
+        function()
+            return async.system(numstat_cmd(range), { text = true, cwd = git_root })
+        end,
+        function()
+            if base_end or base ~= "HEAD" then
+                return skipped
+            end
+            return async.system(numstat_cmd("--cached"), { text = true, cwd = git_root })
+        end,
+        function()
+            if base_end then
+                return skipped
+            end
+            return async.system({
+                "git",
+                "-c",
+                "core.quotepath=false",
+                "--literal-pathspecs",
+                "ls-files",
+                "--others",
+                "--exclude-standard",
+            }, { text = true, cwd = git_root })
+        end,
+    })
+    local range_result, staged_result, untracked_result = results[1], results[2], results[3]
+
+    if range_result.code ~= 0 then
+        log.error("get_line_stats_async: numstat failed for", range, vim.trim(range_result.stderr or ""))
+        return nil
+    end
 
     local stats = {}
-    if result.code == 0 then
-        for line in parse_lines(result.stdout) do
-            local entry = M.parse_numstat_line(line)
-            if entry then
+    for _, entry in ipairs(M.parse_numstat_output(range_result.stdout)) do
+        stats[entry.path] = { added = entry.added, deleted = entry.deleted }
+    end
+
+    if staged_result.code == 0 then
+        for _, entry in ipairs(M.parse_numstat_output(staged_result.stdout)) do
+            if not stats[entry.path] then
                 stats[entry.path] = { added = entry.added, deleted = entry.deleted }
             end
         end
     end
 
-    -- Without a range end the file list also carries untracked files, which
-    -- `git diff` cannot report on
-    if not base_end then
+    if untracked_result.code == 0 then
+        local untracked = parse_name_set(untracked_result.stdout)
         for _, file in ipairs(files) do
-            if not stats[file] then
+            if not stats[file] and untracked[file] then
                 stats[file] = untracked_line_stats(git_root, file)
             end
         end

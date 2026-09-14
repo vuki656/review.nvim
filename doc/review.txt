@@ -131,7 +131,7 @@ the diff on the right. >
     └─────────────────┘└───────────────────────────────┘
 <
 Branch is a read-only line naming the current branch. Files lists every
-changed file with its `+added -deleted` line counts and shows the totals in
+changed file with its `+added −deleted` line counts and shows the totals in
 its title (see `ui.line_stats`). Files, Branches, Commits and Comments are
 focusable panels. The sidebar takes a percentage of
 the screen width set by `ui.file_tree_width`.
@@ -496,7 +496,7 @@ ui.number_navigation ~
     behavior unless explicitly enabled.
 
 ui.line_stats ~
-    Show `+added -deleted` line counts after each file in the Files panel and
+    Show `+added −deleted` line counts after each file in the Files panel and
     the totals in its title. Enabled by default; set to `false` for a plain
     file list.
 
