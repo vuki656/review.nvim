@@ -160,4 +160,61 @@ unquote["rename line with quoted paths is decoded"] = function()
     expect.equality(entry.path, 'new"name.txt')
 end
 
+local numstat = new_set()
+T["numstat"] = numstat
+
+numstat["modified file"] = function()
+    local entries = git.parse_numstat_output("12\t3\tlua/init.lua\0")
+    expect.equality(#entries, 1)
+    expect.equality(entries[1].added, 12)
+    expect.equality(entries[1].deleted, 3)
+    expect.equality(entries[1].path, "lua/init.lua")
+    expect.equality(entries[1].rename_from, nil)
+end
+
+numstat["binary file has no counts"] = function()
+    local entries = git.parse_numstat_output("-\t-\tassets/logo.png\0")
+    expect.equality(entries[1].added, nil)
+    expect.equality(entries[1].deleted, nil)
+    expect.equality(entries[1].path, "assets/logo.png")
+end
+
+numstat["rename carries old and new path as separate fields"] = function()
+    local entries = git.parse_numstat_output("1\t1\t\0lua/old/init.lua\0lua/new/init.lua\0")
+    expect.equality(#entries, 1)
+    expect.equality(entries[1].path, "lua/new/init.lua")
+    expect.equality(entries[1].rename_from, "lua/old/init.lua")
+end
+
+numstat["rename followed by a plain entry"] = function()
+    local entries = git.parse_numstat_output("0\t0\t\0a.txt\0b.txt\0005\t2\tc.txt\0")
+    expect.equality(#entries, 2)
+    expect.equality(entries[1].path, "b.txt")
+    expect.equality(entries[1].rename_from, "a.txt")
+    expect.equality(entries[2].path, "c.txt")
+    expect.equality(entries[2].added, 5)
+end
+
+numstat["paths with spaces, braces and arrows stay intact"] = function()
+    local entries = git.parse_numstat_output("2\t0\tdir/{weird => name}.txt\0001\t0\tfile with spaces.txt\0")
+    expect.equality(entries[1].path, "dir/{weird => name}.txt")
+    expect.equality(entries[2].path, "file with spaces.txt")
+end
+
+numstat["non-ascii path is not quoted"] = function()
+    local entries = git.parse_numstat_output("1\t0\tcafé.txt\0")
+    expect.equality(entries[1].path, "café.txt")
+end
+
+numstat["empty and malformed input"] = function()
+    expect.equality(git.parse_numstat_output(""), {})
+    expect.equality(git.parse_numstat_output(nil), {})
+    expect.equality(git.parse_numstat_output("garbage\0"), {})
+    expect.equality(git.parse_numstat_output("12\tlua/init.lua\0"), {})
+end
+
+numstat["truncated rename is skipped"] = function()
+    expect.equality(git.parse_numstat_output("1\t1\t\0only-old.txt\0"), {})
+end
+
 return T

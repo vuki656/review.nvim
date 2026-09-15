@@ -21,6 +21,7 @@
 ---@field file_tree_width number Width of file tree panel (percentage)
 ---@field diff_view_mode "unified"|"split" Default diff view mode
 ---@field number_navigation boolean Whether to enable numeric section navigation
+---@field line_stats boolean Show added/deleted line counts per file and in the Files title
 ---@field panels (string[]|table<string, boolean>)|nil Panels to show in sidebar
 
 ---@class ReviewTmuxConfig
@@ -144,6 +145,7 @@ M.defaults = {
         file_tree_width = 33,
         diff_view_mode = "unified",
         number_navigation = false,
+        line_stats = true,
         panels = { "branch_info", "file_tree", "branch_list", "commit_list", "comment_list" },
     },
     tmux = {

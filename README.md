@@ -106,7 +106,7 @@ lua require("review").setup({})
 └─────────────────┘└───────────────────────────────┘
 ```
 
-**Branch** is a read-only line showing the current branch. **Files**, **Branches**, **Commits** and **Comments** are focusable. `<Tab>` cycles Files → Branches → Commits → Comments → Files; `h`/`l` walk the same chain with wrapping; `<C-l>` jumps from any sidebar panel to the diff, `<C-h>` from the diff back to Files. Set `ui.number_navigation = true` to use `1`–`n` to focus the sidebar panels top to bottom, and `0` for the diff.
+**Branch** is a read-only line showing the current branch. **Files** lists every changed file with its `+added −deleted` line counts and shows the totals in its title (see `ui.line_stats`). **Files**, **Branches**, **Commits** and **Comments** are focusable. `<Tab>` cycles Files → Branches → Commits → Comments → Files; `h`/`l` walk the same chain with wrapping; `<C-l>` jumps from any sidebar panel to the diff, `<C-h>` from the diff back to Files. Set `ui.number_navigation = true` to use `1`–`n` to focus the sidebar panels top to bottom, and `0` for the diff.
 
 ## 🤖 Commands
 
@@ -306,6 +306,7 @@ require("review").setup({
         file_tree_width = 33,
         diff_view_mode = "unified",
         number_navigation = false,
+        line_stats = true,
         panels = { "branch_info", "file_tree", "branch_list", "commit_list", "comment_list" },
     },
     tmux = {
@@ -359,6 +360,7 @@ The `nil` entries are unset by default. No global keymaps are created unless you
 - `ui.file_tree_width`: sidebar width as a **percentage** of total columns, not a column count.
 - `ui.diff_view_mode`: `"unified"` or `"split"` (side-by-side) on open. `S` toggles at runtime.
 - `ui.number_navigation`: enable `1`–`n` to focus the sidebar panels top to bottom and `0` to focus the diff. Disabled by default so normal-mode counts and `0` retain their usual behavior unless you opt in.
+- `ui.line_stats`: show `+added −deleted` line counts after each file in the Files panel, and the totals in its title. Enabled by default; set to `false` for a plain file list.
 - `ui.panels`: sidebar panels to display. Can be a list of panel names (e.g. `{ "file_tree", "comment_list" }` or `{ "files", "comments" }`) or a table of boolean toggles (e.g. `{ branch = false, branches = false, commits = false }`). Defaults to showing all panels (`branch_info`, `file_tree`, `branch_list`, `commit_list`, `comment_list`). Note that the Files panel (`file_tree`) cannot be disabled.
 - `tmux.target`: tmux target that `:Review send` and `:Review qs` paste into. The default `"!"` is tmux's last active pane, which is normally the pane you came from, usually the one running your agent. Any target `tmux paste-buffer -t` accepts works instead, e.g. a named window `"CLAUDE"`, `"CLAUDE.0"` or a fully qualified `"session:window.pane"`.
 - `tmux.auto_enter`: send `Enter` after pasting. Off by default so you can read the prompt before submitting it.
