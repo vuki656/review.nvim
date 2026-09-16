@@ -327,7 +327,10 @@ submits immediately.
 7.4 Branches panel                                  *review-mappings-branches*
 
     j / k         Next / previous branch.
-    <CR>          Diff the main branch against the selected branch.
+    <CR>          Pick a branch to compare against with |vim.ui.select()|
+                  (main first, then other local branches) and diff it
+                  against the selected branch. On the main branch, reset
+                  to HEAD.
     <Space>       Check out the branch. Refuses on a dirty worktree.
     p             Pull from remote.
     n             Create a new branch from the selected one.

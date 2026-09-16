@@ -228,7 +228,7 @@ Submitting an empty input also discards the comment. The quick comment input has
 | Key | Action |
 | --- | --- |
 | `j` / `k` | Next / previous branch |
-| `<CR>` | Diff the main branch against the selected branch |
+| `<CR>` | Pick a branch to compare against (main first, then other local branches) and diff it against the selected branch. On the main branch, reset to `HEAD` |
 | `<Space>` | Check out the branch (refuses on a dirty worktree) |
 | `p` | Pull from remote |
 | `n` | Create a new branch from the selected one |

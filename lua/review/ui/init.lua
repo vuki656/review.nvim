@@ -499,25 +499,45 @@ end
 ---Select a branch (from branch list panel)
 ---@param entry BranchEntry
 function M.select_branch(entry)
-    if entry.is_main then
-        state.state.base = "HEAD"
-        state.state.base_end = nil
-    else
-        local main_branch = git.get_main_branch()
-        if not main_branch then
-            vim.notify("No main, master or origin/HEAD branch to compare against", vim.log.levels.WARN)
-            log.warn("ui: select_branch aborted, no default branch found")
-            return
-        end
-        state.state.base = main_branch
-        state.state.base_end = entry.name
+    local function apply(base, base_end)
+        state.state.base = base
+        state.state.base_end = base_end
+
+        file_tree.refresh(function()
+            focus_first_file(true)
+        end)
+        branch_list.set_selected(entry)
+        commit_list.refresh()
     end
 
-    file_tree.refresh(function()
-        focus_first_file(true)
+    if entry.is_main then
+        apply("HEAD", nil)
+        return
+    end
+
+    local main_branch = git.get_main_branch()
+    git.get_local_branches(function(branches)
+        local candidates = git.compare_candidates(main_branch, branches, entry.name)
+        if #candidates == 0 then
+            vim.notify("No branch to compare against", vim.log.levels.WARN)
+            log.warn("ui: select_branch aborted, no branch to compare against")
+            return
+        end
+
+        vim.ui.select(candidates, {
+            prompt = string.format("Compare %s against", entry.name),
+        }, function(choice)
+            if not choice then
+                return
+            end
+            if not git.is_safe_rev(choice) or not git.is_safe_rev(entry.name) then
+                vim.notify("Refusing unsafe branch name", vim.log.levels.WARN)
+                log.warn("ui: select_branch aborted, unsafe revision")
+                return
+            end
+            apply(choice, entry.name)
+        end)
     end)
-    branch_list.set_selected(entry)
-    commit_list.refresh()
 end
 
 ---Reset comparison back to HEAD (undo branch/commit selection)

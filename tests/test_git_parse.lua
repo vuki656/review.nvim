@@ -217,4 +217,27 @@ numstat["truncated rename is skipped"] = function()
     expect.equality(git.parse_numstat_output("1\t1\t\0only-old.txt\0"), {})
 end
 
+local candidates = new_set()
+T["compare_candidates"] = candidates
+
+candidates["main comes first, rest keeps git order"] = function()
+    local result = git.compare_candidates("main", { "alpha", "feature", "main", "zeta" }, "feature")
+    expect.equality(result, { "main", "alpha", "zeta" })
+end
+
+candidates["selected branch is excluded"] = function()
+    local result = git.compare_candidates("main", { "feature", "other" }, "feature")
+    expect.equality(result, { "main", "other" })
+end
+
+candidates["main is not duplicated"] = function()
+    local result = git.compare_candidates("main", { "main", "main", "dev" }, "feature")
+    expect.equality(result, { "main", "dev" })
+end
+
+candidates["no main branch"] = function()
+    expect.equality(git.compare_candidates(nil, { "dev", "feature" }, "feature"), { "dev" })
+    expect.equality(git.compare_candidates(nil, { "feature" }, "feature"), {})
+end
+
 return T

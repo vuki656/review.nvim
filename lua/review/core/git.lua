@@ -242,6 +242,24 @@ function M.parse_commit_line(line)
     }
 end
 
+---Order the branches a selected branch can be compared against: main first, then the rest in git order
+---@param main_branch string|nil
+---@param branches string[]
+---@param selected string
+---@return string[]
+function M.compare_candidates(main_branch, branches, selected)
+    local candidates = {}
+    if main_branch and main_branch ~= "" and main_branch ~= selected then
+        table.insert(candidates, main_branch)
+    end
+    for _, name in ipairs(branches or {}) do
+        if name ~= selected and name ~= main_branch then
+            table.insert(candidates, name)
+        end
+    end
+    return candidates
+end
+
 ---Run a function with the git root, returning default_value if not in a git repo
 ---@generic T
 ---@param default_value T Value to return when not in a git repo

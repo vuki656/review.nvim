@@ -119,7 +119,7 @@ panel shows nothing rather than an invented `+0 −0`.
 Everything the UI shows is derived from two fields in `state.lua`: `base` and `base_end`. They define the diff range, and every panel reads them rather than holding its own notion of what is being compared.
 
 - `base = "HEAD"`, `base_end = nil` — working tree changes. This is the default and the reset target.
-- `base = <rev>`, `base_end = <rev>` — a fixed range. Selecting a commit in the commits panel sets `base = <hash>~1`, `base_end = <hash>`; selecting a branch sets `base = <main branch>`, `base_end = <branch>`.
+- `base = <rev>`, `base_end = <rev>` — a fixed range. Selecting a commit in the commits panel sets `base = <hash>~1`, `base_end = <hash>`; selecting a branch opens a `vim.ui.select` picker (main branch first, then other local branches in git order, built by `git.compare_candidates()`) and sets `base = <chosen>`, `base_end = <branch>`; cancelling changes nothing, and selecting the main branch resets to `HEAD`.
 - `:Review commit <sha>` is the exception: it sets `base = <sha>` with `base_end = nil`, so it means "everything since that sha", not "that one commit".
 
 `state.is_history_mode()` is just `base ~= "HEAD"`. `<Esc>` in any panel calls `ui.reset_to_head()`, which restores the default and refreshes every panel. Any revision arriving from user input or the session file must pass `git.is_safe_rev()` first, so a value like `--upload-pack=...` is not handed to git as an option.
